@@ -4,4 +4,8 @@ docs/
 token-warehouse-agentic-workflow-v2.3-fixed/
 .env
 
+.agentic/
+.agents/
+.claude/
+
 'Exercice de gestion de stocks.pdf'
