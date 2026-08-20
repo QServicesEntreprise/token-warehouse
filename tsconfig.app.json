@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": []
+  },
+  "files": ["src/web/main.ts"],
+  "include": ["src/web/**/*.d.ts"]
+}

@@ -9,3 +9,14 @@ token-warehouse-agentic-workflow-v2.3-fixed/
 .claude/
 
 'Exercice de gestion de stocks.pdf'
+
+bin/
+obj/
+node_modules/
+dist/
+artifacts/
+*.db
+*.db-shm
+*.db-wal
+playwright-report/
+test-results/

@@ -1,0 +1,9 @@
+<Solution>
+  <Project Path="src/backend/TokenWarehouse.Domain/TokenWarehouse.Domain.csproj" />
+  <Project Path="src/backend/TokenWarehouse.Application/TokenWarehouse.Application.csproj" />
+  <Project Path="src/backend/TokenWarehouse.Infrastructure/TokenWarehouse.Infrastructure.csproj" />
+  <Project Path="src/backend/TokenWarehouse.Api/TokenWarehouse.Api.csproj" />
+  <Project Path="tests/TokenWarehouse.Domain.Tests/TokenWarehouse.Domain.Tests.csproj" />
+  <Project Path="tests/TokenWarehouse.Application.Tests/TokenWarehouse.Application.Tests.csproj" />
+  <Project Path="tests/TokenWarehouse.Api.Tests/TokenWarehouse.Api.Tests.csproj" />
+</Solution>
