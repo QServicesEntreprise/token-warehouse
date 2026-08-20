@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Globalization;
 using Microsoft.AspNetCore.Mvc;
 using TokenWarehouse.Application;
 using TokenWarehouse.Domain;
@@ -29,13 +30,13 @@ public static class ArticleEndpoints
             {
                 payload = await request.ReadFromJsonAsync<CreateArticleRequest>(cancellationToken);
             }
-            catch (Exception exception) when (exception is JsonException or NotSupportedException)
+            catch (JsonException exception)
             {
-                return ValidationProblem([
-                    new ArticleValidationError(
-                        "article.request.invalid",
-                        "body",
-                        "Le corps JSON est invalide ou contient un type de valeur inattendu.")]);
+                return ValidationProblem([InvalidJsonError(exception)]);
+            }
+            catch (NotSupportedException)
+            {
+                return ValidationProblem([InvalidJsonError()]);
             }
 
             if (payload is null)
@@ -82,6 +83,19 @@ public static class ArticleEndpoints
 
     private static IResult ValidationProblem(IReadOnlyList<ArticleValidationError> errors)
         => ArticleProblem(StatusCodes.Status400BadRequest, "La requête est invalide.", "article.validation", errors);
+
+    private static ArticleValidationError InvalidJsonError(JsonException? exception = null)
+    {
+        var field = exception?.Path?
+            .Split('.', StringSplitOptions.RemoveEmptyEntries)
+            .LastOrDefault();
+        var hasField = !string.IsNullOrWhiteSpace(field) && field != "$";
+
+        return new(
+            hasField ? $"article.{field}.invalid" : "article.request.invalid",
+            hasField ? field! : "body",
+            "Le corps JSON est invalide ou contient un type de valeur inattendu.");
+    }
 
     private static IResult ConflictProblem(IReadOnlyList<ArticleValidationError> errors)
         => ArticleProblem(StatusCodes.Status409Conflict, "L’Article existe déjà.", "article.ean13.conflict", errors);
@@ -213,13 +227,30 @@ public sealed class ArticleResponse
 
     public static ArticleResponse From(ArticleView article) => new()
     {
-        Ean13 = article.Ean13,
-        Type = article.Type,
+        Ean13 = article.Ean13.Value,
+        Type = article.Type == ArticleType.Food ? "food" : "nonFood",
         Name = article.Name,
-        PriceHtCents = article.PriceHtCents,
+        PriceHtCents = article.PriceHt.Cents,
         IsActive = article.IsActive,
-        Dlc = article.Dlc,
-        ConsumptionModes = article.ConsumptionModes,
-        Packaging = article.Packaging
+        Dlc = article.Type == ArticleType.Food
+            ? article.Dlc?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+            : null,
+        ConsumptionModes = article.Type == ArticleType.Food
+            ? article.ConsumptionModes.Select(ToWireMode).ToArray()
+            : null,
+        Packaging = article.Type == ArticleType.NonFood && article.Packaging is not null
+            ? ToWirePackaging(article.Packaging.Value)
+            : null
     };
+
+    private static string ToWireMode(ConsumptionMode mode)
+        => mode == ConsumptionMode.Takeaway ? "takeaway" : "onsite";
+
+    private static string ToWirePackaging(PackagingCondition packaging)
+        => packaging switch
+        {
+            PackagingCondition.New => "new",
+            PackagingCondition.Refurbished => "refurbished",
+            _ => "unsellable"
+        };
 }

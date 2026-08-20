@@ -56,7 +56,7 @@ const initialModel: ArticleFormModel = {
 
       <section class="panel" aria-labelledby="create-title">
         <h2 id="create-title">Nouvel Article</h2>
-        <p id="form-error" class="form-error" aria-live="assertive">{{ formError() }}</p>
+        <p id="form-error" class="form-error" aria-live="assertive" tabindex="-1">{{ formError() }}</p>
 
         <form novalidate (submit)="onSubmit($event)">
           <div class="form-grid">
@@ -207,10 +207,21 @@ export class AppComponent {
   async onSubmit(event: Event): Promise<void> {
     event.preventDefault();
     this.formError.set('');
+    let shouldRestoreFocus = false;
     await submit(this.articleForm, {
-      action: async () => this.createArticle(),
-      onInvalid: () => this.formError.set('Corrigez les erreurs signalées avant de continuer.'),
+      action: async () => {
+        const result = await this.createArticle();
+        shouldRestoreFocus = result !== undefined;
+        return result;
+      },
+      onInvalid: () => {
+        shouldRestoreFocus = true;
+        this.formError.set('Corrigez les erreurs signalées avant de continuer.');
+      },
     });
+    if (shouldRestoreFocus) {
+      this.restoreFocus();
+    }
   }
 
   toggleMode(mode: ConsumptionMode, event: Event): void {
@@ -304,6 +315,28 @@ export class AppComponent {
       default:
         return undefined;
     }
+  }
+
+  private restoreFocus(): void {
+    const firstInvalidField = [
+      'ean13',
+      'type',
+      'name',
+      'priceHtCents',
+      'dlc',
+      'consumptionModes',
+      'packaging',
+    ].find((field) => {
+      const fieldTree = this.fieldFor(field);
+      return fieldTree ? fieldTree().errors().length > 0 : false;
+    });
+
+    const target = firstInvalidField
+      ? firstInvalidField === 'consumptionModes'
+        ? document.querySelector<HTMLElement>('#consumptionModes input')
+        : document.getElementById(firstInvalidField)
+      : document.getElementById('form-error');
+    target?.focus();
   }
 
   private problemDetails(error: unknown): ProblemDetails {

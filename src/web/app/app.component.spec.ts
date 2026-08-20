@@ -60,6 +60,7 @@ describe('AppComponent', () => {
     expect(component.articleForm.ean13().errors().some((error) => error.kind === 'server')).toBe(true);
     expect(fixture.nativeElement.querySelector('#ean13-error').textContent).toContain('EAN');
     expect(fixture.nativeElement.querySelector('#form-error')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('#ean13')).toBe(document.activeElement);
     http.verify();
   });
 });

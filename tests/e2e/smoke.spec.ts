@@ -55,6 +55,7 @@ test('creates and consults food and non-food articles through the real UI', asyn
   await page.getByLabel('À emporter').check();
   await page.getByRole('button', { name: 'Créer l’Article' }).click();
   await expect(page.locator('#ean13-error')).toContainText('checksum');
+  await expect(page.locator('#ean13')).toBeFocused();
 
   await page.locator('#type').selectOption('nonFood');
   await page.locator('#ean13').fill('4006381333931');
@@ -63,6 +64,7 @@ test('creates and consults food and non-food articles through the real UI', asyn
   await page.locator('#packaging').selectOption('refurbished');
   await page.getByRole('button', { name: 'Créer l’Article' }).click();
   await expect(page.locator('#ean13-error')).toContainText('déjà');
+  await expect(page.locator('#ean13')).toBeFocused();
 
   await page.screenshot({ path: 'artifacts/playwright/shell.png', fullPage: true });
 });

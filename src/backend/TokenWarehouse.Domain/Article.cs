@@ -96,7 +96,7 @@ public sealed class Article
         Name = name;
         PriceHt = priceHt;
         Dlc = dlc;
-        ConsumptionModes = consumptionModes.ToArray();
+        ConsumptionModes = Array.AsReadOnly(consumptionModes.ToArray());
         Packaging = packaging;
         IsActive = true;
     }

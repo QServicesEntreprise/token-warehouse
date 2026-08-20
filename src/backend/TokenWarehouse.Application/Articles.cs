@@ -33,14 +33,14 @@ public sealed record CreateArticleCommand
 }
 
 public sealed record ArticleView(
-    string Ean13,
-    string Type,
+    Ean13 Ean13,
+    ArticleType Type,
     string Name,
-    int PriceHtCents,
+    Money PriceHt,
     bool IsActive,
-    string? Dlc,
-    IReadOnlyList<string>? ConsumptionModes,
-    string? Packaging);
+    DateOnly? Dlc,
+    IReadOnlyList<ConsumptionMode> ConsumptionModes,
+    PackagingCondition? Packaging);
 
 public enum ArticleStoreInsertStatus
 {
@@ -145,25 +145,12 @@ public sealed class ArticleApplication(IArticleStore store) : ICreateArticleUseC
 
     private static ArticleView ToView(Article article)
         => new(
-            article.Ean13.Value,
-            article.Type == ArticleType.Food ? "food" : "nonFood",
+            article.Ean13,
+            article.Type,
             article.Name,
-            article.PriceHt.Cents,
+            article.PriceHt,
             article.IsActive,
-            article.Dlc?.ToString("yyyy-MM-dd"),
-            article.Type == ArticleType.Food
-                ? article.ConsumptionModes.Select(ToWireMode).ToArray()
-                : null,
-            article.Packaging is null ? null : ToWirePackaging(article.Packaging.Value));
-
-    private static string ToWireMode(ConsumptionMode mode)
-        => mode == ConsumptionMode.Takeaway ? "takeaway" : "onsite";
-
-    private static string ToWirePackaging(PackagingCondition packaging)
-        => packaging switch
-        {
-            PackagingCondition.New => "new",
-            PackagingCondition.Refurbished => "refurbished",
-            _ => "unsellable"
-        };
+            article.Dlc,
+            article.ConsumptionModes,
+            article.Packaging);
 }

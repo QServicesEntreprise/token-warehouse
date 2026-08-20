@@ -73,6 +73,29 @@ public sealed class ArticleTests
         Assert.NotNull(result.Value);
     }
 
+    [Fact]
+    public void Keeps_consumption_modes_read_only_after_creation()
+    {
+        var result = Article.Create(new ArticleDraft
+        {
+            Ean13 = "0123456789012",
+            Type = "food",
+            Name = "Chocolat noir",
+            PriceHtCents = 199,
+            Dlc = "2026-12-31",
+            DlcProvided = true,
+            ConsumptionModes = ["takeaway"],
+            ConsumptionModesProvided = true
+        });
+
+        var article = Assert.IsType<Article>(result.Value);
+        var modes = Assert.IsAssignableFrom<IList<ConsumptionMode>>(article.ConsumptionModes);
+
+        Assert.Throws<NotSupportedException>(() => modes[0] = ConsumptionMode.OnSite);
+        Assert.Equal([ConsumptionMode.Takeaway], article.ConsumptionModes);
+        Assert.IsNotType<ConsumptionMode[]>(article.ConsumptionModes);
+    }
+
     [Theory]
     [InlineData("new")]
     [InlineData("refurbished")]

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -95,6 +96,31 @@ public sealed class ArticleApiTests
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.Equal("article.validation", body.RootElement.GetProperty("code").GetString());
         Assert.True(body.RootElement.GetProperty("errors").TryGetProperty("ean13", out _));
+    }
+
+    [Theory]
+    [InlineData("\"199\"")]
+    [InlineData("199.0")]
+    [InlineData("199.5")]
+    public async Task Non_integer_price_shapes_are_rejected_with_a_price_field_error(string priceJson)
+    {
+        using var factory = new ArticleHostFactory();
+        using var client = factory.CreateClient();
+        using var content = new StringContent(
+            $$"""{"ean13":"0123456789012","type":"food","name":"Chocolat noir","priceHtCents":{{priceJson}},"dlc":"2026-12-31","consumptionModes":["takeaway"]}""",
+            Encoding.UTF8,
+            "application/json");
+
+        using var response = await client.PostAsync("/api/articles", content);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("article.validation", body.RootElement.GetProperty("code").GetString());
+        Assert.True(body.RootElement.GetProperty("errors").TryGetProperty("priceHtCents", out _));
+
+        using var read = await client.GetAsync("/api/articles/0123456789012");
+        Assert.Equal(HttpStatusCode.NotFound, read.StatusCode);
     }
 
     [Fact]

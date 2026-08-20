@@ -26,9 +26,11 @@ public sealed class ArticleApplicationTests
 
         Assert.Equal(ArticleCreateStatus.Created, created.Status);
         Assert.Equal(ArticleReadStatus.Found, read.Status);
-        Assert.Equal("0123456789012", read.Article?.Ean13);
-        Assert.Equal(["takeaway", "onsite"], read.Article?.ConsumptionModes);
-        Assert.Equal(199, read.Article?.PriceHtCents);
+        Assert.Equal("0123456789012", read.Article?.Ean13.Value);
+        Assert.Equal(ArticleType.Food, read.Article?.Type);
+        Assert.Equal([ConsumptionMode.Takeaway, ConsumptionMode.OnSite], read.Article?.ConsumptionModes);
+        Assert.Equal(199, read.Article?.PriceHt.Cents);
+        Assert.Equal(new DateOnly(2026, 12, 31), read.Article?.Dlc);
         Assert.True(read.Article?.IsActive);
         Assert.Equal(1, store.InsertCalls);
     }

@@ -1,9 +1,13 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using TokenWarehouse.Application;
 using TokenWarehouse.Api;
 using TokenWarehouse.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.NumberHandling = JsonNumberHandling.Strict);
+
 var connectionString = builder.Configuration.GetConnectionString("Warehouse")
     ?? "Data Source=token-warehouse.db";
 builder.Services.AddSqlitePersistence(connectionString);
