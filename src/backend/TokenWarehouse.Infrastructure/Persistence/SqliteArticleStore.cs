@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using TokenWarehouse.Application;
@@ -45,7 +46,7 @@ public sealed class SqliteArticleStore(IDbContextFactory<WarehouseDbContext> con
             Name = article.Name,
             PriceHtCents = article.PriceHt.Cents,
             IsActive = article.IsActive,
-            Dlc = article.Dlc?.ToString("yyyy-MM-dd"),
+            Dlc = article.Dlc?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             ConsumptionModes = article.Type == ArticleType.Food
                 ? string.Join(',', article.ConsumptionModes.Select(ToWireMode))
                 : null,

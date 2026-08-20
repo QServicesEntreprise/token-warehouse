@@ -1,7 +1,9 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
@@ -50,6 +52,33 @@ public sealed class ArticleApiTests
             new[] { "takeaway", "onsite" },
             loaded.RootElement.GetProperty("consumptionModes").EnumerateArray().Select(value => value.GetString()).ToArray());
         Assert.False(loaded.RootElement.TryGetProperty("packaging", out _));
+    }
+
+    [Fact]
+    public async Task Persists_dlc_as_iso_calendar_under_a_non_gregorian_culture()
+    {
+        var culture = new CultureInfo("ar-SA");
+        culture.DateTimeFormat.Calendar = new UmAlQuraCalendar();
+        using var factory = new ArticleHostFactory(culture);
+        using var client = factory.CreateClient();
+        using var create = await client.PostAsJsonAsync("/api/articles", new
+        {
+            ean13 = "0123456789012",
+            type = "food",
+            name = "Chocolat noir",
+            priceHtCents = 199,
+            dlc = "2026-12-31",
+            consumptionModes = new[] { "takeaway" }
+        });
+
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+
+        using var secondClient = factory.CreateClient();
+        using var read = await secondClient.GetAsync("/api/articles/0123456789012");
+        Assert.Equal(HttpStatusCode.OK, read.StatusCode);
+        using var body = JsonDocument.Parse(await read.Content.ReadAsStringAsync());
+
+        Assert.Equal("2026-12-31", body.RootElement.GetProperty("dlc").GetString());
     }
 
     [Fact]
@@ -272,11 +301,22 @@ public sealed class ArticleApiTests
     private sealed class ArticleHostFactory : WebApplicationFactory<Program>
     {
         private readonly string databasePath = Path.Combine(Path.GetTempPath(), $"token-warehouse-article-{Guid.NewGuid():N}.db");
+        private readonly CultureInfo? requestCulture;
+
+        public ArticleHostFactory(CultureInfo? requestCulture = null)
+        {
+            this.requestCulture = requestCulture;
+        }
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment("Testing");
             builder.UseSetting("ConnectionStrings:Warehouse", $"Data Source={databasePath}");
+            if (requestCulture is not null)
+            {
+                builder.ConfigureServices(services =>
+                    services.AddSingleton<IStartupFilter>(new RequestCultureStartupFilter(requestCulture)));
+            }
         }
 
         protected override void Dispose(bool disposing)
@@ -289,6 +329,31 @@ public sealed class ArticleApiTests
                 File.Delete($"{databasePath}-wal");
             }
         }
+    }
+
+    private sealed class RequestCultureStartupFilter(CultureInfo culture) : IStartupFilter
+    {
+        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next)
+            => app =>
+            {
+                app.Use(async (_, nextMiddleware) =>
+                {
+                    var previousCulture = CultureInfo.CurrentCulture;
+                    var previousUiCulture = CultureInfo.CurrentUICulture;
+                    CultureInfo.CurrentCulture = culture;
+                    CultureInfo.CurrentUICulture = culture;
+                    try
+                    {
+                        await nextMiddleware();
+                    }
+                    finally
+                    {
+                        CultureInfo.CurrentCulture = previousCulture;
+                        CultureInfo.CurrentUICulture = previousUiCulture;
+                    }
+                });
+                next(app);
+            };
     }
 
     private sealed class FailingStoreHostFactory : WebApplicationFactory<Program>
