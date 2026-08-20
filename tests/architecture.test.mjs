@@ -62,3 +62,17 @@ test('the scaffold does not add explicitly forbidden abstractions', async () => 
   const source = (await Promise.all(files.map((path) => readFile(path, 'utf8')))).join('\n');
   assert.doesNotMatch(source, /MediatR|GenericRepository|\bCQRS\b|EventBus/i);
 });
+
+test('documented cleanup removes the manual API SQLite database and sidecars', async () => {
+  const settings = JSON.parse(
+    await readFile(join(root, 'src/backend/TokenWarehouse.Api/appsettings.json'), 'utf8'),
+  );
+  const dataSource = settings.ConnectionStrings.Warehouse.match(/Data Source=([^;]+)/)?.[1];
+  assert.ok(dataSource && !dataSource.includes('/') && !dataSource.includes('\\'));
+
+  const readme = await readFile(join(root, 'README.md'), 'utf8');
+  const manualDatabasePath = `src/backend/TokenWarehouse.Api/${dataSource}`;
+  for (const suffix of ['', '-shm', '-wal']) {
+    assert.ok(readme.includes(`${manualDatabasePath}${suffix}`));
+  }
+});

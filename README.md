@@ -7,8 +7,9 @@ aucun comportement Catalogue, Stock, Vente ou Pilotage.
 
 - .NET SDK `10.0.400`, ASP.NET Core 10 Minimal API et EF Core 10.
 - Angular `22.1.3` standalone avec le builder Angular `22.1.5`.
-- SQLite local dans `token-warehouse.db`; les tests d'intégration utilisent un
-  fichier temporaire et une connexion SQLite `:memory:` conservée ouverte.
+- SQLite local dans `src/backend/TokenWarehouse.Api/token-warehouse.db` pour le
+  lancement manuel; les tests d'intégration utilisent un fichier temporaire et
+  une connexion SQLite `:memory:` conservée ouverte.
 - Le test Playwright utilise `artifacts/playwright/token-warehouse-playwright.db`,
   un fichier éphémère supprimé avec les artefacts.
 - Playwright `1.62.1` lance l'API et Angular lui-même sur `5100` et `4200`.
@@ -77,5 +78,9 @@ Pour repartir d'un état local propre:
 
 ```sh
 dotnet clean TokenWarehouse.slnx
-rm -rf dist artifacts token-warehouse.db token-warehouse.db-shm token-warehouse.db-wal
+rm -rf dist artifacts
+rm -f token-warehouse.db token-warehouse.db-shm token-warehouse.db-wal \
+  src/backend/TokenWarehouse.Api/token-warehouse.db \
+  src/backend/TokenWarehouse.Api/token-warehouse.db-shm \
+  src/backend/TokenWarehouse.Api/token-warehouse.db-wal
 ```
