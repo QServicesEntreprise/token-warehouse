@@ -1,12 +1,12 @@
 # Token Warehouse
 
-Socle exécutable et testable du monolithe modulaire. Cette livraison ne contient
-aucun comportement Catalogue, Stock, Vente ou Pilotage.
+Socle exécutable et testable du monolithe modulaire, avec le parcours de création
+et de consultation d’un Article.
 
 ## Stack et structure
 
 - .NET SDK `10.0.400`, ASP.NET Core 10 Minimal API et EF Core 10.
-- Angular `22.1.3` standalone avec le builder Angular `22.1.5`.
+- Angular `22.1.3` standalone avec Signals/Signal Forms et le builder Angular `22.1.5`.
 - SQLite local dans `src/backend/TokenWarehouse.Api/token-warehouse.db` pour le
   lancement manuel; les tests d'intégration utilisent un fichier temporaire et
   une connexion SQLite `:memory:` conservée ouverte.
@@ -52,12 +52,11 @@ Ou, après `dotnet tool restore` et `npm ci --legacy-peer-deps`:
 npm run verify
 ```
 
-`dotnet test` couvre Domain, Application, la composition du host HTTP, la
-substitution du fake et les migrations SQLite. `npm run test:web` exécute le
-test Angular Vitest du shell. Le test Playwright ouvre le shell Angular réel,
-interroge le `/health` technique de l'API réelle et sauvegarde une capture dans
-`artifacts/playwright/shell.png`; aucun mock réseau ou endpoint métier n'est
-utilisé.
+`dotnet test` couvre le Domain, l’Application, la composition du host HTTP,
+SQLite, les collisions EAN et la substitution du fake. `npm run test:web`
+exécute les tests publics du formulaire Angular. Le test Playwright crée puis
+relit des Articles alimentaires et non alimentaires dans l’interface réelle,
+avec erreurs et clavier; aucun mock réseau n’est utilisé.
 
 La commande `npm run verify` a été exécutée deux fois le 19 août 2026 : une
 fois après l'installation initiale, puis après `dotnet clean TokenWarehouse.slnx`
@@ -71,8 +70,22 @@ dotnet run --project src/backend/TokenWarehouse.Api/TokenWarehouse.Api.csproj --
 npm run start:web
 ```
 
-L'API expose uniquement `GET /health` pour le probe technique. Le host applique
-les migrations SQLite au démarrage sans service externe ni secret.
+L’API expose `GET /health`, `POST /api/articles` et `GET /api/articles/{ean13}`.
+Le host applique les migrations SQLite au démarrage sans service externe ni
+secret.
+
+## Contrat Article
+
+Les valeurs canoniques du JSON sont `food`/`nonFood`, `takeaway`/`onsite` et
+`new`/`refurbished`/`unsellable`. Une création valide transporte `ean13` comme
+chaîne de 13 chiffres, `priceHtCents` comme entier et renvoie `isActive: true`.
+Les réponses alimentaires exposent `dlc` et `consumptionModes`; les réponses
+non alimentaires exposent `packaging`, sans attribut de l’autre classification.
+
+Les erreurs sont `application/problem+json`: `400` avec `code: article.validation`
+et `errors` indexées par champ, `409` avec `code: article.ean13.conflict`, `404`
+avec `code: article.not_found` et `500` avec `code: internal_error` sans détail
+interne.
 
 Pour repartir d'un état local propre:
 

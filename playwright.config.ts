@@ -4,6 +4,9 @@ import { defineConfig, devices } from '@playwright/test';
 
 fs.mkdirSync(path.resolve('artifacts/playwright'), { recursive: true });
 const e2eDatabasePath = path.resolve('artifacts/playwright/token-warehouse-playwright.db');
+for (const suffix of ['', '-shm', '-wal']) {
+  fs.rmSync(`${e2eDatabasePath}${suffix}`, { force: true });
+}
 
 export default defineConfig({
   testDir: 'tests/e2e',
