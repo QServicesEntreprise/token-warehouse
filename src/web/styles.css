@@ -12,10 +12,16 @@ body {
 main {
   box-sizing: border-box;
   display: grid;
-  min-height: 100vh;
-  place-content: center;
-  gap: 0.75rem;
+  gap: 1.5rem;
+  margin: 0 auto;
+  max-width: 72rem;
   padding: 2rem;
+}
+
+.page-header,
+.panel {
+  display: grid;
+  gap: 0.75rem;
 }
 
 .eyebrow {
@@ -28,11 +34,121 @@ main {
 }
 
 h1,
+h2,
+h3,
 p {
   margin: 0;
 }
 
 h1 {
-  font-size: clamp(2rem, 6vw, 4rem);
-  line-height: 1;
+  font-size: clamp(2rem, 4vw, 3.5rem);
+  line-height: 1.05;
+}
+
+.panel {
+  border: 1px solid #d8e0ec;
+  border-radius: 1rem;
+  background: #fff;
+  padding: 1.5rem;
+  box-shadow: 0 0.75rem 2rem rgb(23 32 51 / 6%);
+}
+
+.form-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+}
+
+label,
+fieldset {
+  display: grid;
+  gap: 0.4rem;
+}
+
+fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+input,
+select,
+button {
+  border: 1px solid #aebbd0;
+  border-radius: 0.5rem;
+  box-sizing: border-box;
+  font: inherit;
+  min-height: 2.75rem;
+  padding: 0.55rem 0.7rem;
+}
+
+button {
+  background: #173b70;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 700;
+  justify-self: start;
+  margin-top: 1rem;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+input:focus-visible,
+select:focus-visible,
+button:focus-visible {
+  outline: 3px solid #f0b429;
+  outline-offset: 2px;
+}
+
+.choice {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.choice input {
+  min-height: auto;
+}
+
+.field-error,
+.form-error {
+  color: #a51d2d;
+  font-size: 0.9rem;
+  min-height: 1.2em;
+}
+
+.lookup {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.article-detail {
+  border-top: 1px solid #d8e0ec;
+  margin-top: 1rem;
+  padding-top: 1rem;
+}
+
+dl {
+  display: grid;
+  gap: 0.6rem;
+}
+
+dl div {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: 10rem 1fr;
+}
+
+dt {
+  color: #53627b;
+  font-weight: 700;
+}
+
+dd {
+  margin: 0;
 }

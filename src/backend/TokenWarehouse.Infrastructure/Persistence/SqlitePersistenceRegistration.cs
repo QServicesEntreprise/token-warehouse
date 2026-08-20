@@ -10,6 +10,7 @@ public static class SqlitePersistenceRegistration
     {
         services.AddDbContextFactory<WarehouseDbContext>(options => options.UseSqlite(connectionString));
         services.AddSingleton<IPersistenceAdapter, SqlitePersistenceAdapter>();
+        services.AddScoped<IArticleStore, SqliteArticleStore>();
         services.AddHostedService<SqliteMigrationHostedService>();
         return services;
     }

@@ -36,6 +36,7 @@ test('framework packages stay at the adapter edges', async () => {
   assert.deepEqual(await packageReferences('src/backend/TokenWarehouse.Domain/TokenWarehouse.Domain.csproj'), []);
   assert.deepEqual(await packageReferences('src/backend/TokenWarehouse.Application/TokenWarehouse.Application.csproj'), []);
   assert.deepEqual((await packageReferences('src/backend/TokenWarehouse.Infrastructure/TokenWarehouse.Infrastructure.csproj')).sort(), [
+    'Microsoft.Data.Sqlite',
     'Microsoft.EntityFrameworkCore.Design',
     'Microsoft.EntityFrameworkCore.Sqlite',
     'Microsoft.Extensions.DependencyInjection.Abstractions',
