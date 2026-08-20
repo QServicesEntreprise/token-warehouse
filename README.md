@@ -9,6 +9,8 @@ aucun comportement Catalogue, Stock, Vente ou Pilotage.
 - Angular `22.1.3` standalone avec le builder Angular `22.1.5`.
 - SQLite local dans `token-warehouse.db`; les tests d'intégration utilisent un
   fichier temporaire et une connexion SQLite `:memory:` conservée ouverte.
+- Le test Playwright utilise `artifacts/playwright/token-warehouse-playwright.db`,
+  un fichier éphémère supprimé avec les artefacts.
 - Playwright `1.62.1` lance l'API et Angular lui-même sur `5100` et `4200`.
 
 Les dépendances vont de `Domain` vers `Application`, puis vers
@@ -75,5 +77,5 @@ Pour repartir d'un état local propre:
 
 ```sh
 dotnet clean TokenWarehouse.slnx
-rm -rf dist artifacts token-warehouse.db token-warehouse.db-shm token-warehouse.db-wal token-warehouse-playwright.db token-warehouse-playwright.db-shm token-warehouse-playwright.db-wal
+rm -rf dist artifacts token-warehouse.db token-warehouse.db-shm token-warehouse.db-wal
 ```

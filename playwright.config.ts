@@ -3,6 +3,7 @@ import path from 'node:path';
 import { defineConfig, devices } from '@playwright/test';
 
 fs.mkdirSync(path.resolve('artifacts/playwright'), { recursive: true });
+const e2eDatabasePath = path.resolve('artifacts/playwright/token-warehouse-playwright.db');
 
 export default defineConfig({
   testDir: 'tests/e2e',
@@ -24,7 +25,7 @@ export default defineConfig({
       reuseExistingServer: false,
       env: {
         ASPNETCORE_ENVIRONMENT: 'Testing',
-        ConnectionStrings__Warehouse: 'Data Source=token-warehouse-playwright.db',
+        ConnectionStrings__Warehouse: `Data Source=${e2eDatabasePath}`,
       },
     },
     {
