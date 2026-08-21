@@ -96,6 +96,60 @@ public sealed class SqliteArticleStore(IDbContextFactory<WarehouseDbContext> con
         }
     }
 
+    public async ValueTask<ArticleStorePriceUpdateCandidate> FindForPriceUpdateAsync(
+        Ean13 ean13,
+        CancellationToken cancellationToken = default)
+    {
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+        var entity = await context.Articles
+            .AsNoTracking()
+            .SingleOrDefaultAsync(article => article.Ean13 == ean13.Value, cancellationToken);
+
+        if (entity is null)
+        {
+            return new(ArticleStorePriceUpdateCandidateStatus.NotFound, null);
+        }
+
+        if (!entity.IsActive)
+        {
+            return new(ArticleStorePriceUpdateCandidateStatus.Archived, null);
+        }
+
+        return new(ArticleStorePriceUpdateCandidateStatus.Active, ToDomain(entity));
+    }
+
+    public async ValueTask<ArticleStoreUpdateStatus> UpdatePriceHtAsync(
+        Article article,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(article);
+
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+        var entity = await context.Articles
+            .SingleOrDefaultAsync(current => current.Ean13 == article.Ean13.Value, cancellationToken);
+
+        if (entity is null)
+        {
+            return ArticleStoreUpdateStatus.NotFound;
+        }
+
+        if (!entity.IsActive)
+        {
+            return ArticleStoreUpdateStatus.Conflict;
+        }
+
+        entity.PriceHtCents = article.PriceHt.Cents;
+        try
+        {
+            await context.SaveChangesAsync(cancellationToken);
+            return ArticleStoreUpdateStatus.Updated;
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return ArticleStoreUpdateStatus.Conflict;
+        }
+    }
+
     private static ArticleEntity ToEntity(Article article)
         => new()
         {

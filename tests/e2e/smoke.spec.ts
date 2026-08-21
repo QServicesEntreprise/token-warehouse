@@ -12,8 +12,10 @@ const ean13ForAttempt = (prefix: string, attempt: number): string => {
 test('searches and filters the catalogue, including an archived detail', async ({ page }, testInfo) => {
   const attempt = testInfo.repeatEachIndex * (testInfo.project.retries + 1) + testInfo.retry;
   const foodEan = ean13ForAttempt('012345678', attempt);
+  const singleFoodEan = ean13ForAttempt('012345670', attempt);
   const nonFoodEan = ean13ForAttempt('400638133', attempt);
   const articleRow = (ean13: string) => page.getByRole('row', { name: new RegExp(ean13) });
+  const articleDetailText = (text: string) => page.locator('.article-detail').getByText(text);
 
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Créer et consulter un Article' })).toBeVisible();
@@ -44,14 +46,24 @@ test('searches and filters the catalogue, including an archived detail', async (
 
   await page.locator('#ean13').fill(foodEan);
   await page.locator('#name').fill('Chocolat noir');
-  await page.locator('#priceHtCents').fill('199');
+  await page.locator('#priceHtCents').fill('1000');
   await page.locator('#dlc').fill('2026-12-31');
   await page.locator('#consumptionModes').getByLabel('À emporter').check();
   await page.locator('#consumptionModes').getByLabel('Sur place').check();
   await page.getByRole('button', { name: 'Créer l’Article' }).click();
 
   await expect(page.getByRole('heading', { name: 'Chocolat noir' })).toBeVisible();
-  await expect(articleRow(foodEan)).toBeVisible();
+  await expect(page.locator('.article-detail').getByText(foodEan)).toBeVisible();
+  await expect(articleDetailText('1000 centimes')).toBeVisible();
+  await expect(page.getByText('takeaway, onsite')).toBeVisible();
+  await expect(articleDetailText('1055 centimes')).toBeVisible();
+  await expect(articleDetailText('1100 centimes')).toBeVisible();
+  await expect(page.locator('#priceTtcCents')).toHaveCount(0);
+
+  await page.locator('#detailPriceHtCents').fill('199');
+  await page.getByRole('button', { name: 'Enregistrer le Prix HT' }).click();
+  await expect(articleDetailText('210 centimes')).toBeVisible();
+  await expect(articleDetailText('219 centimes')).toBeVisible();
 
   await page.locator('#catalog-search').fill('chocolat');
   await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
@@ -71,6 +83,37 @@ test('searches and filters the catalogue, including an archived detail', async (
   await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
   await expect(articleRow(foodEan)).toBeVisible();
 
+  await page.reload();
+  await page.locator('#lookupEan13').fill(foodEan);
+  await page.getByRole('button', { name: 'Consulter', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Chocolat noir' })).toBeVisible();
+  await expect(page.getByText('2026-12-31')).toBeVisible();
+  await expect(articleDetailText('210 centimes')).toBeVisible();
+  await expect(articleDetailText('219 centimes')).toBeVisible();
+
+  await page.locator('#ean13').fill(singleFoodEan);
+  await page.locator('#name').fill('Café à emporter');
+  await page.locator('#priceHtCents').fill('1000');
+  await page.locator('#dlc').fill('2026-12-31');
+  await page.locator('#consumptionModes').getByLabel('À emporter').check();
+  await page.getByRole('button', { name: 'Créer l’Article' }).click();
+  await expect(page.getByRole('heading', { name: 'Café à emporter' })).toBeVisible();
+  await expect(page.locator('.price-quote')).toHaveCount(1);
+  const singleFoodQuote = page.locator('.price-quote');
+  await expect(singleFoodQuote).toContainText('À emporter');
+  await expect(singleFoodQuote).toContainText('11/200');
+  await expect(singleFoodQuote).toContainText('1055 centimes');
+  await expect(singleFoodQuote).not.toContainText('Sur place');
+
+  await page.reload();
+  await page.locator('#lookupEan13').fill(singleFoodEan);
+  await page.getByRole('button', { name: 'Consulter', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Café à emporter' })).toBeVisible();
+  await expect(page.locator('.price-quote')).toHaveCount(1);
+  await expect(page.locator('.price-quote')).toContainText('À emporter');
+  await expect(page.locator('.price-quote')).toContainText('11/200');
+  await expect(page.locator('.price-quote')).toContainText('1055 centimes');
+
   await page.locator('#type').selectOption('nonFood');
   await expect(page.locator('#dlc')).toHaveCount(0);
   await expect(page.locator('#consumptionModes')).toHaveCount(0);
@@ -83,6 +126,7 @@ test('searches and filters the catalogue, including an archived detail', async (
   await page.locator('#packaging').selectOption('refurbished');
   await page.getByRole('button', { name: 'Créer l’Article' }).click();
   await expect(page.getByRole('heading', { name: 'Batterie reconditionnée' })).toBeVisible();
+  await expect(articleDetailText('3000 centimes')).toBeVisible();
 
   await page.locator('#catalog-type').selectOption('nonFood');
   await page.locator('#catalog-packaging').selectOption('refurbished');
@@ -91,10 +135,30 @@ test('searches and filters the catalogue, including an archived detail', async (
   await expect(page.getByRole('row', { name: /Lampe historique/ })).toHaveCount(0);
 
   await page.reload();
-  await page.locator('#lookupEan13').fill(foodEan);
+  await page.locator('#lookupEan13').fill(nonFoodEan);
   await page.getByRole('button', { name: 'Consulter', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Chocolat noir' })).toBeVisible();
-  await expect(page.getByText('2026-12-31')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Batterie reconditionnée' })).toBeVisible();
+  await expect(page.locator('.article-detail').getByText(nonFoodEan)).toBeVisible();
+  await expect(page.locator('.article-detail').getByText('Non alimentaire', { exact: true })).toBeVisible();
+  await expect(articleDetailText('2500 centimes')).toBeVisible();
+  await expect(page.getByText('refurbished')).toBeVisible();
+  await expect(articleDetailText('3000 centimes')).toBeVisible();
+  await expect(page.locator('.price-quote')).toHaveCount(1);
+
+  await page.locator('#detailPriceHtCents').fill('1999');
+  await page.getByRole('button', { name: 'Enregistrer le Prix HT' }).click();
+  await expect(articleDetailText('1999 centimes')).toBeVisible();
+  await expect(articleDetailText('2399 centimes')).toBeVisible();
+  await expect(page.getByText('refurbished')).toBeVisible();
+
+  await page.reload();
+  await page.locator('#lookupEan13').fill(nonFoodEan);
+  await page.getByRole('button', { name: 'Consulter', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Batterie reconditionnée' })).toBeVisible();
+  await expect(articleDetailText('1999 centimes')).toBeVisible();
+  await expect(articleDetailText('2399 centimes')).toBeVisible();
+  await expect(articleDetailText('400 centimes')).toBeVisible();
+  await expect(page.locator('.price-quote')).toHaveCount(1);
 
   await page.locator('#type').selectOption('food');
   await page.locator('#ean13').fill('0123456789013');

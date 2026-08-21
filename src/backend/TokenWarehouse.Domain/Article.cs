@@ -108,7 +108,7 @@ public sealed class Article
 
     public string Name { get; }
 
-    public Money PriceHt { get; }
+    public Money PriceHt { get; private set; }
 
     public bool IsActive { get; }
 
@@ -117,6 +117,8 @@ public sealed class Article
     public IReadOnlyList<ConsumptionMode> ConsumptionModes { get; }
 
     public PackagingCondition? Packaging { get; }
+
+    public void ChangePriceHt(Money priceHt) => PriceHt = priceHt;
 
     public static ArticleCreationResult Create(ArticleDraft draft)
         => Create(draft, true);

@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using System.Data.Common;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -53,6 +54,238 @@ public sealed class ArticleApiTests
             new[] { "takeaway", "onsite" },
             loaded.RootElement.GetProperty("consumptionModes").EnumerateArray().Select(value => value.GetString()).ToArray());
         Assert.False(loaded.RootElement.TryGetProperty("packaging", out _));
+    }
+
+    [Fact]
+    public async Task Gets_and_patches_food_quotes_in_cents_without_persisting_ttc()
+    {
+        using var factory = new ArticleHostFactory();
+        using var client = factory.CreateClient();
+        using var create = await client.PostAsJsonAsync("/api/articles", new
+        {
+            ean13 = "0123456789012",
+            type = "food",
+            name = "Chocolat noir",
+            priceHtCents = 1000,
+            dlc = "2026-12-31",
+            consumptionModes = new[] { "takeaway", "onsite" }
+        });
+
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+
+        using var patchRequest = new HttpRequestMessage(HttpMethod.Patch, "/api/articles/0123456789012")
+        {
+            Content = JsonContent.Create(new { priceHtCents = 199 })
+        };
+        using var patch = await client.SendAsync(patchRequest);
+        Assert.Equal(HttpStatusCode.OK, patch.StatusCode);
+        Assert.Equal("application/json", patch.Content.Headers.ContentType?.MediaType);
+        using var patched = JsonDocument.Parse(await patch.Content.ReadAsStringAsync());
+
+        Assert.Equal(199, patched.RootElement.GetProperty("priceHtCents").GetInt32());
+        Assert.Equal("0123456789012", patched.RootElement.GetProperty("ean13").GetString());
+        Assert.Equal("food", patched.RootElement.GetProperty("type").GetString());
+        Assert.Equal("2026-12-31", patched.RootElement.GetProperty("dlc").GetString());
+        Assert.Equal(
+            new[] { "takeaway", "onsite" },
+            patched.RootElement.GetProperty("consumptionModes").EnumerateArray().Select(value => value.GetString()).ToArray());
+        Assert.Equal(2, patched.RootElement.GetProperty("priceQuotes").GetArrayLength());
+        var patchedQuotes = patched.RootElement.GetProperty("priceQuotes").EnumerateArray().ToArray();
+        Assert.Equal("takeaway", patchedQuotes[0].GetProperty("saleContext").GetString());
+        Assert.Equal(11, patchedQuotes[0].GetProperty("vatCents").GetInt32());
+        Assert.Equal(210, patchedQuotes[0].GetProperty("priceTtcCents").GetInt32());
+        Assert.Equal("onsite", patchedQuotes[1].GetProperty("saleContext").GetString());
+        Assert.Equal(20, patchedQuotes[1].GetProperty("vatCents").GetInt32());
+        Assert.Equal(219, patchedQuotes[1].GetProperty("priceTtcCents").GetInt32());
+        Assert.Equal("11/200", patchedQuotes[0].GetProperty("taxRate").GetProperty("ratio").GetString());
+        Assert.Equal("1/10", patchedQuotes[1].GetProperty("taxRate").GetProperty("ratio").GetString());
+
+        using var secondClient = factory.CreateClient();
+        using var read = await secondClient.GetAsync("/api/articles/0123456789012");
+        Assert.Equal(HttpStatusCode.OK, read.StatusCode);
+        using var loaded = JsonDocument.Parse(await read.Content.ReadAsStringAsync());
+        Assert.Equal(patched.RootElement.GetRawText(), loaded.RootElement.GetRawText());
+        Assert.False(loaded.RootElement.TryGetProperty("priceTtcCents", out _));
+        Assert.False(loaded.RootElement.TryGetProperty("vatCents", out _));
+    }
+
+    [Fact]
+    public async Task Patching_catalog_price_keeps_a_persisted_sale_snapshot_unchanged()
+    {
+        using var factory = new ArticleHostFactory();
+        using var client = factory.CreateClient();
+        using var create = await client.PostAsJsonAsync("/api/articles", new
+        {
+            ean13 = "0123456789012",
+            type = "food",
+            name = "Chocolat noir",
+            priceHtCents = 1000,
+            dlc = "2026-12-31",
+            consumptionModes = new[] { "takeaway", "onsite" }
+        });
+
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+        var before = new SaleSnapshot("0123456789012", "takeaway", 1000, 2, 2000, 110, 2110);
+        await PersistSaleSnapshotAsync(factory, before);
+
+        using var patchRequest = new HttpRequestMessage(HttpMethod.Patch, "/api/articles/0123456789012")
+        {
+            Content = JsonContent.Create(new { priceHtCents = 199 })
+        };
+        using var patch = await client.SendAsync(patchRequest);
+        Assert.Equal(HttpStatusCode.OK, patch.StatusCode);
+
+        using var secondClient = factory.CreateClient();
+        using var read = await secondClient.GetAsync("/api/articles/0123456789012");
+        using var article = JsonDocument.Parse(await read.Content.ReadAsStringAsync());
+        Assert.Equal(199, article.RootElement.GetProperty("priceHtCents").GetInt32());
+
+        var after = await ReadSaleSnapshotAsync(factory);
+        Assert.Equal(before, after);
+    }
+
+    [Fact]
+    public async Task Gets_non_food_quote_without_a_sale_context()
+    {
+        using var factory = new ArticleHostFactory();
+        using var client = factory.CreateClient();
+        using var create = await client.PostAsJsonAsync("/api/articles", new
+        {
+            ean13 = "7351353713578",
+            type = "nonFood",
+            name = "Batterie",
+            priceHtCents = 1000,
+            packaging = "new"
+        });
+
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+        using var body = JsonDocument.Parse(await create.Content.ReadAsStringAsync());
+        var quote = Assert.Single(body.RootElement.GetProperty("priceQuotes").EnumerateArray());
+
+        Assert.False(quote.TryGetProperty("saleContext", out _));
+        Assert.Equal("nonFood", quote.GetProperty("taxRate").GetProperty("code").GetString());
+        Assert.Equal("1/5", quote.GetProperty("taxRate").GetProperty("ratio").GetString());
+        Assert.Equal(200, quote.GetProperty("vatCents").GetInt32());
+        Assert.Equal(1200, quote.GetProperty("priceTtcCents").GetInt32());
+    }
+
+    [Fact]
+    public async Task Rejects_derived_price_input_and_keeps_the_old_price()
+    {
+        using var factory = new ArticleHostFactory();
+        using var client = factory.CreateClient();
+        using var create = await client.PostAsJsonAsync("/api/articles", new
+        {
+            ean13 = "7351353713578",
+            type = "nonFood",
+            name = "Batterie",
+            priceHtCents = 1000,
+            packaging = "new"
+        });
+
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+        using var patchRequest = new HttpRequestMessage(HttpMethod.Patch, "/api/articles/7351353713578")
+        {
+            Content = JsonContent.Create(new { priceTtcCents = 1200 })
+        };
+        using var patch = await client.SendAsync(patchRequest);
+
+        Assert.Equal(HttpStatusCode.BadRequest, patch.StatusCode);
+        Assert.Equal("application/problem+json", patch.Content.Headers.ContentType?.MediaType);
+        using var problem = JsonDocument.Parse(await patch.Content.ReadAsStringAsync());
+        Assert.Equal("article.validation", problem.RootElement.GetProperty("code").GetString());
+        Assert.True(problem.RootElement.GetProperty("errors").TryGetProperty("priceTtcCents", out _));
+
+        using var read = await client.GetAsync("/api/articles/7351353713578");
+        using var loaded = JsonDocument.Parse(await read.Content.ReadAsStringAsync());
+        Assert.Equal(1000, loaded.RootElement.GetProperty("priceHtCents").GetInt32());
+    }
+
+    [Theory]
+    [InlineData("{}", "priceHtCents")]
+    [InlineData("{\"priceHtCents\":null}", "priceHtCents")]
+    [InlineData("{\"priceHtCents\":\"199\"}", "priceHtCents")]
+    [InlineData("{\"priceHtCents\":199.0}", "priceHtCents")]
+    [InlineData("{\"priceTtcCents\":1200}", "priceTtcCents")]
+    public async Task Rejects_invalid_patch_shapes_without_mutating_the_article(string json, string field)
+    {
+        using var factory = new ArticleHostFactory();
+        using var client = factory.CreateClient();
+        using var create = await client.PostAsJsonAsync("/api/articles", new
+        {
+            ean13 = "7351353713578",
+            type = "nonFood",
+            name = "Batterie",
+            priceHtCents = 1000,
+            packaging = "new"
+        });
+
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+        using var patchRequest = new HttpRequestMessage(HttpMethod.Patch, "/api/articles/7351353713578")
+        {
+            Content = new StringContent(json, Encoding.UTF8, "application/json")
+        };
+        using var patch = await client.SendAsync(patchRequest);
+
+        Assert.Equal(HttpStatusCode.BadRequest, patch.StatusCode);
+        using var problem = JsonDocument.Parse(await patch.Content.ReadAsStringAsync());
+        Assert.True(problem.RootElement.GetProperty("errors").TryGetProperty(field, out _));
+
+        using var read = await client.GetAsync("/api/articles/7351353713578");
+        using var loaded = JsonDocument.Parse(await read.Content.ReadAsStringAsync());
+        Assert.Equal(1000, loaded.RootElement.GetProperty("priceHtCents").GetInt32());
+    }
+
+    [Fact]
+    public async Task Patching_an_unknown_article_returns_not_found_problem_details()
+    {
+        using var factory = new ArticleHostFactory();
+        using var client = factory.CreateClient();
+        using var patchRequest = new HttpRequestMessage(HttpMethod.Patch, "/api/articles/4006381333931")
+        {
+            Content = JsonContent.Create(new { priceHtCents = 199 })
+        };
+
+        using var response = await client.SendAsync(patchRequest);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("article.not_found", body.RootElement.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task Patching_an_archived_article_returns_conflict_without_mutating_persisted_price()
+    {
+        using var factory = new ArticleHostFactory();
+        using var client = factory.CreateClient();
+        using var create = await client.PostAsJsonAsync("/api/articles", new
+        {
+            ean13 = "7351353713578",
+            type = "nonFood",
+            name = "Batterie",
+            priceHtCents = 1000,
+            packaging = "new"
+        });
+
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+        await SetArticleArchivedAsync(factory, "7351353713578");
+
+        using var patchRequest = new HttpRequestMessage(HttpMethod.Patch, "/api/articles/7351353713578")
+        {
+            Content = JsonContent.Create(new { priceHtCents = 199 })
+        };
+        using var patch = await client.SendAsync(patchRequest);
+
+        Assert.Equal(HttpStatusCode.Conflict, patch.StatusCode);
+        Assert.Equal("application/problem+json", patch.Content.Headers.ContentType?.MediaType);
+        using var problem = JsonDocument.Parse(await patch.Content.ReadAsStringAsync());
+        Assert.Equal("article.priceHt.conflict", problem.RootElement.GetProperty("code").GetString());
+        Assert.True(problem.RootElement.GetProperty("errors").TryGetProperty("priceHtCents", out _));
+
+        var state = await ReadArticleStateAsync(factory, "7351353713578");
+        Assert.False(state.IsActive);
+        Assert.Equal(1000, state.PriceHtCents);
     }
 
     [Fact]
@@ -531,6 +764,110 @@ public sealed class ArticleApiTests
         }
     }
 
+    private static async Task SetArticleArchivedAsync(ArticleHostFactory factory, string ean13)
+    {
+        using var scope = factory.Services.CreateScope();
+        var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>();
+        await using var context = await contextFactory.CreateDbContextAsync();
+        var entity = await context.Articles.SingleAsync(article => article.Ean13 == ean13);
+        entity.IsActive = false;
+        await context.SaveChangesAsync();
+    }
+
+    private static async Task<(int PriceHtCents, bool IsActive)> ReadArticleStateAsync(
+        ArticleHostFactory factory,
+        string ean13)
+    {
+        using var scope = factory.Services.CreateScope();
+        var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>();
+        await using var context = await contextFactory.CreateDbContextAsync();
+        var entity = await context.Articles
+            .AsNoTracking()
+            .SingleAsync(article => article.Ean13 == ean13);
+        return (entity.PriceHtCents, entity.IsActive);
+    }
+
+    private static async Task PersistSaleSnapshotAsync(ArticleHostFactory factory, SaleSnapshot snapshot)
+    {
+        using var scope = factory.Services.CreateScope();
+        var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>();
+        await using var context = await contextFactory.CreateDbContextAsync();
+        await context.Database.OpenConnectionAsync();
+
+        await using var create = context.Database.GetDbConnection().CreateCommand();
+        create.CommandText = """
+            CREATE TABLE SaleSnapshots (
+                Id INTEGER PRIMARY KEY,
+                ArticleEan13 TEXT NOT NULL,
+                SaleContext TEXT NOT NULL,
+                UnitPriceHtCents INTEGER NOT NULL,
+                Quantity INTEGER NOT NULL,
+                AmountHtCents INTEGER NOT NULL,
+                VatCents INTEGER NOT NULL,
+                AmountTtcCents INTEGER NOT NULL,
+                FOREIGN KEY (ArticleEan13) REFERENCES Articles (Ean13)
+            )
+            """;
+        await create.ExecuteNonQueryAsync();
+
+        await using var insert = context.Database.GetDbConnection().CreateCommand();
+        insert.CommandText = """
+            INSERT INTO SaleSnapshots
+                (Id, ArticleEan13, SaleContext, UnitPriceHtCents, Quantity, AmountHtCents, VatCents, AmountTtcCents)
+            VALUES (1, $articleEan13, $saleContext, $unitPriceHtCents, $quantity, $amountHtCents, $vatCents, $amountTtcCents)
+            """;
+        AddParameter(insert, "$articleEan13", snapshot.ArticleEan13);
+        AddParameter(insert, "$saleContext", snapshot.SaleContext);
+        AddParameter(insert, "$unitPriceHtCents", snapshot.UnitPriceHtCents);
+        AddParameter(insert, "$quantity", snapshot.Quantity);
+        AddParameter(insert, "$amountHtCents", snapshot.AmountHtCents);
+        AddParameter(insert, "$vatCents", snapshot.VatCents);
+        AddParameter(insert, "$amountTtcCents", snapshot.AmountTtcCents);
+        await insert.ExecuteNonQueryAsync();
+    }
+
+    private static async Task<SaleSnapshot> ReadSaleSnapshotAsync(ArticleHostFactory factory)
+    {
+        using var scope = factory.Services.CreateScope();
+        var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>();
+        await using var context = await contextFactory.CreateDbContextAsync();
+        await context.Database.OpenConnectionAsync();
+
+        await using var select = context.Database.GetDbConnection().CreateCommand();
+        select.CommandText = """
+            SELECT ArticleEan13, SaleContext, UnitPriceHtCents, Quantity, AmountHtCents, VatCents, AmountTtcCents
+            FROM SaleSnapshots
+            WHERE Id = 1
+            """;
+        await using var reader = await select.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync());
+        return new SaleSnapshot(
+            reader.GetString(0),
+            reader.GetString(1),
+            reader.GetInt32(2),
+            reader.GetInt32(3),
+            reader.GetInt32(4),
+            reader.GetInt32(5),
+            reader.GetInt32(6));
+    }
+
+    private static void AddParameter(DbCommand command, string name, object value)
+    {
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = name;
+        parameter.Value = value;
+        command.Parameters.Add(parameter);
+    }
+
+    private sealed record SaleSnapshot(
+        string ArticleEan13,
+        string SaleContext,
+        int UnitPriceHtCents,
+        int Quantity,
+        int AmountHtCents,
+        int VatCents,
+        int AmountTtcCents);
+
     private sealed class RequestCultureStartupFilter(CultureInfo culture) : IStartupFilter
     {
         public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next)
@@ -579,6 +916,16 @@ public sealed class ArticleApiTests
 
         public ValueTask<IReadOnlyList<Article>> ListAsync(
             ArticleListFilter filter,
+            CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("database internals");
+
+        public ValueTask<ArticleStorePriceUpdateCandidate> FindForPriceUpdateAsync(
+            Ean13 ean13,
+            CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("database internals");
+
+        public ValueTask<ArticleStoreUpdateStatus> UpdatePriceHtAsync(
+            Article article,
             CancellationToken cancellationToken = default)
             => throw new InvalidOperationException("database internals");
     }

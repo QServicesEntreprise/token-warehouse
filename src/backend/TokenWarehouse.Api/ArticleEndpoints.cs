@@ -82,6 +82,57 @@ public static class ArticleEndpoints
                 : Results.Ok(result.Articles.Select(ArticleResponse.From).ToArray());
         });
 
+        app.MapPatch("/api/articles/{ean13}", async (
+            string ean13,
+            HttpRequest request,
+            IUpdateArticlePriceUseCase useCase,
+            CancellationToken cancellationToken) =>
+        {
+            if (!IsJson(request.ContentType))
+            {
+                return ValidationProblem([
+                    new ArticleValidationError(
+                        "article.request.content_type",
+                        "body",
+                        "Le corps doit utiliser le Content-Type application/json.")]);
+            }
+
+            UpdateArticlePriceRequest? payload;
+            try
+            {
+                payload = await request.ReadFromJsonAsync<UpdateArticlePriceRequest>(cancellationToken);
+            }
+            catch (JsonException exception)
+            {
+                return ValidationProblem([InvalidJsonError(exception)]);
+            }
+            catch (NotSupportedException)
+            {
+                return ValidationProblem([InvalidJsonError()]);
+            }
+
+            if (payload is null)
+            {
+                return ValidationProblem([
+                    new ArticleValidationError(
+                        "article.request.required",
+                        "body",
+                        "Le corps JSON est requis.")]);
+            }
+
+            var result = await useCase.UpdatePriceHtAsync(ean13, payload.ToCommand(), cancellationToken);
+            return result.Status switch
+            {
+                ArticleUpdateStatus.Updated => Results.Ok(ArticleResponse.From(result.Article!)),
+                ArticleUpdateStatus.NotFound => NotFoundProblem(),
+                ArticleUpdateStatus.Conflict => ConflictProblem(
+                    result.Errors,
+                    "article.priceHt.conflict",
+                    "Le Prix HT ne peut pas être modifié."),
+                _ => ValidationProblem(result.Errors)
+            };
+        });
+
         app.MapGet("/api/articles/{ean13}", async (
             string ean13,
             IGetArticleUseCase useCase,
@@ -120,8 +171,11 @@ public static class ArticleEndpoints
             "Le corps JSON est invalide ou contient un type de valeur inattendu.");
     }
 
-    private static IResult ConflictProblem(IReadOnlyList<ArticleValidationError> errors)
-        => ArticleProblem(StatusCodes.Status409Conflict, "L’Article existe déjà.", "article.ean13.conflict", errors);
+    private static IResult ConflictProblem(
+        IReadOnlyList<ArticleValidationError> errors,
+        string code = "article.ean13.conflict",
+        string title = "L’Article existe déjà.")
+        => ArticleProblem(StatusCodes.Status409Conflict, title, code, errors);
 
     private static IResult ArticleProblem(
         int statusCode,
@@ -231,6 +285,21 @@ public sealed class CreateArticleRequest
     private string? packaging;
 }
 
+public sealed class UpdateArticlePriceRequest
+{
+    [JsonPropertyName("priceHtCents")]
+    public int? PriceHtCents { get; set; }
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? AdditionalProperties { get; set; }
+
+    public UpdateArticlePriceCommand ToCommand() => new()
+    {
+        PriceHtCents = PriceHtCents,
+        UnsupportedFields = AdditionalProperties?.Keys.ToArray() ?? []
+    };
+}
+
 public sealed class ArticleResponse
 {
     public string Ean13 { get; init; } = string.Empty;
@@ -238,6 +307,8 @@ public sealed class ArticleResponse
     public string Name { get; init; } = string.Empty;
     public int PriceHtCents { get; init; }
     public bool IsActive { get; init; }
+
+    public IReadOnlyList<PriceQuoteResponse> PriceQuotes { get; init; } = [];
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Dlc { get; init; }
@@ -255,6 +326,7 @@ public sealed class ArticleResponse
         Name = article.Name,
         PriceHtCents = article.PriceHt.Cents,
         IsActive = article.IsActive,
+        PriceQuotes = article.PriceQuotes.Select(PriceQuoteResponse.From).ToArray(),
         Dlc = article.Type == ArticleType.Food
             ? article.Dlc?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
             : null,
@@ -276,4 +348,48 @@ public sealed class ArticleResponse
             PackagingCondition.Refurbished => "refurbished",
             _ => "unsellable"
         };
+}
+
+public sealed class PriceQuoteResponse
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SaleContext { get; init; }
+
+    public TaxRateResponse TaxRate { get; init; } = new();
+
+    public int VatCents { get; init; }
+
+    public int PriceTtcCents { get; init; }
+
+    public static PriceQuoteResponse From(PricingQuote quote) => new()
+    {
+        SaleContext = quote.SaleContext switch
+        {
+            TokenWarehouse.Domain.SaleContext.Takeaway => "takeaway",
+            TokenWarehouse.Domain.SaleContext.OnSite => "onsite",
+            _ => null
+        },
+        TaxRate = TaxRateResponse.From(quote.TaxRate),
+        VatCents = quote.Vat.Cents,
+        PriceTtcCents = quote.PriceTtc.Cents
+    };
+}
+
+public sealed class TaxRateResponse
+{
+    public string Code { get; init; } = string.Empty;
+
+    public string Ratio { get; init; } = string.Empty;
+
+    public int Numerator { get; init; }
+
+    public int Denominator { get; init; }
+
+    public static TaxRateResponse From(TaxRate taxRate) => new()
+    {
+        Code = taxRate.Code,
+        Ratio = $"{taxRate.Numerator}/{taxRate.Denominator}",
+        Numerator = taxRate.Numerator,
+        Denominator = taxRate.Denominator
+    };
 }

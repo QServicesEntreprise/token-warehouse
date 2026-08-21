@@ -15,6 +15,7 @@ builder.Services.AddScoped<ArticleApplication>();
 builder.Services.AddScoped<ICreateArticleUseCase>(services => services.GetRequiredService<ArticleApplication>());
 builder.Services.AddScoped<IGetArticleUseCase>(services => services.GetRequiredService<ArticleApplication>());
 builder.Services.AddScoped<IListArticlesUseCase>(services => services.GetRequiredService<ArticleApplication>());
+builder.Services.AddScoped<IUpdateArticlePriceUseCase>(services => services.GetRequiredService<ArticleApplication>());
 
 builder.Services.AddSingleton<RuntimeReadiness>();
 

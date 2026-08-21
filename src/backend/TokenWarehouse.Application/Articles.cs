@@ -40,7 +40,21 @@ public sealed record ArticleView(
     bool IsActive,
     DateOnly? Dlc,
     IReadOnlyList<ConsumptionMode> ConsumptionModes,
-    PackagingCondition? Packaging);
+    PackagingCondition? Packaging)
+{
+    public IReadOnlyList<PricingQuote> PriceQuotes { get; init; } = [];
+}
+
+public enum ArticleStorePriceUpdateCandidateStatus
+{
+    Active,
+    NotFound,
+    Archived
+}
+
+public sealed record ArticleStorePriceUpdateCandidate(
+    ArticleStorePriceUpdateCandidateStatus Status,
+    Article? Article);
 
 public sealed record ArticleListQuery
 {
@@ -81,6 +95,21 @@ public interface IArticleStore
     ValueTask<IReadOnlyList<Article>> ListAsync(
         ArticleListFilter filter,
         CancellationToken cancellationToken = default);
+
+    ValueTask<ArticleStorePriceUpdateCandidate> FindForPriceUpdateAsync(
+        Ean13 ean13,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ArticleStoreUpdateStatus> UpdatePriceHtAsync(
+        Article article,
+        CancellationToken cancellationToken = default);
+}
+
+public enum ArticleStoreUpdateStatus
+{
+    Updated,
+    NotFound,
+    Conflict
 }
 
 public enum ArticleCreateStatus
@@ -135,7 +164,36 @@ public interface IListArticlesUseCase
         CancellationToken cancellationToken = default);
 }
 
-public sealed class ArticleApplication(IArticleStore store) : ICreateArticleUseCase, IGetArticleUseCase, IListArticlesUseCase
+public sealed record UpdateArticlePriceCommand
+{
+    public int? PriceHtCents { get; init; }
+
+    public IReadOnlyList<string> UnsupportedFields { get; init; } = [];
+}
+
+public enum ArticleUpdateStatus
+{
+    Updated,
+    ValidationFailed,
+    NotFound,
+    Conflict
+}
+
+public sealed record ArticleUpdateResult(
+    ArticleUpdateStatus Status,
+    ArticleView? Article,
+    IReadOnlyList<ArticleValidationError> Errors);
+
+public interface IUpdateArticlePriceUseCase
+{
+    Task<ArticleUpdateResult> UpdatePriceHtAsync(
+        string ean13,
+        UpdateArticlePriceCommand command,
+        CancellationToken cancellationToken = default);
+}
+
+public sealed class ArticleApplication(IArticleStore store)
+    : ICreateArticleUseCase, IGetArticleUseCase, IListArticlesUseCase, IUpdateArticlePriceUseCase
 {
     public async Task<ArticleCreateResult> CreateAsync(
         CreateArticleCommand command,
@@ -196,6 +254,70 @@ public sealed class ArticleApplication(IArticleStore store) : ICreateArticleUseC
             ArticleListStatus.Success,
             articles.Select(ToView).ToArray(),
             []);
+    }
+
+    public async Task<ArticleUpdateResult> UpdatePriceHtAsync(
+        string ean13,
+        UpdateArticlePriceCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+
+        var errors = command.UnsupportedFields
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(field => new ArticleValidationError(
+                "article.field.unsupported",
+                field,
+                $"Le champ « {field} » n’est pas accepté pour la mise à jour du Prix HT."))
+            .ToList();
+
+        if (!Ean13.TryCreate(ean13, out var parsedEan13))
+        {
+            errors.Add(new(
+                "article.ean13.invalid",
+                "ean13",
+                "L’EAN-13 doit contenir 13 chiffres et un checksum valide."));
+        }
+
+        if (command.PriceHtCents is null)
+        {
+            errors.Add(new(
+                "article.priceHtCents.required",
+                "priceHtCents",
+                "Le Prix HT en centimes est requis."));
+        }
+
+        if (errors.Count > 0)
+        {
+            return new ArticleUpdateResult(ArticleUpdateStatus.ValidationFailed, null, errors);
+        }
+
+        var candidate = await store.FindForPriceUpdateAsync(parsedEan13, cancellationToken);
+        if (candidate.Status == ArticleStorePriceUpdateCandidateStatus.NotFound)
+        {
+            return new ArticleUpdateResult(ArticleUpdateStatus.NotFound, null, []);
+        }
+
+        if (candidate.Status == ArticleStorePriceUpdateCandidateStatus.Archived)
+        {
+            return UpdateConflictResult();
+        }
+
+        var article = candidate.Article!;
+        article.ChangePriceHt(Money.FromCents(command.PriceHtCents!.Value));
+
+        var updateStatus = await store.UpdatePriceHtAsync(article, cancellationToken);
+        if (updateStatus == ArticleStoreUpdateStatus.NotFound)
+        {
+            return new ArticleUpdateResult(ArticleUpdateStatus.NotFound, null, []);
+        }
+
+        if (updateStatus == ArticleStoreUpdateStatus.Conflict)
+        {
+            return UpdateConflictResult();
+        }
+
+        return new ArticleUpdateResult(ArticleUpdateStatus.Updated, ToView(article), []);
     }
 
     private static ArticleCreateResult ConflictResult()
@@ -312,6 +434,15 @@ public sealed class ArticleApplication(IArticleStore store) : ICreateArticleUseC
     private static ArticleValidationError InvalidFilter(string field, string message)
         => new($"article.list.{field}.invalid", field, message);
 
+    private static ArticleUpdateResult UpdateConflictResult()
+        => new(
+            ArticleUpdateStatus.Conflict,
+            null,
+            [new(
+                "article.priceHt.conflict",
+                "priceHtCents",
+                "Le Prix HT de cet Article ne peut pas être modifié dans son état courant.")]);
+
     private static ArticleView ToView(Article article)
         => new(
             article.Ean13,
@@ -321,5 +452,8 @@ public sealed class ArticleApplication(IArticleStore store) : ICreateArticleUseC
             article.IsActive,
             article.Dlc,
             article.ConsumptionModes,
-            article.Packaging);
+            article.Packaging)
+        {
+            PriceQuotes = PricingPolicy.Calculate(article).Quotes
+        };
 }
