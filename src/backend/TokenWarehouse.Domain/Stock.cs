@@ -2,20 +2,29 @@ namespace TokenWarehouse.Domain;
 
 public sealed record StockPosition
 {
-    public StockPosition(Ean13 ean13, int physicalQuantity)
+    public StockPosition(Ean13 ean13, int physicalQuantity, int version = 0)
     {
         if (physicalQuantity < 0)
         {
             throw new ArgumentOutOfRangeException(nameof(physicalQuantity));
         }
 
+        if (version < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(version));
+        }
+
         Ean13 = ean13;
         PhysicalQuantity = physicalQuantity;
+        Version = version;
     }
 
     public Ean13 Ean13 { get; }
 
     public int PhysicalQuantity { get; }
+
+    public int Version { get; }
+
 }
 
 public enum StockAvailability

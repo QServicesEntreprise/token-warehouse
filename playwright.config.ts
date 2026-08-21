@@ -4,8 +4,15 @@ import { defineConfig, devices } from '@playwright/test';
 
 const playwrightArtifactsPath = path.resolve('artifacts/playwright');
 fs.mkdirSync(playwrightArtifactsPath, { recursive: true });
-const e2eDatabaseDirectory = fs.mkdtempSync(path.join(playwrightArtifactsPath, 'e2e-'));
+const configuredDatabaseDirectory = process.env['TOKEN_WAREHOUSE_E2E_DATABASE_DIRECTORY'];
+const e2eDatabaseDirectory = configuredDatabaseDirectory
+  ?? fs.mkdtempSync(path.join(playwrightArtifactsPath, 'e2e-'));
 const e2eDatabasePath = path.join(e2eDatabaseDirectory, 'token-warehouse.db');
+const configuredLockPath = process.env['TOKEN_WAREHOUSE_E2E_LOCK_PATH'];
+const e2eLockPath = configuredLockPath ?? path.join(path.dirname(e2eDatabasePath), 'e2e.lock');
+process.env['TOKEN_WAREHOUSE_E2E_DATABASE_DIRECTORY'] = e2eDatabaseDirectory;
+process.env['TOKEN_WAREHOUSE_E2E_DATABASE_PATH'] = e2eDatabasePath;
+process.env['TOKEN_WAREHOUSE_E2E_LOCK_PATH'] = e2eLockPath;
 
 export default defineConfig({
   testDir: 'tests/e2e',
@@ -29,6 +36,7 @@ export default defineConfig({
         ASPNETCORE_ENVIRONMENT: 'Testing',
         TOKEN_WAREHOUSE_E2E_SEED: 'true',
         TOKEN_WAREHOUSE_WAREHOUSE_DATE: '2030-01-15',
+        TOKEN_WAREHOUSE_UTC_NOW: '2030-01-15T10:00:00Z',
         ConnectionStrings__Warehouse: `Data Source=${e2eDatabasePath}`,
       },
     },

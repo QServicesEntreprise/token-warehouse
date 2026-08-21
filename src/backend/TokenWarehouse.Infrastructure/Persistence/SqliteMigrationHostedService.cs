@@ -96,7 +96,8 @@ public sealed class SqliteMigrationHostedService(
         CancellationToken cancellationToken)
     {
         const string foodEan = "0123456789012";
-        const string nonFoodEan = "4006381333931";
+        const string nonFoodEan = "4012345678901";
+        const string inventoryEan = "7351353713578";
 
         if (!await context.Articles.AnyAsync(article => article.Ean13 == foodEan, cancellationToken))
         {
@@ -124,6 +125,21 @@ public sealed class SqliteMigrationHostedService(
                 PriceHtCents = 200,
                 IsActive = true,
                 Packaging = "new"
+            });
+        }
+
+        if (!await context.Articles.AnyAsync(article => article.Ean13 == inventoryEan, cancellationToken))
+        {
+            context.Articles.Add(new ArticleEntity
+            {
+                Ean13 = inventoryEan,
+                Type = "food",
+                Name = "Inventaire de démonstration",
+                NameSearchKey = ArticleNameSearchKey.From("Inventaire de démonstration"),
+                PriceHtCents = 100,
+                IsActive = true,
+                Dlc = today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                ConsumptionModes = "takeaway"
             });
         }
 
@@ -191,6 +207,16 @@ public sealed class SqliteMigrationHostedService(
             });
         }
 
+        if (await context.Articles.AnyAsync(article => article.Ean13 == "5012345678900", cancellationToken)
+            && !await context.StockPositions.AnyAsync(position => position.Ean13 == "5012345678900", cancellationToken))
+        {
+            context.StockPositions.Add(new StockPositionEntity
+            {
+                Ean13 = "5012345678900",
+                PhysicalQuantity = 4
+            });
+        }
+
         if (!await context.StockPositions.AnyAsync(position => position.Ean13 == "1234567890128", cancellationToken))
         {
             context.StockPositions.Add(new StockPositionEntity
@@ -223,7 +249,7 @@ public sealed class SqliteMigrationHostedService(
             context.StockPositions.Add(new StockPositionEntity
             {
                 Ean13 = foodEan,
-                PhysicalQuantity = 12
+                PhysicalQuantity = 8
             });
         }
 
@@ -233,6 +259,15 @@ public sealed class SqliteMigrationHostedService(
             {
                 Ean13 = nonFoodEan,
                 PhysicalQuantity = 7
+            });
+        }
+
+        if (!await context.StockPositions.AnyAsync(position => position.Ean13 == inventoryEan, cancellationToken))
+        {
+            context.StockPositions.Add(new StockPositionEntity
+            {
+                Ean13 = inventoryEan,
+                PhysicalQuantity = 8
             });
         }
 

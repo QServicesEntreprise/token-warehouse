@@ -1,11 +1,89 @@
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting, HttpTestingController } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { AppComponent } from './app.component';
 import { ArticleResponse } from './article-api.service';
 
 describe('AppComponent', () => {
+  afterEach(() => sessionStorage.clear());
+
+  it('submits an inventory and renders the server reconciliation receipt', async () => {
+    const fixture = TestBed.configureTestingModule({
+      imports: [AppComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    }).createComponent(AppComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
+    http.expectOne('/api/stock').flush([]);
+    await fixture.whenStable();
+
+    const component = fixture.componentInstance;
+    component.inventoryModel.set({ ean13: '0123456789012', countedQuantity: '11' });
+    const submission = component.onInventorySubmit(new Event('submit'));
+    const request = http.expectOne('/api/inventories');
+    expect(request.request.method).toBe('POST');
+    expect(request.request.body).toEqual({ ean13: '0123456789012', countedQuantity: 11 });
+    request.flush({
+      operation: {
+        id: 'operation-1',
+        type: 'INVENTORY',
+        ean13: '0123456789012',
+        previousPhysicalStock: 8,
+        countedQuantity: 11,
+        inventoryDifference: 3,
+        resultingPhysicalStock: 11,
+        timestampUtc: '2030-01-15T10:00:00+00:00',
+      },
+      position: {
+        ean13: '0123456789012',
+        physicalStock: 11,
+        sellableStock: 11,
+        availability: 'AVAILABLE',
+        reason: null,
+      },
+    });
+    await submission;
+    http.expectOne('/api/stock').flush([]);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(component.inventoryReceipt()?.operation.inventoryDifference).toBe(3);
+    expect(fixture.nativeElement.querySelector('#inventory-result').textContent).toContain('+3');
+    expect(fixture.nativeElement.querySelector('#inventory-result').textContent).toContain('11');
+    http.verify();
+  });
+
+  it('keeps inventory input and maps a server error to the accessible form', async () => {
+    const fixture = TestBed.configureTestingModule({
+      imports: [AppComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    }).createComponent(AppComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
+    http.expectOne('/api/stock').flush([]);
+    await fixture.whenStable();
+
+    const component = fixture.componentInstance;
+    component.inventoryModel.set({ ean13: '0123456789012', countedQuantity: '5' });
+    const submission = component.onInventorySubmit(new Event('submit'));
+    const request = http.expectOne('/api/inventories');
+    request.flush(
+      { code: 'POSITION_CONFLICT', title: 'La position a changé.' },
+      { status: 409, statusText: 'Conflict' },
+    );
+    await submission;
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(component.inventoryModel().countedQuantity).toBe('5');
+    expect(fixture.nativeElement.querySelector('#inventory-error').textContent).toContain('position');
+    expect(fixture.nativeElement.querySelector('#inventory-countedQuantity')).toBe(document.activeElement);
+    http.verify();
+  });
+
   it('announces Stock loading, empty and error states and retries the request', async () => {
     const fixture = TestBed.configureTestingModule({
       imports: [AppComponent],
