@@ -326,6 +326,20 @@ describe('AppComponent', () => {
       priceQuotes: [],
     });
     await fixture.whenStable();
+    const staleDetail = http.expectOne('/api/articles/0123456789012');
+    staleDetail.flush({
+      ean13: '0123456789012',
+      type: 'food',
+      name: 'Café du Comptoir',
+      priceHtCents: 199,
+      isActive: false,
+      status: 'archived',
+      dlc: '2026-12-31',
+      consumptionModes: ['takeaway'],
+      priceQuotes: [],
+    });
+    await fixture.whenStable();
+    await fixture.whenStable();
     const staleReload = http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles');
     staleReload.flush([]);
     await olderTransition;
@@ -338,6 +352,84 @@ describe('AppComponent', () => {
     expect(component.detail()?.status).toBe('archived');
     expect(fixture.nativeElement.querySelector('.article-detail').textContent).toContain('Archivé');
     expect(fixture.nativeElement.querySelector('.article-detail button').textContent).toContain('Réactiver l’Article');
+    http.verify();
+  });
+
+  it('réconcilie le détail après un succès obsolète du même EAN', async () => {
+    const fixture = TestBed.configureTestingModule({
+      imports: [AppComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    }).createComponent(AppComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    const initial = http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles');
+    const activeRow = {
+      ean13: '0123456789012',
+      type: 'food' as const,
+      name: 'Café du Comptoir',
+      priceHtCents: 199,
+      isActive: true,
+      status: 'active' as const,
+      dlc: '2026-12-31',
+      consumptionModes: ['takeaway' as const],
+    };
+    initial.flush([activeRow]);
+    await fixture.whenStable();
+
+    const component = fixture.componentInstance;
+    component.lookupEan.set(activeRow.ean13);
+    const detailLookup = component.onLookup(new Event('submit'));
+    const detailRequest = http.expectOne(`/api/articles/${activeRow.ean13}`);
+    detailRequest.flush({ ...activeRow, priceQuotes: [] });
+    await detailLookup;
+    fixture.detectChanges();
+
+    const olderTransition = component.onCatalogLifecycle(component.detail()!);
+    const newerTransition = component.onCatalogLifecycle({
+      ...component.detail()!,
+      isActive: false,
+      status: 'archived',
+    });
+    const transitions = http.match((request) => request.method === 'POST' && request.url.includes('/api/articles/'));
+    expect(transitions).toHaveLength(2);
+    expect(transitions[0].request.url).toContain('/archive');
+    expect(transitions[1].request.url).toContain('/reactivate');
+
+    const activeDetail = { ...activeRow, priceQuotes: [] };
+    transitions[1].flush(activeDetail);
+    await fixture.whenStable();
+    const newerReload = http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles');
+    newerReload.flush([activeRow]);
+    await newerTransition;
+
+    expect(component.detail()?.status).toBe('active');
+    expect(component.lifecycleMessage()).toBe('Café du Comptoir est actif.');
+
+    transitions[0].flush({ ...activeRow, isActive: false, status: 'archived', priceQuotes: [] });
+    await fixture.whenStable();
+    const currentDetail = http.expectOne(`/api/articles/${activeRow.ean13}`);
+    fixture.detectChanges();
+    expect(component.detail()?.status).toBe('active');
+    expect(fixture.nativeElement.querySelector('.article-detail button').textContent).toContain('Archiver l’Article');
+    const newerLookup = component.onLookup(new Event('submit'));
+    const newerDetail = http.expectOne(`/api/articles/${activeRow.ean13}`);
+    newerDetail.flush({ ...activeRow, isActive: false, status: 'archived', priceQuotes: [] });
+    await newerLookup;
+    fixture.detectChanges();
+    expect(component.detail()?.status).toBe('archived');
+    currentDetail.flush(activeDetail);
+    await fixture.whenStable();
+    await fixture.whenStable();
+    const staleReload = http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles');
+    staleReload.flush([]);
+    await olderTransition;
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(component.detail()?.status).toBe('archived');
+    expect(fixture.nativeElement.querySelector('.article-detail').textContent).toContain('Archivé');
+    expect(fixture.nativeElement.querySelector('.article-detail button').textContent).toContain('Réactiver l’Article');
+    expect(component.lifecycleMessage()).toBe('Café du Comptoir est actif.');
     http.verify();
   });
 

@@ -410,6 +410,7 @@ export class AppComponent implements OnInit {
   readonly lifecycleMessage = signal('');
 
   private catalogRequestId = 0;
+  private detailRequestId = 0;
   private lifecycleRequestId = 0;
 
   ngOnInit(): void {
@@ -507,20 +508,21 @@ export class AppComponent implements OnInit {
     try {
       const updated = await firstValueFrom(
         this.isActiveArticle(article)
-          ? this.api.archive(ean13)
-          : this.api.reactivate(ean13),
+        ? this.api.archive(ean13)
+        : this.api.reactivate(ean13),
       );
-      if (this.detail()?.ean13 === ean13) {
-        this.showDetail(updated);
-      }
       if (requestId !== this.lifecycleRequestId) {
-        await this.loadCatalog();
-        return;
+        if (this.detail()?.ean13 === ean13) {
+          await this.loadDetail(ean13, true);
+        }
+      } else {
+        if (this.detail()?.ean13 === ean13) {
+          this.showDetail(updated);
+        }
+        this.lifecycleMessage.set(
+          `${updated.name} est ${updated.status === 'active' ? 'actif' : 'archivé'}.`,
+        );
       }
-
-      this.lifecycleMessage.set(
-        `${updated.name} est ${updated.status === 'active' ? 'actif' : 'archivé'}.`,
-      );
       await this.loadCatalog();
     } catch (error) {
       if (requestId !== this.lifecycleRequestId) {
@@ -558,18 +560,29 @@ export class AppComponent implements OnInit {
     await this.loadDetail(this.lookupEan().trim());
   }
 
-  private async loadDetail(ean13: string): Promise<void> {
+  private async loadDetail(ean13: string, preserveCurrentDetail = false): Promise<void> {
+    this.invalidateDetailRequest();
+    const requestId = this.detailRequestId;
     this.lookupError.set('');
-    this.detail.set(null);
-    this.priceUpdateError.set('');
-    this.priceHtFieldError.set('');
+    if (!preserveCurrentDetail) {
+      this.detail.set(null);
+      this.priceUpdateError.set('');
+      this.priceHtFieldError.set('');
+    }
     this.lookingUp.set(true);
     try {
-      this.showDetail(await firstValueFrom(this.api.getByEan13(ean13)));
+      const article = await firstValueFrom(this.api.getByEan13(ean13));
+      if (requestId === this.detailRequestId) {
+        this.setDetail(article);
+      }
     } catch (error) {
-      this.lookupError.set(this.problemMessage(error, 'Article introuvable.'));
+      if (requestId === this.detailRequestId) {
+        this.lookupError.set(this.problemMessage(error, 'Article introuvable.'));
+      }
     } finally {
-      this.lookingUp.set(false);
+      if (requestId === this.detailRequestId) {
+        this.lookingUp.set(false);
+      }
     }
   }
 
@@ -608,6 +621,7 @@ export class AppComponent implements OnInit {
 
   private async createArticle(): Promise<TreeValidationResult> {
     this.submitting.set(true);
+    this.invalidateDetailRequest();
     this.detail.set(null);
     try {
       const created = await firstValueFrom(this.api.create(this.toPayload()));
@@ -753,10 +767,20 @@ export class AppComponent implements OnInit {
   }
 
   private showDetail(article: ArticleResponse): void {
+    this.invalidateDetailRequest();
+    this.setDetail(article);
+  }
+
+  private setDetail(article: ArticleResponse): void {
     this.detail.set(article);
     this.priceHtDraft.set(String(article.priceHtCents));
     this.priceUpdateError.set('');
     this.priceHtFieldError.set('');
+  }
+
+  private invalidateDetailRequest(): void {
+    this.detailRequestId += 1;
+    this.lookingUp.set(false);
   }
 
   private setPriceUpdateError(message: string, fieldMessage: string): void {
