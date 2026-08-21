@@ -96,7 +96,7 @@ public sealed class SqliteMigrationHostedService(
         CancellationToken cancellationToken)
     {
         const string foodEan = "0123456789012";
-        const string nonFoodEan = "4006381333931";
+        const string nonFoodEan = "4012345678901";
         const string inventoryEan = "7351353713578";
 
         if (!await context.Articles.AnyAsync(article => article.Ean13 == foodEan, cancellationToken))
@@ -203,6 +203,16 @@ public sealed class SqliteMigrationHostedService(
             context.StockPositions.Add(new StockPositionEntity
             {
                 Ean13 = "5901234123457",
+                PhysicalQuantity = 4
+            });
+        }
+
+        if (await context.Articles.AnyAsync(article => article.Ean13 == "5012345678900", cancellationToken)
+            && !await context.StockPositions.AnyAsync(position => position.Ean13 == "5012345678900", cancellationToken))
+        {
+            context.StockPositions.Add(new StockPositionEntity
+            {
+                Ean13 = "5012345678900",
                 PhysicalQuantity = 4
             });
         }

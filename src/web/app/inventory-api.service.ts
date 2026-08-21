@@ -38,4 +38,8 @@ export class InventoryApiService {
   register(payload: InventoryRequest): Observable<InventoryResponse> {
     return this.http.post<InventoryResponse>('/api/inventories', payload);
   }
+
+  getById(id: string): Observable<InventoryOperationResponse> {
+    return this.http.get<InventoryOperationResponse>(`/api/inventories/${encodeURIComponent(id)}`);
+  }
 }

@@ -48,6 +48,33 @@ public sealed class InventoryApiTests
     }
 
     [Fact]
+    public async Task Persists_a_zero_difference_and_rereads_it_after_a_fresh_context()
+    {
+        using var factory = new InventoryHostFactory();
+        using var client = factory.CreateClient();
+        await factory.SeedArticleAsync("0123456789012", "Article écart nul", true, 8);
+
+        using var response = await client.PostAsJsonAsync(
+            "/api/inventories",
+            new { ean13 = "0123456789012", countedQuantity = 8 });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var operation = body.RootElement.GetProperty("operation");
+        var operationId = operation.GetProperty("id").GetString();
+        Assert.Equal(8, operation.GetProperty("previousPhysicalStock").GetInt32());
+        Assert.Equal(8, operation.GetProperty("countedQuantity").GetInt32());
+        Assert.Equal(0, operation.GetProperty("inventoryDifference").GetInt32());
+        Assert.Equal(8, operation.GetProperty("resultingPhysicalStock").GetInt32());
+
+        using var reread = await client.GetAsync($"/api/inventories/{operationId}");
+        Assert.Equal(HttpStatusCode.OK, reread.StatusCode);
+        using var rereadBody = JsonDocument.Parse(await reread.Content.ReadAsStringAsync());
+        Assert.Equal(0, rereadBody.RootElement.GetProperty("inventoryDifference").GetInt32());
+        Assert.Equal(0, await factory.ReadInventoryDifferenceAsync(operationId!));
+    }
+
+    [Fact]
     public async Task A_second_inventory_uses_the_new_position_and_keeps_the_first_fact_unchanged()
     {
         using var factory = new InventoryHostFactory();
@@ -209,11 +236,12 @@ public sealed class InventoryApiTests
     }
 
     [Fact]
-    public async Task Maps_a_commit_failure_to_sanitized_problem_details_without_partial_rows()
+    public async Task Rolls_back_real_sqlite_commit_failure_without_partial_rows()
     {
-        using var factory = new InventoryHostFactory(failCommit: true);
+        using var factory = new InventoryHostFactory();
         using var client = factory.CreateClient();
         await factory.SeedArticleAsync("0123456789012", "Article en panne", true, 8);
+        await factory.FailInventoryOperationInsertsAsync();
 
         using var response = await client.PostAsJsonAsync(
             "/api/inventories",
@@ -233,10 +261,6 @@ public sealed class InventoryApiTests
         private readonly string databasePath = Path.Combine(
             Path.GetTempPath(),
             $"token-warehouse-inventory-{Guid.NewGuid():N}.db");
-        private readonly bool failCommit;
-
-        public InventoryHostFactory(bool failCommit = false)
-            => this.failCommit = failCommit;
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -246,11 +270,6 @@ public sealed class InventoryApiTests
             {
                 services.RemoveAll<IClock>();
                 services.AddSingleton<IClock>(new FixedClock());
-                if (failCommit)
-                {
-                    services.RemoveAll<IStockMutationCommitter>();
-                    services.AddScoped<IStockMutationCommitter, FailingCommitter>();
-                }
             });
         }
 
@@ -286,6 +305,21 @@ public sealed class InventoryApiTests
             await context.SaveChangesAsync();
         }
 
+        public async Task FailInventoryOperationInsertsAsync()
+        {
+            using var scope = Services.CreateScope();
+            var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>();
+            await using var context = await contextFactory.CreateDbContextAsync();
+            await context.Database.ExecuteSqlRawAsync(
+                """
+                CREATE TRIGGER FailInventoryOperationInsert
+                BEFORE INSERT ON StockOperations
+                BEGIN
+                    SELECT RAISE(ABORT, 'controlled inventory failure');
+                END;
+                """);
+        }
+
         public async Task<int> ReadPhysicalQuantityAsync(string ean13)
         {
             using var scope = Services.CreateScope();
@@ -305,6 +339,17 @@ public sealed class InventoryApiTests
             return await context.StockOperations.CountAsync();
         }
 
+        public async Task<int> ReadInventoryDifferenceAsync(string operationId)
+        {
+            using var scope = Services.CreateScope();
+            var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>();
+            await using var context = await contextFactory.CreateDbContextAsync();
+            return await context.StockOperations
+                .Where(operation => operation.Id == operationId)
+                .Select(operation => operation.InventoryDifference)
+                .SingleAsync();
+        }
+
         protected override void Dispose(bool disposing)
         {
             base.Dispose(disposing);
@@ -322,11 +367,4 @@ public sealed class InventoryApiTests
         public DateTimeOffset UtcNow => new(2030, 1, 15, 10, 0, 0, TimeSpan.Zero);
     }
 
-    private sealed class FailingCommitter : IStockMutationCommitter
-    {
-        public ValueTask<StockMutationCommitResult> CommitAsync(
-            InventoryCommitPlan plan,
-            CancellationToken cancellationToken = default)
-            => throw new InvalidOperationException("SQLite internals");
-    }
 }

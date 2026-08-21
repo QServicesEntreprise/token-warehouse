@@ -53,6 +53,7 @@ interface InventoryFormModel {
 type CatalogState = 'loading' | 'ready' | 'empty' | 'error';
 type CatalogType = ArticleType | 'all';
 type StockState = 'loading' | 'ready' | 'empty' | 'error';
+type InventoryRestoreState = 'loading' | 'ready' | 'empty' | 'error';
 
 const initialModel: ArticleFormModel = {
   ean13: '',
@@ -68,6 +69,8 @@ const initialInventoryModel: InventoryFormModel = {
   ean13: '',
   countedQuantity: '',
 };
+
+const lastInventoryIdStorageKey = 'token-warehouse.last-inventory-id';
 
 @Component({
   selector: 'app-root',
@@ -212,6 +215,15 @@ const initialInventoryModel: InventoryFormModel = {
             {{ inventorySubmitting() ? 'Enregistrement…' : 'Enregistrer l’Inventaire' }}
           </button>
         </form>
+
+        @if (inventoryRestoreState() === 'loading') {
+          <p id="inventory-restore-state" role="status" aria-live="polite">Relecture du dernier Inventaire…</p>
+        }
+        @if (inventoryRestoreState() === 'error') {
+          <p id="inventory-restore-state" class="form-error" role="alert" aria-live="assertive">
+            Le dernier Inventaire ne peut pas être relu.
+          </p>
+        }
 
         @if (inventoryError()) {
           <p id="inventory-error" class="form-error" role="alert" aria-live="assertive" tabindex="-1">{{ inventoryError() }}</p>
@@ -682,16 +694,19 @@ export class AppComponent implements OnInit {
   readonly inventoryError = signal('');
   readonly inventoryReceipt = signal<InventoryResponse | null>(null);
   readonly inventorySubmitting = signal(false);
+  readonly inventoryRestoreState = signal<InventoryRestoreState>('empty');
 
   private catalogRequestId = 0;
   private stockRequestId = 0;
   private stockDetailRequestId = 0;
   private detailRequestId = 0;
   private lifecycleRequestId = 0;
+  private inventoryRestoreRequestId = 0;
 
   ngOnInit(): void {
     void this.loadCatalog();
     void this.loadStock();
+    void this.loadLastInventory();
   }
   readonly priceHtDraft = signal('');
   readonly priceHtFieldError = signal('');
@@ -784,6 +799,9 @@ export class AppComponent implements OnInit {
   async onInventorySubmit(event: Event): Promise<void> {
     event.preventDefault();
     this.inventoryError.set('');
+    this.inventoryReceipt.set(null);
+    this.inventoryRestoreRequestId += 1;
+    this.inventoryRestoreState.set('empty');
     let shouldRestoreFocus = false;
     await submit(this.inventoryForm, {
       action: async () => {
@@ -1089,6 +1107,8 @@ export class AppComponent implements OnInit {
         countedQuantity: Number(value.countedQuantity),
       }));
       this.inventoryReceipt.set(receipt);
+      this.inventoryRestoreState.set('ready');
+      sessionStorage.setItem(lastInventoryIdStorageKey, receipt.operation.id);
       setTimeout(() => document.getElementById('inventory-result')?.focus());
       void this.loadStock();
       return undefined;
@@ -1106,6 +1126,39 @@ export class AppComponent implements OnInit {
         : { kind: 'server', message: problem.title ?? 'L’Inventaire n’a pas pu être enregistré.' };
     } finally {
       this.inventorySubmitting.set(false);
+    }
+  }
+
+  private async loadLastInventory(): Promise<void> {
+    const requestId = ++this.inventoryRestoreRequestId;
+    const id = sessionStorage.getItem(lastInventoryIdStorageKey);
+    if (!id) {
+      return;
+    }
+
+    this.inventoryRestoreState.set('loading');
+    try {
+      const operation = await firstValueFrom(this.inventoryApi.getById(id));
+      const position = await firstValueFrom(this.stockApi.getByEan13(operation.ean13));
+      if (requestId !== this.inventoryRestoreRequestId) {
+        return;
+      }
+
+      this.inventoryReceipt.set({
+        operation,
+        position: {
+          ean13: position.ean13,
+          physicalStock: position.physicalQuantity,
+          sellableStock: position.sellableQuantity,
+          availability: position.availability,
+          reason: position.reason,
+        },
+      });
+      this.inventoryRestoreState.set('ready');
+    } catch {
+      if (requestId === this.inventoryRestoreRequestId) {
+        this.inventoryRestoreState.set('error');
+      }
     }
   }
 

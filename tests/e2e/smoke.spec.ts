@@ -289,7 +289,7 @@ test('searches and filters the catalogue, including an archived detail', async (
 
 test('recomputes sellable stock after food DLC and non-food packaging updates', async ({ page }) => {
   const foodEan = '0123456789012';
-  const nonFoodEan = '4006381333931';
+  const nonFoodEan = '4012345678901';
   const today = '2030-01-15';
   const yesterday = '2030-01-14';
   const detailStock = (quantity: number) => page.locator('.article-detail').getByText(`${quantity} unités`, { exact: true });
