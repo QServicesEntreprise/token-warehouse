@@ -1,16 +1,5 @@
 namespace TokenWarehouse.Domain;
 
-public readonly record struct Quantity
-{
-    public Quantity(int value)
-    {
-        ArgumentOutOfRangeException.ThrowIfNegative(value);
-        Value = value;
-    }
-
-    public int Value { get; }
-}
-
 public sealed record InventoryReconciliationResult(
     int PreviousPhysicalStock,
     int CountedQuantity,
@@ -44,12 +33,6 @@ public static class InventoryReconciliation
         Quantity countedQuantity)
         => Reconcile(previousPhysicalStock.Value, countedQuantity.Value);
 }
-
-public enum StockOperationType
-{
-    Inventory
-}
-
 public sealed record StockOperationLine
 {
     private StockOperationLine(
@@ -101,79 +84,5 @@ public sealed record StockOperationLine
             reconciliation.CountedQuantity,
             reconciliation.InventoryDifference,
             reconciliation.ResultingPhysicalStock);
-    }
-}
-
-public sealed record StockOperation
-{
-    private StockOperation(
-        string id,
-        StockOperationType type,
-        IReadOnlyList<StockOperationLine> lines,
-        DateTimeOffset timestampUtc)
-    {
-        Id = id;
-        Type = type;
-        Lines = Array.AsReadOnly(lines.ToArray());
-        TimestampUtc = timestampUtc.ToUniversalTime();
-    }
-
-    public string Id { get; }
-
-    public StockOperationType Type { get; }
-
-    public IReadOnlyList<StockOperationLine> Lines { get; }
-
-    public Ean13 Ean13 => Lines[0].Ean13;
-
-    public int PreviousPhysicalStock => Lines[0].PreviousPhysicalStock;
-
-    public int CountedQuantity => Lines[0].CountedQuantity;
-
-    public int InventoryDifference => Lines[0].InventoryDifference;
-
-    public int ResultingPhysicalStock => Lines[0].ResultingPhysicalStock;
-
-    public DateTimeOffset TimestampUtc { get; }
-
-    public static StockOperation CreateInventory(
-        string id,
-        Ean13 ean13,
-        InventoryReconciliationResult reconciliation,
-        DateTimeOffset timestampUtc)
-    {
-        return CreateInventory(
-            id,
-            [StockOperationLine.CreateInventoryLine(1, ean13, reconciliation)],
-            timestampUtc);
-    }
-
-    public static StockOperation CreateInventory(
-        string id,
-        IReadOnlyList<StockOperationLine> lines,
-        DateTimeOffset timestampUtc)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(id);
-        ArgumentNullException.ThrowIfNull(lines);
-        if (lines.Count == 0)
-        {
-            throw new ArgumentException("An inventory operation must contain at least one line.", nameof(lines));
-        }
-
-        for (var index = 0; index < lines.Count; index++)
-        {
-            ArgumentNullException.ThrowIfNull(lines[index]);
-            if (lines[index].LineNumber != index + 1)
-            {
-                throw new ArgumentException("Inventory line numbers must be consecutive and ordered.", nameof(lines));
-            }
-        }
-
-        if (lines.Select(line => line.Ean13).Distinct().Count() != lines.Count)
-        {
-            throw new ArgumentException("An inventory operation cannot contain duplicate Articles.", nameof(lines));
-        }
-
-        return new(id, StockOperationType.Inventory, lines, timestampUtc);
     }
 }

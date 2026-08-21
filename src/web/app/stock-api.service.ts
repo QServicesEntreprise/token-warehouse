@@ -20,6 +20,24 @@ export interface StockPositionResponse {
   packaging?: 'new' | 'refurbished' | 'unsellable';
 }
 
+export interface SupplyPayload {
+  ean13: string;
+  quantity: number | string | null;
+}
+
+export interface SupplyOperationResponse {
+  id: string;
+  type: 'supply';
+  ean13: string;
+  quantity: number;
+  occurredAt: string;
+}
+
+export interface SupplyResponse {
+  operation: SupplyOperationResponse;
+  position: StockPositionResponse;
+}
+
 @Injectable({ providedIn: 'root' })
 export class StockApiService {
   private readonly http = inject(HttpClient);
@@ -30,5 +48,9 @@ export class StockApiService {
 
   getByEan13(ean13: string): Observable<StockPositionResponse> {
     return this.http.get<StockPositionResponse>(`/api/stock/${encodeURIComponent(ean13)}`);
+  }
+
+  recordSupply(payload: SupplyPayload): Observable<SupplyResponse> {
+    return this.http.post<SupplyResponse>('/api/supplies', payload);
   }
 }

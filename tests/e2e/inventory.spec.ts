@@ -1,4 +1,5 @@
-import { expect, test } from './e2e-fixture';
+import { expect } from '@playwright/test';
+import { test } from './fixtures';
 import type { Page, Route } from '@playwright/test';
 
 const canonicalEan = '0123456789012';

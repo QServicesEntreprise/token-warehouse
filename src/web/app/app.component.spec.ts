@@ -337,6 +337,118 @@ describe('AppComponent', () => {
     http.verify();
   });
 
+  it('engages the supply response without optimistic stock and keeps drafts on error', async () => {
+    const fixture = TestBed.configureTestingModule({
+      imports: [AppComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    }).createComponent(AppComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
+    http.expectOne('/api/stock').flush([]);
+    await fixture.whenStable();
+
+    const component = fixture.componentInstance;
+    component.supplyModel.set({ ean13: '0123456789012', quantity: '3' });
+    const submission = component.onSupplySubmit(new Event('submit'));
+    const request = http.expectOne('/api/supplies');
+    expect(request.request.method).toBe('POST');
+    expect(request.request.body).toEqual({ ean13: '0123456789012', quantity: 3 });
+    expect(component.stockPositions()).toEqual([]);
+    request.flush({
+      operation: {
+        id: 'server-operation-1',
+        type: 'supply',
+        ean13: '0123456789012',
+        quantity: 3,
+        occurredAt: '2030-01-15T10:00:00Z',
+      },
+      position: {
+        ean13: '0123456789012',
+        name: 'Article reçu',
+        type: 'food',
+        isActive: true,
+        status: 'active',
+        physicalQuantity: 3,
+        sellableQuantity: 3,
+        availability: 'AVAILABLE',
+        reason: null,
+      },
+    });
+    await submission;
+    fixture.detectChanges();
+
+    expect(component.stockPositions()[0]?.physicalQuantity).toBe(3);
+    expect(fixture.nativeElement.querySelector('#supply-status').textContent).toContain('server-operation-1');
+
+    component.supplyModel.update((model) => ({ ...model, quantity: '0' }));
+    const failedSubmission = component.onSupplySubmit(new Event('submit'));
+    const failedRequest = http.expectOne('/api/supplies');
+    failedRequest.flush(
+      { code: 'supply.validation', title: 'La quantité est invalide.', errors: { quantity: ['Quantité invalide.'] } },
+      { status: 400, statusText: 'Bad Request' },
+    );
+    await failedSubmission;
+    fixture.detectChanges();
+
+    expect(component.supplyModel().ean13).toBe('0123456789012');
+    expect(component.supplyModel().quantity).toBe('0');
+    expect(fixture.nativeElement.querySelector('#supply-quantity-error').textContent).toContain('invalide');
+    expect(fixture.nativeElement.querySelector('#supplyQuantity')).toBe(document.activeElement);
+    http.verify();
+  });
+
+  it('refreshes the open Article detail from the committed supply position', async () => {
+    const fixture = TestBed.configureTestingModule({
+      imports: [AppComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    }).createComponent(AppComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
+    http.expectOne('/api/stock').flush([]);
+    await fixture.whenStable();
+
+    const component = fixture.componentInstance;
+    const article = foodArticle(1000, 55, 1055, 100, 1100);
+    article.stock = { physicalQuantity: 8, sellableQuantity: 8 };
+    component.lookupEan.set(article.ean13);
+    const lookup = component.onLookup(new Event('submit'));
+    http.expectOne(`/api/articles/${article.ean13}`).flush(article);
+    await lookup;
+    fixture.detectChanges();
+
+    component.supplyModel.set({ ean13: article.ean13, quantity: '3' });
+    const submission = component.onSupplySubmit(new Event('submit'));
+    const request = http.expectOne('/api/supplies');
+    request.flush({
+      operation: {
+        id: 'server-operation-detail',
+        type: 'supply',
+        ean13: article.ean13,
+        quantity: 3,
+        occurredAt: '2030-01-15T10:00:00Z',
+      },
+      position: {
+        ean13: article.ean13,
+        name: article.name,
+        type: 'food',
+        isActive: true,
+        status: 'active',
+        physicalQuantity: 11,
+        sellableQuantity: 11,
+        availability: 'AVAILABLE',
+        reason: null,
+      },
+    });
+    await submission;
+    fixture.detectChanges();
+
+    expect(component.detail()?.stock).toEqual({ physicalQuantity: 11, sellableQuantity: 11 });
+    expect(fixture.nativeElement.querySelector('.article-detail').textContent).toContain('11 unités');
+    http.verify();
+  });
+
   it('shows only the fields applicable to the selected classification', async () => {
     const fixture = TestBed.configureTestingModule({
       imports: [AppComponent],

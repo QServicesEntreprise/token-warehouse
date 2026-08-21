@@ -202,7 +202,7 @@ public sealed class InventoryApplicationTests
     {
         public int Calls { get; private set; }
 
-        public ValueTask<ArticleSellabilitySnapshot?> FindAsync(
+        public ValueTask<ArticleSellabilitySnapshot?> FindSellabilityByEanAsync(
             Ean13 ean13,
             CancellationToken cancellationToken = default)
         {
@@ -249,7 +249,7 @@ public sealed class InventoryApplicationTests
     private sealed class BulkFakeArticleReader(
         IReadOnlyDictionary<Ean13, ArticleSellabilitySnapshot> articles) : IArticleSellabilityReader
     {
-        public ValueTask<ArticleSellabilitySnapshot?> FindAsync(
+        public ValueTask<ArticleSellabilitySnapshot?> FindSellabilityByEanAsync(
             Ean13 ean13,
             CancellationToken cancellationToken = default)
             => ValueTask.FromResult(articles.GetValueOrDefault(ean13));

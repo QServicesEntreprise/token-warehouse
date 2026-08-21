@@ -31,6 +31,7 @@ import {
   StockAvailability,
   StockPositionResponse,
   StockReason,
+  SupplyPayload,
 } from './stock-api.service';
 import {
   InventoryApiService,
@@ -47,6 +48,11 @@ interface ArticleFormModel {
   dlc: string;
   consumptionModes: ConsumptionMode[];
   packaging: Packaging | '';
+}
+
+interface SupplyFormModel {
+  ean13: string;
+  quantity: string;
 }
 
 interface InventoryFormModel {
@@ -107,6 +113,7 @@ const lastInventoryIdStorageKey = 'token-warehouse.last-inventory-id';
 
       <nav class="main-nav" aria-label="Navigation principale">
         <a href="#stock-panel">Stock</a>
+        <a href="#supply-panel">Approvisionnement</a>
         <a href="#inventory-title">Inventaire</a>
         <a href="#catalog-title">Catalogue</a>
       </nav>
@@ -194,6 +201,48 @@ const lastInventoryIdStorageKey = 'token-warehouse.last-inventory-id';
         @if (stockDetailError()) {
           <p id="stock-detail-error" class="form-error" role="alert" aria-live="assertive">{{ stockDetailError() }}</p>
         }
+      </section>
+
+      <section id="supply-panel" class="panel" aria-labelledby="supply-title">
+        <div>
+          <p class="eyebrow">Mouvement immédiat</p>
+          <h2 id="supply-title">Enregistrer un Approvisionnement</h2>
+        </div>
+        <p>La position visible est remplacée par le résultat engagé par le serveur après la réception.</p>
+
+        <form id="supply-form" class="supply-form" novalidate (submit)="onSupplySubmit($event)">
+          <label>
+            Référence EAN-13
+            <input
+              id="supplyEan13"
+              autocomplete="off"
+              inputmode="numeric"
+              [formField]="supplyForm.ean13"
+              [attr.aria-invalid]="supplyFieldError('ean13') ? 'true' : null"
+              aria-describedby="supply-ean13-error"
+              />
+            <span id="supply-ean13-error" class="field-error">{{ supplyFieldError('ean13') }}</span>
+          </label>
+
+          <label>
+            Quantité entière positive
+            <input
+              id="supplyQuantity"
+              type="number"
+              step="1"
+              inputmode="numeric"
+              [formField]="supplyForm.quantity"
+              [attr.aria-invalid]="supplyFieldError('quantity') ? 'true' : null"
+              aria-describedby="supply-quantity-error"
+              />
+            <span id="supply-quantity-error" class="field-error">{{ supplyFieldError('quantity') }}</span>
+          </label>
+
+          <button type="submit" [disabled]="supplySubmitting()">
+            {{ supplySubmitting() ? 'Réception…' : 'Enregistrer l’Approvisionnement' }}
+          </button>
+        </form>
+        <p id="supply-status" role="status" aria-live="assertive" tabindex="-1">{{ supplyMessage() }}</p>
       </section>
 
       <section class="panel" aria-labelledby="inventory-title">
@@ -687,6 +736,13 @@ export class AppComponent implements OnInit {
   private readonly inventoryApi = inject(InventoryApiService);
 
   readonly model = signal<ArticleFormModel>({ ...initialModel, consumptionModes: [] });
+  readonly supplyModel = signal<SupplyFormModel>({ ean13: '', quantity: '' });
+  readonly supplyForm = form(this.supplyModel, (schemaPath) => {
+    required(schemaPath.ean13, { message: 'L’EAN-13 est requis.' });
+    pattern(schemaPath.ean13, /^\d{13}$/, { message: 'L’EAN-13 doit contenir 13 chiffres.' });
+    required(schemaPath.quantity, { message: 'La quantité est requise.' });
+    pattern(schemaPath.quantity, /^[1-9]\d*$/, { message: 'La quantité doit être un entier strictement positif.' });
+  });
   readonly articleForm = form(this.model, (schemaPath) => {
     required(schemaPath.ean13, { message: 'L’EAN-13 est requis.' });
     pattern(schemaPath.ean13, /^\d{13}$/, { message: 'L’EAN-13 doit contenir 13 chiffres.' });
@@ -750,6 +806,9 @@ export class AppComponent implements OnInit {
   readonly stockDetail = signal<StockPositionResponse | null>(null);
   readonly stockDetailError = signal('');
   readonly stockDetailLoading = signal(false);
+  readonly supplyFieldErrors = signal<Record<string, string>>({});
+  readonly supplyMessage = signal('');
+  readonly supplySubmitting = signal(false);
   readonly inventoryError = signal('');
   readonly inventoryReceipt = signal<InventoryReceiptResponse | null>(null);
   readonly inventorySubmitting = signal(false);
@@ -762,6 +821,7 @@ export class AppComponent implements OnInit {
   private stockDetailRequestId = 0;
   private detailRequestId = 0;
   private lifecycleRequestId = 0;
+  private supplyRequestId = 0;
   private inventoryRestoreRequestId = 0;
 
   ngOnInit(): void {
@@ -970,6 +1030,61 @@ export class AppComponent implements OnInit {
     this.stockDetailLoading.set(false);
     this.stockDetail.set(null);
     this.stockDetailError.set('');
+  }
+
+  supplyFieldError(field: string): string {
+    const serverError = this.supplyFieldErrors()[field];
+    if (serverError) {
+      return serverError;
+    }
+
+    const errors = field === 'ean13'
+      ? this.supplyForm.ean13().errors()
+      : this.supplyForm.quantity().errors();
+    return errors[0]?.message ?? '';
+  }
+
+  async onSupplySubmit(event: Event): Promise<void> {
+    event.preventDefault();
+    const requestId = ++this.supplyRequestId;
+    this.supplyFieldErrors.set({});
+    this.supplyMessage.set('');
+    this.supplySubmitting.set(true);
+
+    const payload: SupplyPayload = {
+      ean13: this.supplyModel().ean13.trim(),
+      quantity: this.toSupplyQuantity(this.supplyModel().quantity),
+    };
+
+    try {
+      const response = await firstValueFrom(this.stockApi.recordSupply(payload));
+      if (requestId !== this.supplyRequestId) {
+        return;
+      }
+
+      this.replaceStockPosition(response.position);
+      this.supplyMessage.set(
+        `Approvisionnement ${response.operation.id} enregistré le ${response.operation.occurredAt}.`,
+      );
+      setTimeout(() => document.getElementById('supply-status')?.focus());
+    } catch (error) {
+      if (requestId !== this.supplyRequestId) {
+        return;
+      }
+
+      const problem = this.problemDetails(error, 'L’Approvisionnement n’a pas pu être enregistré.');
+      this.supplyFieldErrors.set(
+        Object.fromEntries(
+          Object.entries(problem.errors ?? {}).map(([field, messages]) => [field, messages[0] ?? ''])
+        )
+      );
+      this.supplyMessage.set(problem.title ?? 'L’Approvisionnement n’a pas pu être enregistré.');
+      this.focusSupplyError();
+    } finally {
+      if (requestId === this.supplyRequestId) {
+        this.supplySubmitting.set(false);
+      }
+    }
   }
 
   formatStockAvailability(availability: StockAvailability): string {
@@ -1443,6 +1558,36 @@ export class AppComponent implements OnInit {
     }
   }
 
+  private replaceStockPosition(position: StockPositionResponse): void {
+    this.stockRequestId += 1;
+    const positions = this.stockPositions().filter((current) => current.ean13 !== position.ean13);
+    positions.push(position);
+    positions.sort((left, right) => left.ean13.localeCompare(right.ean13));
+    this.stockPositions.set(positions);
+    this.stockState.set(positions.length > 0 ? 'ready' : 'empty');
+    if (this.stockDetail()?.ean13 === position.ean13) {
+      this.stockDetail.set(position);
+    }
+    this.detail.update((article) => article?.ean13 === position.ean13
+      ? {
+          ...article,
+          stock: {
+            physicalQuantity: position.physicalQuantity,
+            sellableQuantity: position.sellableQuantity,
+          },
+        }
+      : article);
+  }
+
+  private toSupplyQuantity(value: string): number | string | null {
+    const trimmed = value.trim();
+    if (trimmed === '') {
+      return null;
+    }
+
+    return /^\d+$/.test(trimmed) ? Number(trimmed) : trimmed;
+  }
+
   private toCatalogQuery(): ArticleListQuery {
     const query: ArticleListQuery = { status: this.catalogStatus() };
     const search = this.catalogSearch().trim();
@@ -1611,6 +1756,16 @@ export class AppComponent implements OnInit {
           : field === 'packaging'
             ? document.getElementById('detailPackaging')
             : document.getElementById('attribute-update-error');
+    target?.focus();
+  }
+
+  private focusSupplyError(): void {
+    const field = Object.keys(this.supplyFieldErrors())[0];
+    const target = field === 'ean13'
+      ? document.getElementById('supplyEan13')
+      : field === 'quantity'
+        ? document.getElementById('supplyQuantity')
+        : document.getElementById('supply-status');
     target?.focus();
   }
 }

@@ -33,7 +33,7 @@ public sealed class SqliteStockReadReader(IDbContextFactory<WarehouseDbContext> 
 
         return new(
             articleEntities
-                .Select(entity => ArticleSellabilitySnapshot.From(SqliteArticleStore.ToDomain(entity)))
+                .Select(SqliteArticleSellabilityReader.ToSnapshot)
                 .ToArray(),
             positionEntities
                 .Select(SqliteStockPositionReader.ToDomain)

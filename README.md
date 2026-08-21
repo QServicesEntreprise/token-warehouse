@@ -10,9 +10,10 @@ et de consultation d’un Article.
 - SQLite local dans `src/backend/TokenWarehouse.Api/token-warehouse.db` pour le
   lancement manuel; les tests d'intégration utilisent un fichier temporaire et
   une connexion SQLite `:memory:` conservée ouverte.
-- Le test Playwright utilise une base temporaire sous `artifacts/playwright/`,
-  créée et passée à l’API par un chemin absolu à chaque exécution.
-- Playwright `1.62.1` lance l'API et Angular lui-même sur `5100` et `4200`.
+- Le test Playwright démarre l’API avec une base SQLite temporaire isolée pour
+  chaque scénario sous `artifacts/playwright/`, et Angular sur `4200`.
+- Playwright `1.62.1` conserve l’API sur `5100` et Angular sur `4200` pendant
+  que chaque scénario redémarre l’API avec sa propre base.
 
 Les dépendances vont de `Domain` vers `Application`, puis vers
 `Infrastructure`; `Api` compose les adapters. Aucun generic repository,
@@ -75,13 +76,20 @@ L’API expose `GET /health`, `GET /api/articles`, `POST /api/articles`,
 `GET /api/articles/{ean13}`, `PATCH /api/articles/{ean13}`,
 `POST /api/articles/{ean13}/archive`, `POST /api/articles/{ean13}/reactivate`
 `POST /api/inventories`, `POST /api/inventories/bulk`, `GET /api/inventories/{id}`
-et `GET /api/history?ean13={ean13}`.
+et `GET /api/history?ean13={ean13}`. Elle expose aussi
+`POST /api/supplies` pour enregistrer une réception unitaire. Le payload
+conserve `ean13` comme chaîne et exige une `quantity` entière strictement
+positive; le succès `201` retourne l’`operation` immuable (`id`, `type`,
+`ean13`, `quantity`, `occurredAt`) et la `position` engagée. Les erreurs sont
+des Problem Details: `400` pour la structure ou la quantité, `404` pour un
+Article inconnu et `409` avec `code: article_archived` pour un Article archivé.
 Un Inventaire unitaire reçoit `ean13` et `countedQuantity`; l’Inventaire en masse
 reçoit une collection non vide `lines` avec un seul Article par ligne. Les deux
 réponses renvoient uniquement le fait engagé, l’écart calculé, la nouvelle base
 physique et le Stock vendable. Le GET par identifiant relit le fait sans modifier
 la position courante; une opération en masse conserve ses lignes dans leur ordre.
-Le PATCH accepte `priceHtCents` pour le
+`GET /api/history?ean13={ean13}` relit l’Historique.
+ Le PATCH accepte `priceHtCents` pour le
 parcours de prix existant, ou les attributs évolutifs `name`, `dlc` et
 `consumptionModes` pour un Article alimentaire, et `name` et `packaging` pour
 un Article non alimentaire. Un PATCH qui mélange prix et attributs est refusé;

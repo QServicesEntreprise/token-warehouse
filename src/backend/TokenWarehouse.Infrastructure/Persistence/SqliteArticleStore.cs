@@ -7,7 +7,7 @@ using TokenWarehouse.Domain;
 
 namespace TokenWarehouse.Infrastructure.Persistence;
 
-public sealed class SqliteArticleStore(IDbContextFactory<WarehouseDbContext> contextFactory) : IArticleStore, IArticleSellabilityReader
+public sealed class SqliteArticleStore(IDbContextFactory<WarehouseDbContext> contextFactory) : IArticleStore
 {
     public async ValueTask<Article?> FindByEanAsync(
         Ean13 ean13,
@@ -19,41 +19,6 @@ public sealed class SqliteArticleStore(IDbContextFactory<WarehouseDbContext> con
             .SingleOrDefaultAsync(article => article.Ean13 == ean13.Value, cancellationToken);
 
         return entity is null ? null : ToDomain(entity);
-    }
-
-    public async ValueTask<ArticleSellabilitySnapshot?> FindAsync(
-        Ean13 ean13,
-        CancellationToken cancellationToken = default)
-    {
-        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
-        var entity = await context.Articles
-            .AsNoTracking()
-            .SingleOrDefaultAsync(article => article.Ean13 == ean13.Value, cancellationToken);
-
-        return entity is null
-            ? null
-            : ArticleSellabilitySnapshot.From(ToDomain(entity));
-    }
-
-    public async ValueTask<IReadOnlyList<ArticleSellabilitySnapshot>> FindManyAsync(
-        IReadOnlyList<Ean13> eans,
-        CancellationToken cancellationToken = default)
-    {
-        var values = eans.Select(ean13 => ean13.Value).Distinct(StringComparer.Ordinal).ToArray();
-        if (values.Length == 0)
-        {
-            return [];
-        }
-
-        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
-        var entities = await context.Articles
-            .AsNoTracking()
-            .Where(article => values.Contains(article.Ean13))
-            .ToListAsync(cancellationToken);
-
-        return entities
-            .Select(entity => ArticleSellabilitySnapshot.From(ToDomain(entity)))
-            .ToArray();
     }
 
     public async ValueTask<IReadOnlyList<Article>> ListAsync(

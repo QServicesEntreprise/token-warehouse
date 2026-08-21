@@ -80,11 +80,16 @@ test('documented cleanup removes the manual API SQLite database and sidecars', a
 
 test('Playwright fixtures isolate the manual SQLite database', async () => {
   const config = await readFile(join(root, 'playwright.config.ts'), 'utf8');
+  const fixture = await readFile(join(root, 'tests/e2e/fixtures.ts'), 'utf8');
 
   assert.match(config, /path\.resolve\('artifacts\/playwright'\)/);
-  assert.match(config, /fs\.mkdtempSync\(path\.join\(playwrightArtifactsPath, 'e2e-'\)\)/);
-  assert.match(config, /const e2eDatabasePath = path\.join\(e2eDatabaseDirectory, 'token-warehouse\.db'\)/);
-  assert.match(config, /ConnectionStrings__Warehouse: `Data Source=\$\{e2eDatabasePath\}`/);
+  assert.match(config, /command: 'npm run start:web'/);
+  assert.match(config, /workers: 1/);
+  assert.match(fixture, /fs\.mkdtempSync\(path\.join\(playwrightArtifactsPath, 'e2e-'\)\)/);
+  assert.match(fixture, /spawn\(/);
+  assert.match(fixture, /await use\(\)/);
+  assert.match(fixture, /ConnectionStrings__Warehouse: `Data Source=\$\{databasePath\}`/);
+  assert.match(fixture, /fs\.rmSync\(databaseDirectory, \{ recursive: true, force: true \}\)/);
   assert.doesNotMatch(config, /src\/backend\/TokenWarehouse\.Api\/token-warehouse\.db/);
-  assert.doesNotMatch(config, /rmSync/);
+  assert.doesNotMatch(config, /ConnectionStrings__Warehouse/);
 });

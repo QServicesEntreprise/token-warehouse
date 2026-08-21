@@ -55,6 +55,8 @@ public sealed class WarehouseDbContext(DbContextOptions<WarehouseDbContext> opti
         operation.HasKey(entity => entity.Id);
         operation.Property(entity => entity.Type).IsRequired();
         operation.Property(entity => entity.Ean13).IsRequired();
+        operation.Property(entity => entity.Quantity).IsRequired();
+        operation.Property(entity => entity.OccurredAt).IsRequired();
         operation.Property(entity => entity.PreviousPhysicalStock).IsRequired();
         operation.Property(entity => entity.CountedQuantity).IsRequired();
         operation.Property(entity => entity.InventoryDifference).IsRequired();
@@ -63,6 +65,9 @@ public sealed class WarehouseDbContext(DbContextOptions<WarehouseDbContext> opti
         operation.HasIndex(entity => entity.Ean13);
         operation.ToTable("StockOperations", table =>
         {
+            table.HasCheckConstraint(
+                "CK_StockOperations_Quantity_Positive",
+                "Type <> 'supply' OR Quantity > 0");
             table.HasCheckConstraint(
                 "CK_StockOperations_PreviousPhysicalStock_NonNegative",
                 "PreviousPhysicalStock >= 0");

@@ -1,4 +1,5 @@
-import { expect, test } from './e2e-fixture';
+import { expect } from '@playwright/test';
+import { test } from './fixtures';
 import type { Route } from '@playwright/test';
 
 const ean13ForAttempt = (prefix: string, attempt: number): string => {
@@ -365,6 +366,225 @@ test('consults Stock positions, distinguishes blocked quantities and opens detai
   await page.keyboard.press('Enter');
   await expect(reloadedStockPanel.locator('#stock-detail')).toContainText('7 unités');
   await expect(reloadedStockPanel.locator('#stock-detail')).toContainText('DLC dépassée');
+});
+
+test('records a unit supply and shows the committed stocks after reload', async ({ page }) => {
+  const ean13 = '9876543210982';
+  const expiredEan13 = '1234567890128';
+  const unsellableEan13 = '1111111111116';
+  const supplyPanel = page.locator('#supply-panel');
+  const stockRow = (articleEan13: string) => page.locator('#stock-table').getByRole('row', { name: new RegExp(articleEan13) });
+
+  await page.goto('/');
+  await expect(supplyPanel.getByRole('heading', { name: 'Enregistrer un Approvisionnement' })).toBeVisible();
+  await expect(stockRow(ean13)).toContainText('8 unités');
+
+  await supplyPanel.locator('#supplyEan13').fill(ean13);
+  await supplyPanel.locator('#supplyQuantity').fill('5');
+  const responsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'POST' && url.pathname === '/api/supplies';
+  });
+  await supplyPanel.getByRole('button', { name: 'Enregistrer l’Approvisionnement' }).click();
+  const response = await responsePromise;
+
+  expect(response.status()).toBe(201);
+  const supplyBody = await response.json() as {
+    operation: {
+      id: string;
+      occurredAt: string;
+    };
+  };
+  expect(supplyBody.operation.id).toMatch(/\S+/);
+  expect(supplyBody.operation.occurredAt).toBe('2030-01-15T10:00:00+00:00');
+  await expect(supplyPanel.locator('#supply-status')).toContainText(
+    `Approvisionnement ${supplyBody.operation.id} enregistré le ${supplyBody.operation.occurredAt}.`,
+  );
+  await expect(supplyPanel.locator('#supply-status')).toBeFocused();
+  await expect(stockRow(ean13)).toContainText('13 unités');
+  await expect(stockRow(ean13)).toContainText('Disponible');
+
+  await page.reload();
+  await expect(stockRow(ean13)).toContainText('13 unités');
+  await expect(stockRow(ean13)).toContainText('Disponible');
+
+  await supplyPanel.locator('#supplyEan13').fill(expiredEan13);
+  await supplyPanel.locator('#supplyQuantity').fill('2');
+  const expiredResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'POST' && url.pathname === '/api/supplies';
+  });
+  await supplyPanel.getByRole('button', { name: 'Enregistrer l’Approvisionnement' }).click();
+  const expiredResponse = await expiredResponsePromise;
+  expect(expiredResponse.status()).toBe(201);
+  expect(await expiredResponse.json()).toMatchObject({
+    operation: { type: 'supply', ean13: expiredEan13, quantity: 2 },
+    position: {
+      ean13: expiredEan13,
+      physicalQuantity: 9,
+      sellableQuantity: 0,
+      availability: 'NOT_SELLABLE',
+      reason: 'DLC_EXPIRED',
+    },
+  });
+  await expect(stockRow(expiredEan13)).toContainText('9 unités');
+  await expect(stockRow(expiredEan13)).toContainText('0 unités');
+  await expect(stockRow(expiredEan13)).toContainText('DLC dépassée');
+
+  await supplyPanel.locator('#supplyEan13').fill(unsellableEan13);
+  await supplyPanel.locator('#supplyQuantity').fill('2');
+  const unsellableResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'POST' && url.pathname === '/api/supplies';
+  });
+  await supplyPanel.getByRole('button', { name: 'Enregistrer l’Approvisionnement' }).click();
+  const unsellableResponse = await unsellableResponsePromise;
+  expect(unsellableResponse.status()).toBe(201);
+  expect(await unsellableResponse.json()).toMatchObject({
+    operation: { type: 'supply', ean13: unsellableEan13, quantity: 2 },
+    position: {
+      ean13: unsellableEan13,
+      physicalQuantity: 5,
+      sellableQuantity: 0,
+      availability: 'NOT_SELLABLE',
+      reason: 'UNSELLABLE_PACKAGING',
+    },
+  });
+  await expect(stockRow(unsellableEan13)).toContainText('5 unités');
+  await expect(stockRow(unsellableEan13)).toContainText('0 unités');
+  await expect(stockRow(unsellableEan13)).toContainText('Packaging invendable');
+
+  const reloadStockResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'GET' && url.pathname === '/api/stock';
+  });
+  await page.reload();
+  const reloadStockResponse = await reloadStockResponsePromise;
+  expect(reloadStockResponse.status()).toBe(200);
+  expect(await reloadStockResponse.json()).toEqual(expect.arrayContaining([
+    expect.objectContaining({
+      ean13: expiredEan13,
+      physicalQuantity: 9,
+      sellableQuantity: 0,
+      reason: 'DLC_EXPIRED',
+    }),
+    expect.objectContaining({
+      ean13: unsellableEan13,
+      physicalQuantity: 5,
+      sellableQuantity: 0,
+      reason: 'UNSELLABLE_PACKAGING',
+    }),
+  ]));
+  await expect(stockRow(expiredEan13)).toContainText('9 unités');
+  await expect(stockRow(expiredEan13)).toContainText('DLC dépassée');
+  await expect(stockRow(unsellableEan13)).toContainText('5 unités');
+  await expect(stockRow(unsellableEan13)).toContainText('Packaging invendable');
+
+  let releaseDelayedSupply!: () => void;
+  const delayedSupply = new Promise<void>((resolve) => {
+    releaseDelayedSupply = resolve;
+  });
+  const supplyRoute = /\/api\/supplies$/;
+  const delayedSupplyRoute = async (route: Route) => {
+    await delayedSupply;
+    await route.continue();
+  };
+  await page.route(supplyRoute, delayedSupplyRoute);
+
+  await supplyPanel.locator('#supplyEan13').fill(ean13);
+  await supplyPanel.locator('#supplyQuantity').fill('1');
+  const delayedRequestPromise = page.waitForRequest((request) => {
+    const url = new URL(request.url());
+    return request.method() === 'POST' && url.pathname === '/api/supplies';
+  });
+  const delayedResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'POST' && url.pathname === '/api/supplies';
+  });
+  await supplyPanel.locator('#supplyQuantity').press('Enter');
+  await delayedRequestPromise;
+  await expect(stockRow(ean13)).toContainText('13 unités');
+  await expect(stockRow(ean13)).not.toContainText('14 unités');
+  await expect(supplyPanel.locator('#supplyQuantity')).toHaveValue('1');
+  await expect(supplyPanel.getByRole('button', { name: 'Réception…' })).toBeDisabled();
+  releaseDelayedSupply();
+  const delayedResponse = await delayedResponsePromise;
+  expect(delayedResponse.status()).toBe(201);
+  await expect(stockRow(ean13)).toContainText('14 unités');
+  await expect(supplyPanel.locator('#supply-status')).toContainText('Approvisionnement');
+  await expect(supplyPanel.locator('#supply-status')).toBeFocused();
+  await page.unroute(supplyRoute, delayedSupplyRoute);
+
+  await supplyPanel.locator('#supplyQuantity').fill('0');
+  const invalidResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'POST' && url.pathname === '/api/supplies';
+  });
+  await supplyPanel.locator('#supplyQuantity').press('Enter');
+  const invalidResponse = await invalidResponsePromise;
+  expect(invalidResponse.status()).toBe(400);
+  expect(invalidResponse.headers()['content-type']).toContain('application/problem+json');
+  await expect(supplyPanel.locator('#supply-status')).toContainText('invalide');
+  await expect(supplyPanel.locator('#supply-quantity-error')).toContainText('strictement positif');
+  await expect(supplyPanel.locator('#supplyEan13')).toHaveValue(ean13);
+  await expect(supplyPanel.locator('#supplyQuantity')).toHaveValue('0');
+  await expect(supplyPanel.locator('#supplyQuantity')).toBeFocused();
+  await expect(stockRow(ean13)).toContainText('14 unités');
+
+  await supplyPanel.locator('#supplyEan13').fill('4006381333931');
+  await supplyPanel.locator('#supplyQuantity').fill('2');
+  const unknownResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'POST' && url.pathname === '/api/supplies';
+  });
+  await supplyPanel.getByRole('button', { name: 'Enregistrer l’Approvisionnement' }).click();
+  const unknownResponse = await unknownResponsePromise;
+  expect(unknownResponse.status()).toBe(404);
+  expect(unknownResponse.headers()['content-type']).toContain('application/problem+json');
+  await expect(supplyPanel.locator('#supply-status')).toContainText('introuvable');
+  await expect(supplyPanel.locator('#supply-status')).toBeFocused();
+  await expect(supplyPanel.locator('#supplyEan13')).toHaveValue('4006381333931');
+  await expect(supplyPanel.locator('#supplyQuantity')).toHaveValue('2');
+
+  await supplyPanel.locator('#supplyEan13').fill('5901234123457');
+  const archivedResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'POST' && url.pathname === '/api/supplies';
+  });
+  await supplyPanel.getByRole('button', { name: 'Enregistrer l’Approvisionnement' }).click();
+  const archivedResponse = await archivedResponsePromise;
+  expect(archivedResponse.status()).toBe(409);
+  expect(archivedResponse.headers()['content-type']).toContain('application/problem+json');
+  await expect(supplyPanel.locator('#supply-status')).toContainText('archivé');
+  await expect(supplyPanel.locator('#supplyEan13')).toBeFocused();
+  await expect(supplyPanel.locator('#supplyEan13')).toHaveValue('5901234123457');
+  await expect(supplyPanel.locator('#supplyQuantity')).toHaveValue('2');
+
+  const supplyFailureRoute = /\/api\/supplies$/;
+  await page.route(supplyFailureRoute, async (route) => {
+    await route.fulfill({
+      status: 500,
+      contentType: 'application/problem+json',
+      body: JSON.stringify({ title: 'Une erreur interne est survenue.', code: 'internal_error' }),
+    });
+  });
+  await supplyPanel.locator('#supplyEan13').fill(ean13);
+  await supplyPanel.locator('#supplyQuantity').fill('1');
+  const failureResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'POST' && url.pathname === '/api/supplies';
+  });
+  await supplyPanel.getByRole('button', { name: 'Enregistrer l’Approvisionnement' }).click();
+  const failureResponse = await failureResponsePromise;
+  expect(failureResponse.status()).toBe(500);
+  expect(failureResponse.headers()['content-type']).toContain('application/problem+json');
+  await expect(supplyPanel.locator('#supply-status')).toContainText('erreur interne');
+  await expect(supplyPanel.locator('#supply-status')).toBeFocused();
+  await expect(supplyPanel.locator('#supplyQuantity')).toHaveValue('1');
+  await expect(stockRow(ean13)).toContainText('14 unités');
+  await page.unroute(supplyFailureRoute);
+
+  await page.screenshot({ path: 'artifacts/playwright/supply.png', fullPage: true });
 });
 
 test('announces Stock loading, empty and error states', async ({ page }) => {

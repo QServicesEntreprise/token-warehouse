@@ -109,6 +109,13 @@ namespace TokenWarehouse.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("OccurredAt")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("InventoryDifference")
                         .HasColumnType("INTEGER");
 
@@ -132,6 +139,8 @@ namespace TokenWarehouse.Infrastructure.Persistence.Migrations
 
                     b.ToTable("StockOperations", null, t =>
                         {
+                            t.HasCheckConstraint("CK_StockOperations_Quantity_Positive", "Type <> 'supply' OR Quantity > 0");
+
                             t.HasCheckConstraint("CK_StockOperations_CountedQuantity_NonNegative", "CountedQuantity >= 0");
 
                             t.HasCheckConstraint("CK_StockOperations_InventoryDifference_Formula", "InventoryDifference = CountedQuantity - PreviousPhysicalStock");

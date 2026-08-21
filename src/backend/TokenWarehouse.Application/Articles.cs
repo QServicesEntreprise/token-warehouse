@@ -75,6 +75,29 @@ public interface IStockPositionReader
     }
 }
 
+public interface IArticleSellabilityReader
+{
+    ValueTask<ArticleSellabilitySnapshot?> FindSellabilityByEanAsync(
+        Ean13 ean13,
+        CancellationToken cancellationToken = default);
+
+    async ValueTask<IReadOnlyList<ArticleSellabilitySnapshot>> FindManyAsync(
+        IReadOnlyList<Ean13> eans,
+        CancellationToken cancellationToken = default)
+    {
+        var articles = new List<ArticleSellabilitySnapshot>(eans.Count);
+        foreach (var ean13 in eans)
+        {
+            if (await FindSellabilityByEanAsync(ean13, cancellationToken) is { } article)
+            {
+                articles.Add(article);
+            }
+        }
+
+        return articles;
+    }
+}
+
 public sealed record ArticleListItemView(
     Ean13 Ean13,
     ArticleType Type,
