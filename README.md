@@ -10,9 +10,10 @@ et de consultation d’un Article.
 - SQLite local dans `src/backend/TokenWarehouse.Api/token-warehouse.db` pour le
   lancement manuel; les tests d'intégration utilisent un fichier temporaire et
   une connexion SQLite `:memory:` conservée ouverte.
-- Le test Playwright utilise une base temporaire sous `artifacts/playwright/`,
-  créée et passée à l’API par un chemin absolu à chaque exécution.
-- Playwright `1.62.1` lance l'API et Angular lui-même sur `5100` et `4200`.
+- Le test Playwright démarre l’API avec une base SQLite temporaire isolée pour
+  chaque scénario sous `artifacts/playwright/`, et Angular sur `4200`.
+- Playwright `1.62.1` conserve l’API sur `5100` et Angular sur `4200` pendant
+  que chaque scénario redémarre l’API avec sa propre base.
 
 Les dépendances vont de `Domain` vers `Application`, puis vers
 `Infrastructure`; `Api` compose les adapters. Aucun generic repository,
