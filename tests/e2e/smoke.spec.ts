@@ -68,6 +68,10 @@ test('searches and filters the catalogue, including an archived detail', async (
   await page.locator('#catalog-search').fill('chocolat');
   await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
   await expect(articleRow(foodEan)).toBeVisible();
+  const activeDetailAction = articleRow(foodEan).getByRole('button', { name: 'Consulter Chocolat noir' });
+  await activeDetailAction.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('heading', { name: 'Chocolat noir' })).toBeVisible();
 
   await page.locator('#catalog-search').fill(foodEan);
   await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
