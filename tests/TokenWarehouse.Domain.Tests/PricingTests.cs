@@ -93,6 +93,30 @@ public sealed class PricingTests
     }
 
     [Fact]
+    public void Rejects_a_context_for_non_food_without_producing_a_quote()
+    {
+        var result = PricingPolicy.Resolve(CreateNonFood(1000), SaleContext.Takeaway);
+
+        Assert.False(result.IsSuccess);
+        Assert.Empty(result.Quotes);
+        var error = Assert.Single(result.Errors);
+        Assert.Equal("pricing.saleContext.not_applicable", error.Code);
+        Assert.Equal("saleContext", error.Field);
+    }
+
+    [Fact]
+    public void Rejects_an_unsupported_context_for_single_mode_food_without_producing_a_quote()
+    {
+        var result = PricingPolicy.Resolve(CreateFood(1000, "takeaway"), SaleContext.OnSite);
+
+        Assert.False(result.IsSuccess);
+        Assert.Empty(result.Quotes);
+        var error = Assert.Single(result.Errors);
+        Assert.Equal("pricing.saleContext.not_applicable", error.Code);
+        Assert.Equal("saleContext", error.Field);
+    }
+
+    [Fact]
     public void Changes_only_the_reference_ht_price()
     {
         var article = CreateFood(1000, "takeaway", "onsite");

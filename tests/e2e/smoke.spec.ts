@@ -82,6 +82,24 @@ test('creates and consults food and non-food articles through the real UI', asyn
   await expect(page.getByText('3000 centimes')).toBeVisible();
   await expect(page.locator('.price-quote')).toHaveCount(1);
 
+  await page.locator('#detailPriceHtCents').fill('1999');
+  await page.getByRole('button', { name: 'Enregistrer le Prix HT' }).click();
+  await expect(page.getByText('1999 centimes')).toBeVisible();
+  await expect(page.getByText('2399 centimes')).toBeVisible();
+  await expect(page.getByText('refurbished')).toBeVisible();
+
+  await page.reload();
+  await page.locator('#lookupEan13').fill('4006381333931');
+  await page.getByRole('button', { name: 'Consulter' }).click();
+  await expect(page.getByRole('heading', { name: 'Batterie' })).toBeVisible();
+  await expect(page.getByText('4006381333931')).toBeVisible();
+  await expect(page.locator('.article-detail').getByText('Non alimentaire', { exact: true })).toBeVisible();
+  await expect(page.getByText('1999 centimes')).toBeVisible();
+  await expect(page.getByText('refurbished')).toBeVisible();
+  await expect(page.getByText('2399 centimes')).toBeVisible();
+  await expect(page.getByText('400 centimes')).toBeVisible();
+  await expect(page.locator('.price-quote')).toHaveCount(1);
+
   await page.locator('#type').selectOption('food');
   await page.locator('#ean13').fill('0123456789013');
   await page.locator('#name').fill('EAN invalide');
