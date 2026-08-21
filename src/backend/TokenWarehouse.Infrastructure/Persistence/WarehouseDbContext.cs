@@ -12,6 +12,8 @@ public sealed class WarehouseDbContext(DbContextOptions<WarehouseDbContext> opti
 
     public DbSet<StockOperationEntity> StockOperations => Set<StockOperationEntity>();
 
+    public DbSet<StockOperationLineEntity> StockOperationLines => Set<StockOperationLineEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         var article = modelBuilder.Entity<ArticleEntity>();
@@ -83,6 +85,45 @@ public sealed class WarehouseDbContext(DbContextOptions<WarehouseDbContext> opti
                 "ResultingPhysicalStock = CountedQuantity");
         });
         operation.HasOne<ArticleEntity>()
+            .WithMany()
+            .HasForeignKey(entity => entity.Ean13)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        var operationLine = modelBuilder.Entity<StockOperationLineEntity>();
+        operationLine.HasKey(entity => new { entity.OperationId, entity.LineNumber });
+        operationLine.Property(entity => entity.Ean13).IsRequired();
+        operationLine.Property(entity => entity.PreviousPhysicalStock).IsRequired();
+        operationLine.Property(entity => entity.CountedQuantity).IsRequired();
+        operationLine.Property(entity => entity.InventoryDifference).IsRequired();
+        operationLine.Property(entity => entity.ResultingPhysicalStock).IsRequired();
+        operationLine.ToTable("StockOperationLines", table =>
+        {
+            table.HasCheckConstraint(
+                "CK_StockOperationLines_LineNumber_Positive",
+                "LineNumber >= 1");
+            table.HasCheckConstraint(
+                "CK_StockOperationLines_PreviousPhysicalStock_NonNegative",
+                "PreviousPhysicalStock >= 0");
+            table.HasCheckConstraint(
+                "CK_StockOperationLines_CountedQuantity_NonNegative",
+                "CountedQuantity >= 0");
+            table.HasCheckConstraint(
+                "CK_StockOperationLines_ResultingPhysicalStock_NonNegative",
+                "ResultingPhysicalStock >= 0");
+            table.HasCheckConstraint(
+                "CK_StockOperationLines_InventoryDifference_Formula",
+                "InventoryDifference = CountedQuantity - PreviousPhysicalStock");
+            table.HasCheckConstraint(
+                "CK_StockOperationLines_ResultingPhysicalStock_Formula",
+                "ResultingPhysicalStock = CountedQuantity");
+        });
+        operationLine.HasOne<StockOperationEntity>()
+            .WithMany(operation => operation.Lines)
+            .HasForeignKey(entity => entity.OperationId)
+            .OnDelete(DeleteBehavior.Cascade);
+        operationLine.HasIndex(entity => new { entity.OperationId, entity.Ean13 })
+            .IsUnique();
+        operationLine.HasOne<ArticleEntity>()
             .WithMany()
             .HasForeignKey(entity => entity.Ean13)
             .OnDelete(DeleteBehavior.Restrict);

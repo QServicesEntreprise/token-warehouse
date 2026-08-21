@@ -82,24 +82,25 @@ public sealed record StockOperation
         Quantity = quantity;
         OccurredAt = occurredAt.ToUniversalTime();
         TimestampUtc = OccurredAt;
+        Lines = [];
     }
 
     private StockOperation(
         string id,
-        Ean13 ean13,
-        InventoryReconciliationResult reconciliation,
+        IReadOnlyList<StockOperationLine> lines,
         DateTimeOffset timestampUtc)
     {
         Id = id;
         Type = StockOperationType.Inventory;
-        Ean13 = ean13;
+        Ean13 = lines[0].Ean13;
         Quantity = new(0);
         OccurredAt = timestampUtc.ToUniversalTime();
-        PreviousPhysicalStock = reconciliation.PreviousPhysicalStock;
-        CountedQuantity = reconciliation.CountedQuantity;
-        InventoryDifference = reconciliation.InventoryDifference;
-        ResultingPhysicalStock = reconciliation.ResultingPhysicalStock;
+        PreviousPhysicalStock = lines[0].PreviousPhysicalStock;
+        CountedQuantity = lines[0].CountedQuantity;
+        InventoryDifference = lines[0].InventoryDifference;
+        ResultingPhysicalStock = lines[0].ResultingPhysicalStock;
         TimestampUtc = OccurredAt;
+        Lines = Array.AsReadOnly(lines.ToArray());
     }
 
     public string Id { get; }
@@ -122,6 +123,8 @@ public sealed record StockOperation
 
     public DateTimeOffset TimestampUtc { get; }
 
+    public IReadOnlyList<StockOperationLine> Lines { get; }
+
     public static StockOperation CreateSupply(
         string id,
         Ean13 ean13,
@@ -135,16 +138,39 @@ public sealed record StockOperation
         InventoryReconciliationResult reconciliation,
         DateTimeOffset timestampUtc)
     {
+        return CreateInventory(
+            id,
+            [StockOperationLine.CreateInventoryLine(1, ean13, reconciliation)],
+            timestampUtc);
+    }
+
+    public static StockOperation CreateInventory(
+        string id,
+        IReadOnlyList<StockOperationLine> lines,
+        DateTimeOffset timestampUtc)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
-        ArgumentNullException.ThrowIfNull(reconciliation);
-        if (InventoryReconciliation.Reconcile(
-                reconciliation.PreviousPhysicalStock,
-                reconciliation.CountedQuantity) != reconciliation)
+        ArgumentNullException.ThrowIfNull(lines);
+        if (lines.Count == 0)
         {
-            throw new ArgumentException("The reconciliation result is inconsistent.", nameof(reconciliation));
+            throw new ArgumentException("An inventory operation must contain at least one line.", nameof(lines));
         }
 
-        return new(id, ean13, reconciliation, timestampUtc);
+        for (var index = 0; index < lines.Count; index++)
+        {
+            ArgumentNullException.ThrowIfNull(lines[index]);
+            if (lines[index].LineNumber != index + 1)
+            {
+                throw new ArgumentException("Inventory line numbers must be consecutive and ordered.", nameof(lines));
+            }
+        }
+
+        if (lines.Select(line => line.Ean13).Distinct().Count() != lines.Count)
+        {
+            throw new ArgumentException("An inventory operation cannot contain duplicate Articles.", nameof(lines));
+        }
+
+        return new(id, lines, timestampUtc);
     }
 }
 

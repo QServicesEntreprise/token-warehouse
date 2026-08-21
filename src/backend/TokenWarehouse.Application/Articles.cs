@@ -57,6 +57,22 @@ public interface IStockPositionReader
     ValueTask<StockPosition?> FindByEanAsync(
         Ean13 ean13,
         CancellationToken cancellationToken = default);
+
+    async ValueTask<IReadOnlyList<StockPosition>> FindByEansAsync(
+        IReadOnlyList<Ean13> eans,
+        CancellationToken cancellationToken = default)
+    {
+        var positions = new List<StockPosition>(eans.Count);
+        foreach (var ean13 in eans)
+        {
+            if (await FindByEanAsync(ean13, cancellationToken) is { } position)
+            {
+                positions.Add(position);
+            }
+        }
+
+        return positions;
+    }
 }
 
 public interface IArticleSellabilityReader
@@ -64,6 +80,22 @@ public interface IArticleSellabilityReader
     ValueTask<ArticleSellabilitySnapshot?> FindSellabilityByEanAsync(
         Ean13 ean13,
         CancellationToken cancellationToken = default);
+
+    async ValueTask<IReadOnlyList<ArticleSellabilitySnapshot>> FindManyAsync(
+        IReadOnlyList<Ean13> eans,
+        CancellationToken cancellationToken = default)
+    {
+        var articles = new List<ArticleSellabilitySnapshot>(eans.Count);
+        foreach (var ean13 in eans)
+        {
+            if (await FindSellabilityByEanAsync(ean13, cancellationToken) is { } article)
+            {
+                articles.Add(article);
+            }
+        }
+
+        return articles;
+    }
 }
 
 public sealed record ArticleListItemView(

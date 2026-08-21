@@ -3,7 +3,9 @@ import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@ang
 import {
   FieldTree,
   FormField,
+  FormRoot,
   TreeValidationResult,
+  applyEach,
   form,
   hidden,
   pattern,
@@ -33,7 +35,9 @@ import {
 } from './stock-api.service';
 import {
   InventoryApiService,
+  BulkInventoryResponse,
   InventoryResponse,
+  InventoryOperationLineResponse,
 } from './inventory-api.service';
 
 interface ArticleFormModel {
@@ -54,6 +58,22 @@ interface SupplyFormModel {
 interface InventoryFormModel {
   ean13: string;
   countedQuantity: string;
+}
+
+interface InventoryBulkFormModel {
+  lines: InventoryFormModel[];
+}
+
+type InventoryReceiptResponse = InventoryResponse | BulkInventoryResponse;
+
+interface InventoryDisplayLine {
+  lineNumber: number;
+  ean13: string;
+  previousPhysicalStock: number;
+  countedQuantity: number;
+  inventoryDifference: number;
+  resultingPhysicalStock: number;
+  position: NonNullable<InventoryOperationLineResponse['position']>;
 }
 
 type CatalogState = 'loading' | 'ready' | 'empty' | 'error';
@@ -81,7 +101,7 @@ const lastInventoryIdStorageKey = 'token-warehouse.last-inventory-id';
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [FormField],
+  imports: [FormField, FormRoot],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <main aria-labelledby="page-title">
@@ -230,35 +250,56 @@ const lastInventoryIdStorageKey = 'token-warehouse.last-inventory-id';
           <p class="eyebrow">Opération de stock</p>
           <h2 id="inventory-title">Enregistrer un Inventaire</h2>
         </div>
-        <p>Comptez une Référence EAN-13 pour établir une nouvelle base de Stock physique.</p>
+        <p>Comptez une ou plusieurs Références EAN-13 pour établir de nouvelles bases de Stock physique.</p>
 
-        <form id="inventory-form" class="form-grid" novalidate (submit)="onInventorySubmit($event)">
-          <label>
-            Référence EAN-13
-            <input
-              id="inventory-ean13"
-              autocomplete="off"
-              inputmode="numeric"
-              [formField]="inventoryForm.ean13"
-              aria-describedby="inventory-ean13-error" />
-            @if (inventoryForm.ean13().errors().length > 0) {
-              <span id="inventory-ean13-error" class="field-error">{{ inventoryForm.ean13().errors()[0].message }}</span>
-            }
-          </label>
+        <form id="inventory-form" class="form-grid" novalidate [formRoot]="inventoryBulkForm" (submit)="onInventorySubmit($event)">
+          @for (line of inventoryBulkForm.lines; track line; let index = $index) {
+            <fieldset class="inventory-line">
+              <legend>Ligne {{ index + 1 }}</legend>
+              <label>
+                Référence EAN-13
+                <input
+                  [id]="inventoryFieldId('ean13', index)"
+                  autocomplete="off"
+                  inputmode="numeric"
+                  [formField]="line.ean13"
+                  (input)="setInventoryEan(index, $event)"
+                  [attr.aria-describedby]="inventoryErrorDescription(index, 'ean13')" />
+                @if (inventoryLineError(index, 'ean13'); as error) {
+                  <span [id]="inventoryErrorId('ean13', index)" class="field-error">{{ error }}</span>
+                }
+              </label>
 
-          <label>
-            Quantité comptée
-            <input
-              id="inventory-countedQuantity"
-              type="number"
-              step="1"
-              inputmode="numeric"
-              [formField]="inventoryForm.countedQuantity"
-              aria-describedby="inventory-countedQuantity-error" />
-            @if (inventoryForm.countedQuantity().errors().length > 0) {
-              <span id="inventory-countedQuantity-error" class="field-error">{{ inventoryForm.countedQuantity().errors()[0].message }}</span>
-            }
-          </label>
+              <label>
+                Quantité comptée
+                <input
+                  [id]="inventoryFieldId('countedQuantity', index)"
+                  type="text"
+                  step="1"
+                  inputmode="numeric"
+                  [formField]="line.countedQuantity"
+                  (input)="setInventoryCountedQuantity(index, $event)"
+                  [attr.aria-describedby]="inventoryErrorDescription(index, 'countedQuantity')" />
+                @if (inventoryLineError(index, 'countedQuantity'); as error) {
+                  <span [id]="inventoryErrorId('countedQuantity', index)" class="field-error">{{ error }}</span>
+                }
+              </label>
+
+              @if (inventoryBulkForm.lines.length > 1) {
+                <button
+                  type="button"
+                  class="secondary-button"
+                  [attr.aria-label]="'Retirer la ligne ' + (index + 1)"
+                  (click)="removeInventoryLine(index)">
+                  Retirer
+                </button>
+              }
+            </fieldset>
+          }
+
+          <button id="inventory-add-line" type="button" class="secondary-button" (click)="addInventoryLine()">
+            Ajouter une ligne
+          </button>
 
           <button type="submit" [disabled]="inventorySubmitting()">
             {{ inventorySubmitting() ? 'Enregistrement…' : 'Enregistrer l’Inventaire' }}
@@ -281,17 +322,23 @@ const lastInventoryIdStorageKey = 'token-warehouse.last-inventory-id';
         @if (inventoryReceipt(); as receipt) {
           <article id="inventory-result" class="stock-detail" role="region" aria-live="polite" aria-labelledby="inventory-result-title" tabindex="-1">
             <h3 id="inventory-result-title">Inventaire enregistré</h3>
-            <dl>
-              <div><dt>EAN-13</dt><dd>{{ receipt.operation.ean13 }}</dd></div>
-              <div><dt>Stock physique précédent</dt><dd>{{ receipt.operation.previousPhysicalStock }} unités</dd></div>
-              <div><dt>Quantité comptée</dt><dd>{{ receipt.operation.countedQuantity }} unités</dd></div>
-              <div><dt>Écart d’inventaire</dt><dd>{{ formatInventoryDifference(receipt.operation.inventoryDifference) }}</dd></div>
-              <div><dt>Nouvelle base physique</dt><dd>{{ receipt.operation.resultingPhysicalStock }} unités</dd></div>
-              <div><dt>Stock vendable</dt><dd>{{ receipt.position.sellableStock }} unités</dd></div>
-              <div><dt>Disponibilité</dt><dd>{{ formatStockAvailability(receipt.position.availability) }}</dd></div>
-              <div><dt>Raison</dt><dd>{{ formatStockReason(receipt.position.reason) }}</dd></div>
-              <div><dt>Timestamp UTC</dt><dd>{{ receipt.operation.timestampUtc }}</dd></div>
-            </dl>
+            <p>Identifiant serveur : <code>{{ receipt.operation.id }}</code></p>
+            @for (line of receiptLines(receipt); track line.lineNumber) {
+              <section class="inventory-result-line" [attr.aria-labelledby]="'inventory-result-line-title-' + line.lineNumber">
+                <h4 [id]="'inventory-result-line-title-' + line.lineNumber">Ligne {{ line.lineNumber }} — {{ line.ean13 }}</h4>
+                <dl>
+                  <div><dt>EAN-13</dt><dd>{{ line.ean13 }}</dd></div>
+                  <div><dt>Stock physique précédent</dt><dd>{{ line.previousPhysicalStock }} unités</dd></div>
+                  <div><dt>Quantité comptée</dt><dd>{{ line.countedQuantity }} unités</dd></div>
+                  <div><dt>Écart d’inventaire</dt><dd>{{ formatInventoryDifference(line.inventoryDifference) }}</dd></div>
+                  <div><dt>Nouvelle base physique</dt><dd>{{ line.resultingPhysicalStock }} unités</dd></div>
+                  <div><dt>Stock vendable</dt><dd>{{ line.position.sellableStock }} unités</dd></div>
+                  <div><dt>Disponibilité</dt><dd>{{ formatStockAvailability(line.position.availability) }}</dd></div>
+                  <div><dt>Raison</dt><dd>{{ formatStockReason(line.position.reason) }}</dd></div>
+                  <div><dt>Timestamp UTC</dt><dd>{{ receipt.operation.timestampUtc }}</dd></div>
+                </dl>
+              </section>
+            }
           </article>
         }
       </section>
@@ -719,6 +766,18 @@ export class AppComponent implements OnInit {
     pattern(schemaPath.countedQuantity, /^\d+$/, { message: 'La quantité comptée doit être un entier supérieur ou égal à zéro.' });
   });
 
+  readonly inventoryBulkModel = signal<InventoryBulkFormModel>({
+    lines: [{ ...initialInventoryModel }],
+  });
+  readonly inventoryBulkForm = form(this.inventoryBulkModel, (schemaPath) => {
+    applyEach(schemaPath.lines, (line) => {
+      required(line.ean13, { message: 'L’EAN-13 est requis.' });
+      pattern(line.ean13, /^\d{13}$/, { message: 'L’EAN-13 doit contenir 13 chiffres.' });
+      required(line.countedQuantity, { message: 'La quantité comptée est requise.' });
+      pattern(line.countedQuantity, /^\d+$/, { message: 'La quantité comptée doit être un entier supérieur ou égal à zéro.' });
+    });
+  });
+
   readonly consumptionModeOptions: readonly { value: ConsumptionMode; label: string }[] = [
     { value: 'takeaway', label: 'À emporter' },
     { value: 'onsite', label: 'Sur place' },
@@ -751,9 +810,11 @@ export class AppComponent implements OnInit {
   readonly supplyMessage = signal('');
   readonly supplySubmitting = signal(false);
   readonly inventoryError = signal('');
-  readonly inventoryReceipt = signal<InventoryResponse | null>(null);
+  readonly inventoryReceipt = signal<InventoryReceiptResponse | null>(null);
   readonly inventorySubmitting = signal(false);
   readonly inventoryRestoreState = signal<InventoryRestoreState>('empty');
+  readonly inventoryLines = signal<InventoryFormModel[]>([{ ...initialInventoryModel }]);
+  readonly inventoryLineErrors = signal<Record<string, string>>({});
 
   private catalogRequestId = 0;
   private stockRequestId = 0;
@@ -860,23 +921,86 @@ export class AppComponent implements OnInit {
     event.preventDefault();
     this.inventoryError.set('');
     this.inventoryReceipt.set(null);
+    this.inventoryLineErrors.set({});
     this.inventoryRestoreRequestId += 1;
     this.inventoryRestoreState.set('empty');
-    let shouldRestoreFocus = false;
-    await submit(this.inventoryForm, {
+    this.syncLegacyInventoryModel();
+    let succeeded = false;
+    await submit(this.inventoryBulkForm, {
       action: async () => {
-        const result = await this.registerInventory();
-        shouldRestoreFocus = result !== undefined;
-        return result;
+        succeeded = await this.registerInventory();
+        return undefined;
       },
       onInvalid: () => {
-        shouldRestoreFocus = true;
         this.inventoryError.set('Corrigez les erreurs signalées avant de continuer.');
       },
     });
-    if (shouldRestoreFocus) {
+    if (!succeeded) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
       this.restoreInventoryFocus();
     }
+  }
+
+  setInventoryEan(index: number, event: Event): void {
+    this.updateInventoryLine(index, 'ean13', (event.target as HTMLInputElement).value);
+  }
+
+  setInventoryCountedQuantity(index: number, event: Event): void {
+    this.updateInventoryLine(index, 'countedQuantity', (event.target as HTMLInputElement).value);
+  }
+
+  addInventoryLine(): void {
+    const lines = [...this.inventoryLines(), { ...initialInventoryModel }];
+    this.inventoryLines.set(lines);
+    this.inventoryBulkModel.update((model) => ({
+      lines: [...model.lines, { ...initialInventoryModel }],
+    }));
+  }
+
+  removeInventoryLine(index: number): void {
+    if (this.inventoryLines().length === 1) {
+      return;
+    }
+
+    const lines = this.inventoryLines().filter((_, lineIndex) => lineIndex !== index);
+    this.inventoryLines.set(lines);
+    this.inventoryBulkModel.update((model) => ({
+      lines: model.lines.filter((_, lineIndex) => lineIndex !== index),
+    }));
+    this.inventoryLineErrors.update((errors) =>
+      Object.fromEntries(
+        Object.entries(errors)
+          .filter(([key]) => Number(key.split('.')[0]) !== index)
+          .map(([key, value]) => {
+            const [lineIndex, field] = key.split('.');
+            const shiftedIndex = Number(lineIndex) > index ? Number(lineIndex) - 1 : Number(lineIndex);
+            return [`${shiftedIndex}.${field}`, value];
+          }),
+      ),
+    );
+    this.inventoryModel.set(this.inventoryLines()[0] ?? { ...initialInventoryModel });
+  }
+
+  inventoryFieldId(field: 'ean13' | 'countedQuantity', index: number): string {
+    return `inventory-${field}${index === 0 ? '' : `-${index}`}`;
+  }
+
+  inventoryErrorId(field: 'ean13' | 'countedQuantity', index: number): string {
+    return `${this.inventoryFieldId(field, index)}-error`;
+  }
+
+  inventoryLineError(index: number, field: 'ean13' | 'countedQuantity'): string {
+    const serverError = this.inventoryLineErrors()[`${index}.${field}`];
+    if (serverError) {
+      return serverError;
+    }
+
+    const fieldTree = this.inventoryFieldAt(index, field);
+    return fieldTree?.().errors()[0]?.message ?? '';
+  }
+
+  inventoryErrorDescription(index: number, field: 'ean13' | 'countedQuantity'): string | null {
+    return this.inventoryLineError(index, field) ? this.inventoryErrorId(field, index) : null;
   }
 
   async openStockPosition(position: StockPositionResponse): Promise<void> {
@@ -983,6 +1107,30 @@ export class AppComponent implements OnInit {
 
   formatInventoryDifference(difference: number): string {
     return difference > 0 ? `+${difference}` : String(difference);
+  }
+
+  receiptLines(receipt: InventoryReceiptResponse): InventoryDisplayLine[] {
+    if (this.isBulkReceipt(receipt)) {
+      return receipt.operation.lines.map((line) => ({
+        lineNumber: line.lineNumber,
+        ean13: line.ean13,
+        previousPhysicalStock: line.previousPhysicalStock,
+        countedQuantity: line.countedQuantity,
+        inventoryDifference: line.inventoryDifference,
+        resultingPhysicalStock: line.resultingPhysicalStock,
+        position: line.position,
+      }));
+    }
+
+    return [{
+      lineNumber: 1,
+      ean13: receipt.operation.ean13,
+      previousPhysicalStock: receipt.operation.previousPhysicalStock,
+      countedQuantity: receipt.operation.countedQuantity,
+      inventoryDifference: receipt.operation.inventoryDifference,
+      resultingPhysicalStock: receipt.operation.resultingPhysicalStock,
+      position: receipt.position,
+    }];
   }
 
   openCatalogArticle(article: ArticleListResponse): void {
@@ -1212,33 +1360,28 @@ export class AppComponent implements OnInit {
     }
   }
 
-  private async registerInventory(): Promise<TreeValidationResult> {
+  private async registerInventory(): Promise<boolean> {
     this.inventorySubmitting.set(true);
     this.inventoryReceipt.set(null);
     try {
-      const value = this.inventoryModel();
-      const receipt = await firstValueFrom(this.inventoryApi.register({
-        ean13: value.ean13,
-        countedQuantity: Number(value.countedQuantity),
+      const lines = this.inventoryLines().map((line) => ({
+        ean13: line.ean13,
+        countedQuantity: Number(line.countedQuantity),
       }));
+      const receipt = lines.length === 1
+        ? await firstValueFrom(this.inventoryApi.register(lines[0]))
+        : await firstValueFrom(this.inventoryApi.registerBulk({ lines }));
       this.inventoryReceipt.set(receipt);
       this.inventoryRestoreState.set('ready');
       sessionStorage.setItem(lastInventoryIdStorageKey, receipt.operation.id);
       setTimeout(() => document.getElementById('inventory-result')?.focus());
       void this.loadStock();
-      return undefined;
+      return true;
     } catch (error) {
       const problem = this.problemDetails(error, 'L’Inventaire n’a pas pu être enregistré.');
       this.inventoryError.set(problem.title ?? 'L’Inventaire n’a pas pu être enregistré.');
-      const fieldErrors = Object.entries(problem.errors ?? {}).flatMap(([field, messages]) => {
-        const fieldTree = this.inventoryFieldFor(field);
-        return fieldTree
-          ? messages.map((message) => ({ kind: 'server', message, fieldTree }))
-          : [];
-      });
-      return fieldErrors.length > 0
-        ? fieldErrors
-        : { kind: 'server', message: problem.title ?? 'L’Inventaire n’a pas pu être enregistré.' };
+      this.setInventoryServerErrors(problem.errors ?? {});
+      return false;
     } finally {
       this.inventorySubmitting.set(false);
     }
@@ -1254,27 +1397,113 @@ export class AppComponent implements OnInit {
     this.inventoryRestoreState.set('loading');
     try {
       const operation = await firstValueFrom(this.inventoryApi.getById(id));
-      const position = await firstValueFrom(this.stockApi.getByEan13(operation.ean13));
+      const operationLines = operation.lines ?? [{
+        lineNumber: 1,
+        ean13: operation.ean13,
+        previousPhysicalStock: operation.previousPhysicalStock,
+        countedQuantity: operation.countedQuantity,
+        inventoryDifference: operation.inventoryDifference,
+        resultingPhysicalStock: operation.resultingPhysicalStock,
+      }];
+      const lines = await Promise.all(operationLines.map(async (line) => {
+        const position = await firstValueFrom(this.stockApi.getByEan13(line.ean13));
+        return {
+          ...line,
+          position: {
+            ean13: position.ean13,
+            physicalStock: position.physicalQuantity,
+            sellableStock: position.sellableQuantity,
+            availability: position.availability,
+            reason: position.reason,
+          },
+        };
+      }));
       if (requestId !== this.inventoryRestoreRequestId) {
         return;
       }
 
-      this.inventoryReceipt.set({
-        operation,
-        position: {
-          ean13: position.ean13,
-          physicalStock: position.physicalQuantity,
-          sellableStock: position.sellableQuantity,
-          availability: position.availability,
-          reason: position.reason,
-        },
-      });
+      if (operation.lines) {
+        this.inventoryReceipt.set({
+          operation: {
+            id: operation.id,
+            type: 'INVENTORY',
+            timestampUtc: operation.timestampUtc,
+            lines: lines as BulkInventoryResponse['operation']['lines'],
+          },
+        });
+      } else {
+        this.inventoryReceipt.set({
+          operation,
+          position: lines[0].position!,
+        });
+      }
       this.inventoryRestoreState.set('ready');
     } catch {
       if (requestId === this.inventoryRestoreRequestId) {
         this.inventoryRestoreState.set('error');
       }
     }
+  }
+
+  private updateInventoryLine(
+    index: number,
+    field: keyof InventoryFormModel,
+    value: string): void {
+    const lines = this.inventoryLines().map((line, lineIndex) =>
+      lineIndex === index ? { ...line, [field]: value } : line);
+    this.inventoryLines.set(lines);
+    if (index === 0) {
+      this.inventoryModel.update((line) => ({ ...line, [field]: value }));
+    }
+    this.inventoryLineErrors.update((errors) => {
+      const next = { ...errors };
+      delete next[`${index}.${field}`];
+      return next;
+    });
+  }
+
+  private isBulkReceipt(receipt: InventoryReceiptResponse): receipt is BulkInventoryResponse {
+    const lines = (receipt.operation as BulkInventoryResponse['operation']).lines;
+    return Array.isArray(lines) && lines.every((line) => line.position !== undefined);
+  }
+
+  private syncLegacyInventoryModel(): void {
+    const legacyModel = this.inventoryModel();
+    let lines = this.inventoryLines();
+    if (lines.length === 1
+      && lines[0].ean13 === ''
+      && lines[0].countedQuantity === ''
+      && (legacyModel.ean13 !== '' || legacyModel.countedQuantity !== '')) {
+      lines = [{ ...legacyModel }];
+      this.inventoryLines.set(lines);
+    }
+    const currentLines = this.inventoryBulkModel().lines;
+    const sameValues = currentLines.length === lines.length
+      && currentLines.every((line, index) =>
+        line.ean13 === lines[index].ean13
+        && line.countedQuantity === lines[index].countedQuantity);
+    if (!sameValues) {
+      this.inventoryBulkModel.set({ lines });
+    }
+  }
+
+  private setInventoryServerErrors(errors: Record<string, string[]>): void {
+    this.inventoryLineErrors.set(
+      Object.fromEntries(
+        Object.entries(errors).flatMap(([field, messages]) => {
+          const match = /^lines\[(\d+)\]\.(ean13|countedQuantity)$/.exec(field);
+          if (match) {
+            return [[`${match[1]}.${match[2]}`, messages[0] ?? 'Valeur invalide.']];
+          }
+
+          if (field === 'ean13' || field === 'countedQuantity') {
+            return [[`0.${field}`, messages[0] ?? 'Valeur invalide.']];
+          }
+
+          return [];
+        }),
+      ),
+    );
   }
 
   private async loadCatalog(): Promise<void> {
@@ -1429,6 +1658,11 @@ export class AppComponent implements OnInit {
     }
   }
 
+  private inventoryFieldAt(index: number, field: 'ean13' | 'countedQuantity'): FieldTree<string> | undefined {
+    const line = this.inventoryBulkForm.lines[index];
+    return line?.[field] as FieldTree<string> | undefined;
+  }
+
   private restoreFocus(): void {
     const firstInvalidField = [
       'ean13',
@@ -1452,13 +1686,17 @@ export class AppComponent implements OnInit {
   }
 
   private restoreInventoryFocus(): void {
-    const firstInvalidField = ['ean13', 'countedQuantity'].find((field) => {
-      const fieldTree = this.inventoryFieldFor(field);
-      return fieldTree ? fieldTree().errors().length > 0 : false;
-    });
-    (firstInvalidField
-      ? document.getElementById(`inventory-${firstInvalidField}`)
-      : document.getElementById('inventory-countedQuantity'))?.focus();
+    const firstInvalidField = Object.keys(this.inventoryLineErrors())
+      .sort((left, right) => left.localeCompare(right, undefined, { numeric: true }))[0];
+    if (firstInvalidField) {
+      const [index, field] = firstInvalidField.split('.');
+      document.getElementById(
+        this.inventoryFieldId(field as 'ean13' | 'countedQuantity', Number(index)),
+      )?.focus();
+      return;
+    }
+
+    document.getElementById(this.inventoryFieldId('countedQuantity', 0))?.focus();
   }
 
   private problemDetails(error: unknown, fallback = 'La création a échoué.'): ProblemDetails {

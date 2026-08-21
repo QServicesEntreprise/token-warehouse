@@ -48,6 +48,221 @@ public sealed class InventoryApiTests
     }
 
     [Fact]
+    public async Task Posts_a_bulk_inventory_as_one_operation_with_all_line_results()
+    {
+        using var factory = new InventoryHostFactory();
+        using var client = factory.CreateClient();
+        await factory.SeedArticleAsync("0123456789012", "Premier Article", true, 8);
+        await factory.SeedArticleAsync("7351353713578", "Second Article", true, 5);
+        await factory.SeedArticleAsync("0360002914522", "Article sans position", true, null);
+
+        using var response = await client.PostAsJsonAsync(
+            "/api/inventories/bulk",
+            new
+            {
+                lines = new[]
+                {
+                    new { ean13 = "0123456789012", countedQuantity = 11 },
+                    new { ean13 = "7351353713578", countedQuantity = 2 },
+                    new { ean13 = "0360002914522", countedQuantity = 0 }
+                }
+            });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var operation = body.RootElement.GetProperty("operation");
+        var lines = operation.GetProperty("lines");
+        Assert.Equal("INVENTORY", operation.GetProperty("type").GetString());
+        Assert.Equal("2030-01-15T10:00:00+00:00", operation.GetProperty("timestampUtc").GetString());
+        Assert.Equal(3, lines.GetArrayLength());
+        Assert.Equal(1, lines[0].GetProperty("lineNumber").GetInt32());
+        Assert.Equal("0123456789012", lines[0].GetProperty("ean13").GetString());
+        Assert.Equal(8, lines[0].GetProperty("previousPhysicalStock").GetInt32());
+        Assert.Equal(11, lines[0].GetProperty("countedQuantity").GetInt32());
+        Assert.Equal(3, lines[0].GetProperty("inventoryDifference").GetInt32());
+        Assert.Equal(11, lines[0].GetProperty("resultingPhysicalStock").GetInt32());
+        Assert.Equal(5, lines[1].GetProperty("previousPhysicalStock").GetInt32());
+        Assert.Equal(-3, lines[1].GetProperty("inventoryDifference").GetInt32());
+        Assert.Equal(0, lines[2].GetProperty("previousPhysicalStock").GetInt32());
+        Assert.Equal(0, lines[2].GetProperty("inventoryDifference").GetInt32());
+        Assert.Equal(0, lines[2].GetProperty("position").GetProperty("physicalStock").GetInt32());
+        var operationId = operation.GetProperty("id").GetString();
+        using var reread = await client.GetAsync($"/api/inventories/{operationId}");
+        Assert.Equal(HttpStatusCode.OK, reread.StatusCode);
+        using var rereadBody = JsonDocument.Parse(await reread.Content.ReadAsStringAsync());
+        Assert.Equal(3, rereadBody.RootElement.GetProperty("lines").GetArrayLength());
+        Assert.Equal(-3, rereadBody.RootElement.GetProperty("lines")[1].GetProperty("inventoryDifference").GetInt32());
+        Assert.Equal(11, await factory.ReadPhysicalQuantityAsync("0123456789012"));
+        Assert.Equal(2, await factory.ReadPhysicalQuantityAsync("7351353713578"));
+        Assert.Equal(0, await factory.ReadPhysicalQuantityAsync("0360002914522"));
+        Assert.Equal(1, await factory.CountOperationsAsync());
+        Assert.Equal(3, await factory.CountOperationLinesAsync());
+    }
+
+    [Fact]
+    public async Task Rejects_bulk_duplicates_and_unknown_articles_without_touching_any_line()
+    {
+        using var factory = new InventoryHostFactory();
+        using var client = factory.CreateClient();
+        await factory.SeedArticleAsync("0123456789012", "Premier Article", true, 8);
+        await factory.SeedArticleAsync("7351353713578", "Second Article", true, 5);
+
+        using var duplicate = await client.PostAsJsonAsync(
+            "/api/inventories/bulk",
+            new
+            {
+                lines = new[]
+                {
+                    new { ean13 = "0123456789012", countedQuantity = 11 },
+                    new { ean13 = "0123456789012", countedQuantity = 2 }
+                }
+            });
+
+        Assert.Equal(HttpStatusCode.BadRequest, duplicate.StatusCode);
+        using var duplicateBody = JsonDocument.Parse(await duplicate.Content.ReadAsStringAsync());
+        Assert.Equal("INVALID_INPUT", duplicateBody.RootElement.GetProperty("code").GetString());
+        Assert.Contains("lines[0].ean13", duplicateBody.RootElement.GetProperty("errors").EnumerateObject().Select(property => property.Name));
+        Assert.Contains("lines[1].ean13", duplicateBody.RootElement.GetProperty("errors").EnumerateObject().Select(property => property.Name));
+        Assert.Equal(8, await factory.ReadPhysicalQuantityAsync("0123456789012"));
+        Assert.Equal(5, await factory.ReadPhysicalQuantityAsync("7351353713578"));
+        Assert.Equal(0, await factory.CountOperationsAsync());
+
+        using var unknown = await client.PostAsJsonAsync(
+            "/api/inventories/bulk",
+            new
+            {
+                lines = new[]
+                {
+                    new { ean13 = "7351353713578", countedQuantity = 1 },
+                    new { ean13 = "4006381333931", countedQuantity = 6 }
+                }
+            });
+
+        Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
+        using var unknownBody = JsonDocument.Parse(await unknown.Content.ReadAsStringAsync());
+        Assert.Equal("ARTICLE_NOT_FOUND", unknownBody.RootElement.GetProperty("code").GetString());
+        Assert.Contains("lines[1].ean13", unknownBody.RootElement.GetProperty("errors").EnumerateObject().Select(property => property.Name));
+        Assert.Equal(5, await factory.ReadPhysicalQuantityAsync("7351353713578"));
+        Assert.Equal(0, await factory.CountOperationsAsync());
+    }
+
+    [Theory]
+    [InlineData("{\"lines\":[]}")]
+    [InlineData("{\"lines\":null}")]
+    [InlineData("{\"lines\":[{\"ean13\":\"0123456789012\",\"countedQuantity\":1.5}]}")]
+    [InlineData("{\"lines\":[{\"ean13\":\"0123456789012\",\"countedQuantity\":1.0}]}")]
+    [InlineData("{\"lines\":[{\"ean13\":\"0123456789012\",\"countedQuantity\":\"1\"}]}")]
+    [InlineData("{\"lines\":[{\"ean13\":\"0123456789012\",\"countedQuantity\":true}]}")]
+    [InlineData("{\"lines\":[{\"ean13\":\"0123456789012\",\"countedQuantity\":null}]}")]
+    [InlineData("{\"lines\":[{\"ean13\":\"0123456789012\"}]}")]
+    [InlineData("{\"lines\":[{\"countedQuantity\":1}]}")]
+    [InlineData("{\"lines\":[{\"ean13\":\"0123456789012\",\"countedQuantity\":1,\"extra\":true}]}")]
+    [InlineData("{\"lines\":[")]
+    public async Task Rejects_bulk_input_shapes_without_writing(string json)
+    {
+        using var factory = new InventoryHostFactory();
+        using var client = factory.CreateClient();
+        await factory.SeedArticleAsync("0123456789012", "Article inventorié", true, 8);
+
+        using var response = await client.PostAsync(
+            "/api/inventories/bulk",
+            new StringContent(json, System.Text.Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(400, body.RootElement.GetProperty("status").GetInt32());
+        Assert.Equal("INVALID_INPUT", body.RootElement.GetProperty("code").GetString());
+        Assert.Equal(8, await factory.ReadPhysicalQuantityAsync("0123456789012"));
+        Assert.Equal(0, await factory.CountOperationsAsync());
+        Assert.Equal(0, await factory.CountOperationLinesAsync());
+    }
+
+    [Fact]
+    public async Task Rolls_back_every_bulk_position_when_the_operation_write_fails()
+    {
+        using var factory = new InventoryHostFactory();
+        using var client = factory.CreateClient();
+        await factory.SeedArticleAsync("0123456789012", "Premier Article", true, 8);
+        await factory.SeedArticleAsync("7351353713578", "Second Article", true, 5);
+        await factory.FailInventoryOperationInsertsAsync();
+
+        using var response = await client.PostAsJsonAsync(
+            "/api/inventories/bulk",
+            new
+            {
+                lines = new[]
+                {
+                    new { ean13 = "0123456789012", countedQuantity = 11 },
+                    new { ean13 = "7351353713578", countedQuantity = 2 }
+                }
+            });
+
+        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+        Assert.Equal(8, await factory.ReadPhysicalQuantityAsync("0123456789012"));
+        Assert.Equal(5, await factory.ReadPhysicalQuantityAsync("7351353713578"));
+        Assert.Equal(0, await factory.CountOperationsAsync());
+        Assert.Equal(0, await factory.CountOperationLinesAsync());
+    }
+
+    [Fact]
+    public async Task At_most_one_bulk_inventory_can_use_the_same_previous_snapshot()
+    {
+        using var factory = new InventoryHostFactory();
+        using var firstClient = factory.CreateClient();
+        using var secondClient = factory.CreateClient();
+        await factory.SeedArticleAsync("0123456789012", "Premier Article", true, 8);
+        await factory.SeedArticleAsync("7351353713578", "Second Article", true, 5);
+
+        var payload = new
+        {
+            lines = new[]
+            {
+                new { ean13 = "0123456789012", countedQuantity = 11 },
+                new { ean13 = "7351353713578", countedQuantity = 2 }
+            }
+        };
+        var responses = await Task.WhenAll(
+            firstClient.PostAsJsonAsync("/api/inventories/bulk", payload),
+            secondClient.PostAsJsonAsync("/api/inventories/bulk", payload));
+
+        Assert.Single(responses, response => response.StatusCode == HttpStatusCode.Created);
+        Assert.Single(responses, response => response.StatusCode == HttpStatusCode.Conflict);
+        Assert.Equal(1, await factory.CountOperationsAsync());
+        Assert.Equal(2, await factory.CountOperationLinesAsync());
+    }
+
+    [Fact]
+    public async Task Rejects_bulk_inventory_when_an_article_changes_before_commit_without_partial_rows()
+    {
+        using var factory = new InventoryHostFactory("0123456789012");
+        using var client = factory.CreateClient();
+        await factory.SeedArticleAsync("0123456789012", "Premier Article", true, 8);
+        await factory.SeedArticleAsync("7351353713578", "Second Article", true, 5);
+
+        using var response = await client.PostAsJsonAsync(
+            "/api/inventories/bulk",
+            new
+            {
+                lines = new[]
+                {
+                    new { ean13 = "0123456789012", countedQuantity = 11 },
+                    new { ean13 = "7351353713578", countedQuantity = 2 }
+                }
+            });
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("POSITION_CONFLICT", body.RootElement.GetProperty("code").GetString());
+        Assert.Equal(8, await factory.ReadPhysicalQuantityAsync("0123456789012"));
+        Assert.Equal(5, await factory.ReadPhysicalQuantityAsync("7351353713578"));
+        Assert.Equal(0, await factory.CountOperationsAsync());
+        Assert.Equal(0, await factory.CountOperationLinesAsync());
+    }
+
+    [Fact]
     public async Task Persists_a_zero_difference_and_rereads_it_after_a_fresh_context()
     {
         using var factory = new InventoryHostFactory();
@@ -200,6 +415,38 @@ public sealed class InventoryApiTests
         Assert.Equal("ARCHIVED", archivedPosition.GetProperty("reason").GetString());
     }
 
+    [Fact]
+    public async Task Accepts_an_archived_article_inside_a_bulk_operation()
+    {
+        using var factory = new InventoryHostFactory();
+        using var client = factory.CreateClient();
+        await factory.SeedArticleAsync("0123456789012", "Article actif", true, 8);
+        await factory.SeedArticleAsync("4006381333931", "Article archivé", false, 4);
+
+        using var response = await client.PostAsJsonAsync(
+            "/api/inventories/bulk",
+            new
+            {
+                lines = new[]
+                {
+                    new { ean13 = "0123456789012", countedQuantity = 0 },
+                    new { ean13 = "4006381333931", countedQuantity = 2 }
+                }
+            });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var archivedPosition = body.RootElement.GetProperty("operation").GetProperty("lines")[1].GetProperty("position");
+        Assert.Equal(2, archivedPosition.GetProperty("physicalStock").GetInt32());
+        Assert.Equal(0, archivedPosition.GetProperty("sellableStock").GetInt32());
+        Assert.Equal("NOT_SELLABLE", archivedPosition.GetProperty("availability").GetString());
+        Assert.Equal("ARCHIVED", archivedPosition.GetProperty("reason").GetString());
+        Assert.Equal(0, await factory.ReadPhysicalQuantityAsync("0123456789012"));
+        Assert.Equal(2, await factory.ReadPhysicalQuantityAsync("4006381333931"));
+        Assert.Equal(1, await factory.CountOperationsAsync());
+        Assert.Equal(2, await factory.CountOperationLinesAsync());
+    }
+
     [Theory]
     [InlineData("{\"ean13\":\"0123456789012\",\"countedQuantity\":-1}")]
     [InlineData("{\"ean13\":\"0123456789012\",\"countedQuantity\":1.5}")]
@@ -333,6 +580,12 @@ public sealed class InventoryApiTests
         private readonly string databasePath = Path.Combine(
             Path.GetTempPath(),
             $"token-warehouse-inventory-{Guid.NewGuid():N}.db");
+        private readonly string? articleToChangeBeforeCommit;
+
+        public InventoryHostFactory(string? articleToChangeBeforeCommit = null)
+        {
+            this.articleToChangeBeforeCommit = articleToChangeBeforeCommit;
+        }
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -342,6 +595,14 @@ public sealed class InventoryApiTests
             {
                 services.RemoveAll<IClock>();
                 services.AddSingleton<IClock>(new FixedClock());
+                if (articleToChangeBeforeCommit is not null)
+                {
+                    services.RemoveAll<IStockMutationCommitter>();
+                    services.AddScoped<IStockMutationCommitter>(serviceProvider =>
+                        new ArticleChangingCommitter(
+                            serviceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>(),
+                            articleToChangeBeforeCommit));
+                }
             });
         }
 
@@ -411,6 +672,14 @@ public sealed class InventoryApiTests
             return await context.StockOperations.CountAsync();
         }
 
+        public async Task<int> CountOperationLinesAsync()
+        {
+            using var scope = Services.CreateScope();
+            var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>();
+            await using var context = await contextFactory.CreateDbContextAsync();
+            return await context.StockOperationLines.CountAsync();
+        }
+
         public async Task<(
             string Id,
             string Type,
@@ -448,6 +717,26 @@ public sealed class InventoryApiTests
                 File.Delete($"{databasePath}-shm");
                 File.Delete($"{databasePath}-wal");
             }
+        }
+    }
+
+    private sealed class ArticleChangingCommitter(
+        IDbContextFactory<WarehouseDbContext> contextFactory,
+        string ean13) : IStockMutationCommitter
+    {
+        public async ValueTask<StockMutationCommitResult> CommitAsync(
+            InventoryCommitPlan plan,
+            CancellationToken cancellationToken = default)
+        {
+            await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+            var article = await context.Articles
+                .SingleAsync(candidate => candidate.Ean13 == ean13, cancellationToken);
+            article.IsActive = false;
+            article.Version++;
+            await context.SaveChangesAsync(cancellationToken);
+
+            return await new SqliteStockMutationCommitter(contextFactory)
+                .CommitAsync(plan, cancellationToken);
         }
     }
 

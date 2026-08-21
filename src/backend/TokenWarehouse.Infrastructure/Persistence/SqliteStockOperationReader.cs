@@ -16,14 +16,24 @@ public sealed class SqliteStockOperationReader(
         var entity = await context.StockOperations
             .AsNoTracking()
             .SingleOrDefaultAsync(operation => operation.Id == id, cancellationToken);
+        if (entity is null)
+        {
+            return null;
+        }
 
-        return entity is null ? null : ToDomain(entity);
+        var lines = await context.StockOperationLines
+            .AsNoTracking()
+            .Where(line => line.OperationId == id)
+            .OrderBy(line => line.LineNumber)
+            .ToListAsync(cancellationToken);
+        return ToDomain(entity, lines);
     }
 
-    private static StockOperation ToDomain(StockOperationEntity entity)
+    private static StockOperation ToDomain(
+        StockOperationEntity entity,
+        IReadOnlyList<StockOperationLineEntity> lineEntities)
     {
-        if (!Ean13.TryCreate(entity.Ean13, out var ean13)
-            || !DateTimeOffset.TryParse(
+        if (!DateTimeOffset.TryParse(
                 entity.TimestampUtc,
                 CultureInfo.InvariantCulture,
                 DateTimeStyles.RoundtripKind,
@@ -33,19 +43,46 @@ public sealed class SqliteStockOperationReader(
             throw new InvalidOperationException("Stored StockOperation data is invalid.");
         }
 
-        var reconciliation = InventoryReconciliation.Reconcile(
-            entity.PreviousPhysicalStock,
-            entity.CountedQuantity);
-        if (reconciliation.InventoryDifference != entity.InventoryDifference
-            || reconciliation.ResultingPhysicalStock != entity.ResultingPhysicalStock)
+        if (lineEntities.Count == 0)
         {
-            throw new InvalidOperationException("Stored Inventory data is invalid.");
+            if (!Ean13.TryCreate(entity.Ean13, out var ean13))
+            {
+                throw new InvalidOperationException("Stored StockOperation data is invalid.");
+            }
+
+            return StockOperation.CreateInventory(
+                entity.Id,
+                ean13,
+                InventoryReconciliation.Reconcile(
+                    entity.PreviousPhysicalStock,
+                    entity.CountedQuantity),
+                timestampUtc);
         }
 
-        return StockOperation.CreateInventory(
-            entity.Id,
-            ean13,
-            reconciliation,
-            timestampUtc);
+        var lines = lineEntities
+            .Select(line =>
+            {
+                if (!Ean13.TryCreate(line.Ean13, out var ean13))
+                {
+                    throw new InvalidOperationException("Stored Inventory data is invalid.");
+                }
+
+                var reconciliation = InventoryReconciliation.Reconcile(
+                    line.PreviousPhysicalStock,
+                    line.CountedQuantity);
+                if (reconciliation.InventoryDifference != line.InventoryDifference
+                    || reconciliation.ResultingPhysicalStock != line.ResultingPhysicalStock)
+                {
+                    throw new InvalidOperationException("Stored Inventory data is invalid.");
+                }
+
+                return StockOperationLine.CreateInventoryLine(
+                    line.LineNumber,
+                    ean13,
+                    reconciliation);
+            })
+            .ToArray();
+
+        return StockOperation.CreateInventory(entity.Id, lines, timestampUtc);
     }
 }

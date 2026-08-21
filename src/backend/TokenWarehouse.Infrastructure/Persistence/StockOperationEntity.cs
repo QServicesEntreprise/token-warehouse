@@ -21,4 +21,6 @@ public sealed class StockOperationEntity
     public int ResultingPhysicalStock { get; set; }
 
     public string TimestampUtc { get; set; } = string.Empty;
+
+    public ICollection<StockOperationLineEntity> Lines { get; set; } = [];
 }
