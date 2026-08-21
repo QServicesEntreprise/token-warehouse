@@ -104,26 +104,68 @@ public sealed class InventoryApiTests
         using var first = await client.PostAsJsonAsync(
             "/api/inventories",
             new { ean13 = "0123456789012", countedQuantity = 11 });
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
         using var firstBody = JsonDocument.Parse(await first.Content.ReadAsStringAsync());
         var firstOperation = firstBody.RootElement.GetProperty("operation");
         var firstId = firstOperation.GetProperty("id").GetString();
+        var firstTimestamp = firstOperation.GetProperty("timestampUtc").GetString();
 
         using var second = await client.PostAsJsonAsync(
             "/api/inventories",
             new { ean13 = "0123456789012", countedQuantity = 5 });
+        Assert.Equal(HttpStatusCode.Created, second.StatusCode);
         using var secondBody = JsonDocument.Parse(await second.Content.ReadAsStringAsync());
         var secondOperation = secondBody.RootElement.GetProperty("operation");
+        var secondId = secondOperation.GetProperty("id").GetString();
 
-        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
-        Assert.Equal(HttpStatusCode.Created, second.StatusCode);
+        Assert.False(string.IsNullOrWhiteSpace(firstId));
+        Assert.False(string.IsNullOrWhiteSpace(secondId));
+        Assert.NotEqual(firstId, secondId);
+        Assert.Equal("INVENTORY", firstOperation.GetProperty("type").GetString());
+        Assert.Equal("0123456789012", firstOperation.GetProperty("ean13").GetString());
+        Assert.Equal(8, firstOperation.GetProperty("previousPhysicalStock").GetInt32());
+        Assert.Equal(11, firstOperation.GetProperty("countedQuantity").GetInt32());
+        Assert.Equal(3, firstOperation.GetProperty("inventoryDifference").GetInt32());
+        Assert.Equal(11, firstOperation.GetProperty("resultingPhysicalStock").GetInt32());
+        Assert.Equal("2030-01-15T10:00:00+00:00", firstTimestamp);
+
+        Assert.Equal("INVENTORY", secondOperation.GetProperty("type").GetString());
+        Assert.Equal("0123456789012", secondOperation.GetProperty("ean13").GetString());
         Assert.Equal(11, secondOperation.GetProperty("previousPhysicalStock").GetInt32());
+        Assert.Equal(5, secondOperation.GetProperty("countedQuantity").GetInt32());
         Assert.Equal(-6, secondOperation.GetProperty("inventoryDifference").GetInt32());
         Assert.Equal(5, secondOperation.GetProperty("resultingPhysicalStock").GetInt32());
+        Assert.Equal("2030-01-15T10:00:00+00:00", secondOperation.GetProperty("timestampUtc").GetString());
+        var secondPosition = secondBody.RootElement.GetProperty("position");
+        Assert.Equal("0123456789012", secondPosition.GetProperty("ean13").GetString());
+        Assert.Equal(5, secondPosition.GetProperty("physicalStock").GetInt32());
+        Assert.Equal(5, secondPosition.GetProperty("sellableStock").GetInt32());
+        Assert.Equal("AVAILABLE", secondPosition.GetProperty("availability").GetString());
+        Assert.Null(secondPosition.GetProperty("reason").GetString());
 
         using var firstRead = await client.GetAsync($"/api/inventories/{firstId}");
+        Assert.Equal(HttpStatusCode.OK, firstRead.StatusCode);
         using var firstReadBody = JsonDocument.Parse(await firstRead.Content.ReadAsStringAsync());
+        Assert.Equal(firstId, firstReadBody.RootElement.GetProperty("id").GetString());
+        Assert.Equal("INVENTORY", firstReadBody.RootElement.GetProperty("type").GetString());
+        Assert.Equal("0123456789012", firstReadBody.RootElement.GetProperty("ean13").GetString());
         Assert.Equal(8, firstReadBody.RootElement.GetProperty("previousPhysicalStock").GetInt32());
+        Assert.Equal(11, firstReadBody.RootElement.GetProperty("countedQuantity").GetInt32());
+        Assert.Equal(3, firstReadBody.RootElement.GetProperty("inventoryDifference").GetInt32());
         Assert.Equal(11, firstReadBody.RootElement.GetProperty("resultingPhysicalStock").GetInt32());
+        Assert.Equal(firstTimestamp, firstReadBody.RootElement.GetProperty("timestampUtc").GetString());
+
+        var persistedFirst = await factory.ReadInventoryAsync(firstId!);
+        Assert.Equal(firstId, persistedFirst.Id);
+        Assert.Equal("INVENTORY", persistedFirst.Type);
+        Assert.Equal("0123456789012", persistedFirst.Ean13);
+        Assert.Equal(8, persistedFirst.PreviousPhysicalStock);
+        Assert.Equal(11, persistedFirst.CountedQuantity);
+        Assert.Equal(3, persistedFirst.InventoryDifference);
+        Assert.Equal(11, persistedFirst.ResultingPhysicalStock);
+        Assert.Equal(
+            DateTimeOffset.Parse(firstTimestamp!),
+            DateTimeOffset.Parse(persistedFirst.TimestampUtc));
 
         using var stockRead = await client.GetAsync("/api/stock/0123456789012");
         using var stockBody = JsonDocument.Parse(await stockRead.Content.ReadAsStringAsync());
@@ -161,9 +203,18 @@ public sealed class InventoryApiTests
     [Theory]
     [InlineData("{\"ean13\":\"0123456789012\",\"countedQuantity\":-1}")]
     [InlineData("{\"ean13\":\"0123456789012\",\"countedQuantity\":1.5}")]
+    [InlineData("{\"ean13\":\"0123456789012\",\"countedQuantity\":1.0}")]
+    [InlineData("{\"ean13\":\"0123456789012\",\"countedQuantity\":true}")]
+    [InlineData("{\"ean13\":\"0123456789012\",\"countedQuantity\":null}")]
     [InlineData("{\"ean13\":\"0123456789012\",\"countedQuantity\":\"1\"}")]
     [InlineData("{\"ean13\":\"0123456789012\"}")]
+    [InlineData("{\"countedQuantity\":1}")]
     [InlineData("{\"ean13\":0123456789012,\"countedQuantity\":1}")]
+    [InlineData("{\"ean13\":null,\"countedQuantity\":1}")]
+    [InlineData("{\"ean13\":\"123456789012\",\"countedQuantity\":1}")]
+    [InlineData("{\"ean13\":\"012345678901A\",\"countedQuantity\":1}")]
+    [InlineData("{\"ean13\":\"0123456789013\",\"countedQuantity\":1}")]
+    [InlineData("{\"ean13\":\"0123456789012\",\"countedQuantity\":1")]
     [InlineData("{\"ean13\":\"0123456789012\",\"countedQuantity\":1,\"extra\":true}")]
     public async Task Rejects_invalid_input_without_writing(
         string json)
@@ -179,6 +230,7 @@ public sealed class InventoryApiTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(400, body.RootElement.GetProperty("status").GetInt32());
         Assert.Equal("INVALID_INPUT", body.RootElement.GetProperty("code").GetString());
         Assert.Equal(8, await factory.ReadPhysicalQuantityAsync("0123456789012"));
         Assert.Equal(0, await factory.CountOperationsAsync());

@@ -1,52 +1,97 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './e2e-fixture';
+import type { Page, Route } from '@playwright/test';
 
-test('reconciles independent upper, lower, equal and zero counts through the real form', async ({ page }) => {
-  const canonicalEan = '0123456789012';
-  const lowerEan = '7351353713578';
-  const zeroEan = '9876543210982';
-  const archivedEan = '5012345678900';
-  const unknownEan = '4006381333931';
-  const timestamp = '2030-01-15T10:00:00+00:00';
-  const result = page.locator('#inventory-result');
-  const field = (label: string) => result.locator('dl > div').filter({ hasText: label }).locator('dd');
+const canonicalEan = '0123456789012';
+const archivedEan = '5012345678900';
+const unknownEan = '4006381333931';
+const timestamp = '2030-01-15T10:00:00+00:00';
+const apiBaseUrl = 'http://127.0.0.1:5100';
 
-  type ExpectedReceipt = {
-    ean13: string;
-    previous: number;
-    counted: number;
-    difference: string;
-    resulting: number;
-    sellable: number;
-    availability: string;
-    reason: string;
+type ExpectedReceipt = {
+  ean13: string;
+  previous: number;
+  counted: number;
+  difference: string;
+  resulting: number;
+  sellable: number;
+  availability: string;
+  reason: string;
+};
+
+const result = (page: Page) => page.locator('#inventory-result');
+
+const expectReceipt = async (
+  page: Page,
+  expected: ExpectedReceipt,
+) => {
+  const receipt = result(page);
+  const field = (label: string) => receipt.locator('dl > div').filter({ hasText: label }).locator('dd');
+  await expect(field('EAN-13')).toHaveText(expected.ean13);
+  await expect(field('Stock physique précédent')).toHaveText(`${expected.previous} unités`);
+  await expect(field('Quantité comptée')).toHaveText(`${expected.counted} unités`);
+  await expect(field('Écart d’inventaire')).toHaveText(expected.difference);
+  await expect(field('Nouvelle base physique')).toHaveText(`${expected.resulting} unités`);
+  await expect(field('Stock vendable')).toHaveText(`${expected.sellable} unités`);
+  await expect(field('Disponibilité')).toHaveText(expected.availability);
+  await expect(field('Raison')).toHaveText(expected.reason);
+  await expect(field('Timestamp UTC')).toHaveText(timestamp);
+};
+
+const openInventory = async (page: Page) => {
+  await page.goto('/');
+  await expect(page.locator('#stock-table')).toBeVisible();
+  await expect(
+    page.locator('#stock-table').getByRole('row', { name: /DLC de démonstration/ }),
+  ).toContainText('8 unités');
+  await page.locator('#inventory-ean13').focus();
+  await page.keyboard.press('Tab');
+  await expect(page.locator('#inventory-countedQuantity')).toBeFocused();
+};
+
+const submitInventory = async (
+  page: Page,
+  ean13: string,
+  countedQuantity: number,
+) => {
+  const submitButton = page.locator('#inventory-form button[type="submit"]');
+  const responsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'POST' && url.pathname === '/api/inventories';
+  });
+  const delayedResponse = async (route: Route) => {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await route.continue();
   };
-
-  const expectReceipt = async (expected: ExpectedReceipt) => {
-    await expect(field('EAN-13')).toHaveText(expected.ean13);
-    await expect(field('Stock physique précédent')).toHaveText(expected.previous + ' unités');
-    await expect(field('Quantité comptée')).toHaveText(expected.counted + ' unités');
-    await expect(field('Écart d’inventaire')).toHaveText(expected.difference);
-    await expect(field('Nouvelle base physique')).toHaveText(expected.resulting + ' unités');
-    await expect(field('Stock vendable')).toHaveText(expected.sellable + ' unités');
-    await expect(field('Disponibilité')).toHaveText(expected.availability);
-    await expect(field('Raison')).toHaveText(expected.reason);
-    await expect(field('Timestamp UTC')).toHaveText(timestamp);
-  };
-
-  const submitInventory = async (ean13: string, countedQuantity: number) => {
+  await page.route('**/api/inventories', delayedResponse);
+  try {
     await page.locator('#inventory-ean13').fill(ean13);
     await page.locator('#inventory-countedQuantity').fill(String(countedQuantity));
-    await page.getByRole('button', { name: 'Enregistrer l’Inventaire' }).click();
-    await expect(result).toBeVisible();
-  };
+    await submitButton.click();
+    await expect(submitButton).toHaveText('Enregistrement…');
+    const response = await responsePromise;
+    expect(response.status()).toBe(201);
+    expect(response.headers()['content-type']).toContain('application/json');
+    await expect(result(page)).toBeVisible();
+    await expect(result(page)).toBeFocused();
+  } finally {
+    await page.unroute('**/api/inventories', delayedResponse);
+  }
+};
 
-  const reloadAndExpect = async (expected: ExpectedReceipt) => {
-    await page.reload();
-    await expect(result).toBeVisible();
-    await expectReceipt(expected);
-  };
+const expectIndependentReceipt = async (
+  page: Page,
+  expected: ExpectedReceipt,
+) => {
+  await openInventory(page);
+  await submitInventory(page, expected.ean13, expected.counted);
+  await expectReceipt(page, expected);
+  await page.reload();
+  await expect(result(page)).toBeVisible();
+  await expectReceipt(page, expected);
+};
 
-  const upper: ExpectedReceipt = {
+test('reconciles the canonical stock from 8 to 11 with a positive difference', async ({ page }) => {
+  await expectIndependentReceipt(page, {
     ean13: canonicalEan,
     previous: 8,
     counted: 11,
@@ -55,71 +100,63 @@ test('reconciles independent upper, lower, equal and zero counts through the rea
     sellable: 11,
     availability: 'Disponible',
     reason: '—',
-  };
-  const reset: ExpectedReceipt = {
-    ...upper,
-    previous: 11,
-    counted: 8,
-    difference: '-3',
-    resulting: 8,
-    sellable: 8,
-  };
-  const equal: ExpectedReceipt = {
-    ...upper,
-    previous: 8,
-    counted: 8,
-    difference: '0',
-    resulting: 8,
-    sellable: 8,
-  };
-  const lower: ExpectedReceipt = {
-    ...upper,
-    ean13: lowerEan,
+  });
+});
+
+test('reconciles the canonical stock from 8 to 5 with a negative difference', async ({ page }) => {
+  await expectIndependentReceipt(page, {
+    ean13: canonicalEan,
     previous: 8,
     counted: 5,
     difference: '-3',
     resulting: 5,
     sellable: 5,
-  };
-  const zero: ExpectedReceipt = {
-    ...upper,
-    ean13: zeroEan,
+    availability: 'Disponible',
+    reason: '—',
+  });
+});
+
+test('keeps an equal canonical count as a visible zero-difference fact', async ({ page }) => {
+  await expectIndependentReceipt(page, {
+    ean13: canonicalEan,
+    previous: 8,
+    counted: 8,
+    difference: '0',
+    resulting: 8,
+    sellable: 8,
+    availability: 'Disponible',
+    reason: '—',
+  });
+});
+
+test('accepts a zero canonical count and establishes an empty position', async ({ page }) => {
+  await expectIndependentReceipt(page, {
+    ean13: canonicalEan,
     previous: 8,
     counted: 0,
     difference: '-8',
     resulting: 0,
     sellable: 0,
     availability: 'Rupture',
-  };
+    reason: '—',
+  });
+});
 
-  await page.goto('/');
-  await expect(page.locator('#stock-table')).toBeVisible();
-  await expect(
-    page.locator('#stock-table').getByRole('row', { name: /DLC de démonstration/ }),
-  ).toContainText('8 unités');
+test('inventories an archived Article with residual stock', async ({ page }) => {
+  await expectIndependentReceipt(page, {
+    ean13: archivedEan,
+    previous: 4,
+    counted: 2,
+    difference: '-2',
+    resulting: 2,
+    sellable: 0,
+    availability: 'Non vendable',
+    reason: 'Article archivé',
+  });
+});
 
-  await page.locator('#inventory-ean13').focus();
-  await page.keyboard.press('Tab');
-  await expect(page.locator('#inventory-countedQuantity')).toBeFocused();
-
-  await submitInventory(canonicalEan, upper.counted);
-  await expectReceipt(upper);
-  await reloadAndExpect(upper);
-
-  await submitInventory(canonicalEan, reset.counted);
-  await expectReceipt(reset);
-
-  await submitInventory(canonicalEan, equal.counted);
-  await expectReceipt(equal);
-  await reloadAndExpect(equal);
-
-  await submitInventory(lowerEan, lower.counted);
-  await expectReceipt(lower);
-  await reloadAndExpect(lower);
-
-  await submitInventory(zeroEan, zero.counted);
-  await expectReceipt(zero);
-  await reloadAndExpect(zero);
+test('preserves invalid input and proves an unknown Article creates no state', async ({ page }) => {
+  await openInventory(page);
 
   let invalidPostCount = 0;
   const invalidPostListener = (request: import('@playwright/test').Request) => {
@@ -138,7 +175,10 @@ test('reconciles independent upper, lower, equal and zero counts through the rea
   await expect(page.locator('#inventory-ean13')).toHaveValue(canonicalEan);
   await expect(page.locator('#inventory-countedQuantity')).toHaveValue('-1');
   await expect(page.locator('#inventory-countedQuantity')).toBeFocused();
-  await expect(result).toHaveCount(0);
+  await expect(result(page)).toHaveCount(0);
+
+  const beforeUnknown = await page.request.get(`${apiBaseUrl}/api/stock/${unknownEan}`);
+  expect(beforeUnknown.status()).toBe(404);
 
   await page.locator('#inventory-ean13').fill(unknownEan);
   await page.locator('#inventory-countedQuantity').fill('6');
@@ -150,36 +190,20 @@ test('reconciles independent upper, lower, equal and zero counts through the rea
   const unknownResponse = await unknownResponsePromise;
   expect(unknownResponse.status()).toBe(404);
   expect(unknownResponse.headers()['content-type']).toContain('application/problem+json');
+  await expect(unknownResponse.json()).resolves.toMatchObject({
+    status: 404,
+    code: 'ARTICLE_NOT_FOUND',
+  });
   await expect(page.locator('#inventory-error')).toContainText('introuvable');
   await expect(page.locator('#inventory-ean13')).toHaveValue(unknownEan);
   await expect(page.locator('#inventory-countedQuantity')).toHaveValue('6');
   await expect(page.locator('#inventory-countedQuantity')).toBeFocused();
-  await expect(result).toHaveCount(0);
+  await expect(result(page)).toHaveCount(0);
 
-  await page.reload();
-  await expect(result).toBeVisible();
-  await expectReceipt(zero);
-  await expect(
-    page.locator('#stock-table').getByRole('row', { name: /Article vendable/ }),
-  ).toContainText('0 unités');
-  const stockAfterUnknown = await page.request.get(
-    'http://127.0.0.1:5100/api/stock/' + zeroEan,
-  );
-  expect(stockAfterUnknown.status()).toBe(200);
-  await expect(stockAfterUnknown.json()).resolves.toMatchObject({ physicalQuantity: 0 });
-
-  const archived: ExpectedReceipt = {
-    ...upper,
-    ean13: archivedEan,
-    previous: 4,
-    counted: 2,
-    difference: '-2',
-    resulting: 2,
-    sellable: 0,
-    availability: 'Non vendable',
-    reason: 'Article archivé',
-  };
-  await submitInventory(archivedEan, archived.counted);
-  await expectReceipt(archived);
-  await reloadAndExpect(archived);
+  const afterUnknown = await page.request.get(`${apiBaseUrl}/api/stock/${unknownEan}`);
+  expect(afterUnknown.status()).toBe(404);
+  const stockCollection = await page.request.get(`${apiBaseUrl}/api/stock`);
+  expect(stockCollection.status()).toBe(200);
+  const stockPositions = await stockCollection.json() as Array<{ ean13: string }>;
+  expect(stockPositions.some((position) => position.ean13 === unknownEan)).toBe(false);
 });

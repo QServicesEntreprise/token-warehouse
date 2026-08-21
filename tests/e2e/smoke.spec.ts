@@ -1,4 +1,5 @@
-import { expect, Route, test } from '@playwright/test';
+import { expect, test } from './e2e-fixture';
+import type { Route } from '@playwright/test';
 
 const ean13ForAttempt = (prefix: string, attempt: number): string => {
   const body = `${prefix}${String(attempt).padStart(3, '0')}`;
