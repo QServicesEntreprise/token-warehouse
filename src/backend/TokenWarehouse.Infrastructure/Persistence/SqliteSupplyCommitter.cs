@@ -30,14 +30,14 @@ public sealed class SqliteSupplyCommitter(
                 return Conflict();
             }
 
-            var current = await context.StockPositions
+            var currentPosition = await context.StockPositions
                 .AsNoTracking()
                 .SingleOrDefaultAsync(
                     position => position.Ean13 == request.Position.Ean13.Value,
                     cancellationToken);
             if (request.CurrentPosition is null)
             {
-                if (current is not null)
+                if (currentPosition is not null)
                 {
                     return Conflict();
                 }
@@ -50,15 +50,15 @@ public sealed class SqliteSupplyCommitter(
             }
             else
             {
-                if (current is null || current.PhysicalQuantity != request.CurrentPosition.PhysicalQuantity)
+                if (currentPosition is null || currentPosition.PhysicalQuantity != request.CurrentPosition.PhysicalQuantity)
                 {
                     return Conflict();
                 }
 
-                var updated = await context.Database.ExecuteSqlInterpolatedAsync(
+                var affectedRows = await context.Database.ExecuteSqlInterpolatedAsync(
                     $"UPDATE StockPositions SET PhysicalQuantity = {request.Position.PhysicalQuantity} WHERE Ean13 = {request.Position.Ean13.Value} AND PhysicalQuantity = {request.CurrentPosition.PhysicalQuantity}",
                     cancellationToken);
-                if (updated != 1)
+                if (affectedRows != 1)
                 {
                     return Conflict();
                 }

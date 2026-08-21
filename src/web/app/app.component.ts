@@ -600,7 +600,12 @@ export class AppComponent implements OnInit {
 
   readonly model = signal<ArticleFormModel>({ ...initialModel, consumptionModes: [] });
   readonly supplyModel = signal<SupplyFormModel>({ ean13: '', quantity: '' });
-  readonly supplyForm = form(this.supplyModel);
+  readonly supplyForm = form(this.supplyModel, (schemaPath) => {
+    required(schemaPath.ean13, { message: 'L’EAN-13 est requis.' });
+    pattern(schemaPath.ean13, /^\d{13}$/, { message: 'L’EAN-13 doit contenir 13 chiffres.' });
+    required(schemaPath.quantity, { message: 'La quantité est requise.' });
+    pattern(schemaPath.quantity, /^[1-9]\d*$/, { message: 'La quantité doit être un entier strictement positif.' });
+  });
   readonly articleForm = form(this.model, (schemaPath) => {
     required(schemaPath.ean13, { message: 'L’EAN-13 est requis.' });
     pattern(schemaPath.ean13, /^\d{13}$/, { message: 'L’EAN-13 doit contenir 13 chiffres.' });
@@ -777,7 +782,15 @@ export class AppComponent implements OnInit {
   }
 
   supplyFieldError(field: string): string {
-    return this.supplyFieldErrors()[field] ?? '';
+    const serverError = this.supplyFieldErrors()[field];
+    if (serverError) {
+      return serverError;
+    }
+
+    const errors = field === 'ean13'
+      ? this.supplyForm.ean13().errors()
+      : this.supplyForm.quantity().errors();
+    return errors[0]?.message ?? '';
   }
 
   async onSupplySubmit(event: Event): Promise<void> {
