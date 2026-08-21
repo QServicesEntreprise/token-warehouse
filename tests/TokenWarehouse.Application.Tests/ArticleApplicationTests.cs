@@ -6,11 +6,14 @@ namespace TokenWarehouse.Application.Tests;
 
 public sealed class ArticleApplicationTests
 {
+    private static readonly IClock TestClock = new FixedClock(
+        new DateTimeOffset(2026, 8, 21, 10, 30, 0, TimeSpan.Zero));
+
     [Fact]
     public async Task Creates_and_reads_an_article_through_the_store_seam()
     {
         var store = new InMemoryArticleStore();
-        var application = new ArticleApplication(store);
+        var application = CreateApplication(store);
         var command = new CreateArticleCommand
         {
             Ean13 = "0123456789012",
@@ -36,10 +39,69 @@ public sealed class ArticleApplicationTests
     }
 
     [Fact]
+    public async Task Archives_an_article_and_records_one_immutable_lifecycle_fact()
+    {
+        var store = new InMemoryArticleStore();
+        var application = CreateApplication(store);
+        const string ean13 = "0123456789012";
+
+        await application.CreateAsync(new CreateArticleCommand
+        {
+            Ean13 = ean13,
+            Type = "food",
+            Name = "Chocolat noir",
+            PriceHtCents = 199,
+            Dlc = "2026-12-31",
+            ConsumptionModes = ["takeaway"]
+        });
+
+        var result = await application.ChangeLifecycleAsync(ean13, ArticleLifecycleStatus.Archived);
+        var history = await application.GetHistoryAsync(ean13);
+
+        Assert.Equal(ArticleLifecycleChangeStatus.Updated, result.Status);
+        Assert.False(result.Article?.IsActive);
+        Assert.Equal(199, result.Article?.PriceHt.Cents);
+        var fact = Assert.Single(history.Facts);
+        Assert.Equal(ean13, fact.Ean13.Value);
+        Assert.Equal(ArticleLifecycleStatus.Active, fact.PreviousStatus);
+        Assert.Equal(ArticleLifecycleStatus.Archived, fact.NextStatus);
+        Assert.Equal(new DateTimeOffset(2026, 8, 21, 10, 30, 0, TimeSpan.Zero), fact.OccurredAt);
+        Assert.Equal(1, store.TransitionCalls);
+    }
+
+    [Fact]
+    public async Task A_failed_lifecycle_persistence_leaves_the_previous_state_and_history_unchanged()
+    {
+        var store = new InMemoryArticleStore
+        {
+            TransitionError = new InvalidOperationException("history write failed")
+        };
+        var application = CreateApplication(store);
+        const string ean13 = "7351353713578";
+
+        await application.CreateAsync(new CreateArticleCommand
+        {
+            Ean13 = ean13,
+            Type = "nonFood",
+            Name = "Batterie",
+            PriceHtCents = 2500,
+            Packaging = "new"
+        });
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => application.ChangeLifecycleAsync(ean13, ArticleLifecycleStatus.Archived));
+
+        var article = await application.GetAsync(ean13);
+        var history = await application.GetHistoryAsync(ean13);
+        Assert.True(article.Article?.IsActive);
+        Assert.Empty(history.Facts);
+    }
+
+    [Fact]
     public async Task Invalid_creation_is_reported_without_writing()
     {
         var store = new InMemoryArticleStore();
-        var application = new ArticleApplication(store);
+        var application = CreateApplication(store);
 
         var result = await application.CreateAsync(new CreateArticleCommand
         {
@@ -60,7 +122,7 @@ public sealed class ArticleApplicationTests
     public async Task Repeated_ean_returns_a_stable_conflict()
     {
         var store = new InMemoryArticleStore();
-        var application = new ArticleApplication(store);
+        var application = CreateApplication(store);
         var command = new CreateArticleCommand
         {
             Ean13 = "4006381333931",
@@ -88,7 +150,7 @@ public sealed class ArticleApplicationTests
                 CreateArticle("0123456789012", "food", "Café de la Place", ["takeaway"])
             ]
         };
-        var application = new ArticleApplication(store);
+        var application = CreateApplication(store);
 
         var result = await application.ListAsync(new ArticleListQuery
         {
@@ -121,7 +183,7 @@ public sealed class ArticleApplicationTests
                 CreateArticle("7351353713578", "nonFood", "Batterie active", null)
             ]
         };
-        var application = new ArticleApplication(store);
+        var application = CreateApplication(store);
 
         var archived = await application.ListAsync(new ArticleListQuery { Status = "archived" });
         var all = await application.ListAsync(new ArticleListQuery { Status = "all" });
@@ -138,7 +200,7 @@ public sealed class ArticleApplicationTests
     public async Task Keeps_a_valid_empty_catalogue_as_a_successful_read()
     {
         var store = new InMemoryArticleStore();
-        var application = new ArticleApplication(store);
+        var application = CreateApplication(store);
 
         var result = await application.ListAsync(new ArticleListQuery { Search = "aucun résultat" });
 
@@ -156,7 +218,7 @@ public sealed class ArticleApplicationTests
     public async Task Invalid_list_filters_are_reported_without_calling_the_store(string field, string value)
     {
         var store = new InMemoryArticleStore();
-        var application = new ArticleApplication(store);
+        var application = CreateApplication(store);
         var query = field switch
         {
             "status" => new ArticleListQuery { Status = value },
@@ -176,7 +238,7 @@ public sealed class ArticleApplicationTests
     public async Task Updates_ht_and_returns_recalculated_quotes_through_the_store_seam()
     {
         var store = new InMemoryArticleStore();
-        var application = new ArticleApplication(store);
+        var application = CreateApplication(store);
         var command = new CreateArticleCommand
         {
             Ean13 = "0123456789012",
@@ -205,7 +267,7 @@ public sealed class ArticleApplicationTests
     public async Task Rejects_invalid_price_updates_without_writing()
     {
         var store = new InMemoryArticleStore();
-        var application = new ArticleApplication(store);
+        var application = CreateApplication(store);
         var command = new CreateArticleCommand
         {
             Ean13 = "7351353713578",
@@ -235,7 +297,7 @@ public sealed class ArticleApplicationTests
     public async Task Maps_a_store_update_conflict_without_changing_the_loaded_article()
     {
         var store = new InMemoryArticleStore { UpdateStatus = ArticleStoreUpdateStatus.Conflict };
-        var application = new ArticleApplication(store);
+        var application = CreateApplication(store);
         var command = new CreateArticleCommand
         {
             Ean13 = "7351353713578",
@@ -280,11 +342,24 @@ public sealed class ArticleApplicationTests
         return Assert.IsType<Article>(result.Value);
     }
 
+    private static ArticleApplication CreateApplication(InMemoryArticleStore store) =>
+        new(store, TestClock);
+
+    private sealed class FixedClock(DateTimeOffset now) : IClock
+    {
+        public DateTimeOffset UtcNow => now;
+    }
+
     private sealed class InMemoryArticleStore : IArticleStore
     {
         private readonly List<Article> articles = [];
+        private readonly List<ArticleLifecycleHistory> history = [];
 
         public int InsertCalls { get; private set; }
+
+        public int TransitionCalls { get; private set; }
+
+        public Exception? TransitionError { get; init; }
 
         public ArticleStoreUpdateStatus UpdateStatus { get; set; } = ArticleStoreUpdateStatus.Updated;
 
@@ -299,7 +374,10 @@ public sealed class ArticleApplicationTests
         public IReadOnlyList<Article> ListResult { get; init; } = [];
 
         public ValueTask<Article?> FindByEanAsync(Ean13 ean13, CancellationToken cancellationToken = default)
-            => ValueTask.FromResult(articles.SingleOrDefault(article => article.Ean13 == ean13));
+            => ValueTask.FromResult(
+                articles.SingleOrDefault(article => article.Ean13 == ean13) is { } article
+                    ? Clone(article)
+                    : null);
 
         public ValueTask<ArticleStoreInsertStatus> InsertAsync(Article article, CancellationToken cancellationToken = default)
         {
@@ -356,6 +434,52 @@ public sealed class ArticleApplicationTests
                 matches.OrderBy(article => article.Name).ThenBy(article => article.Ean13.Value).ToArray());
         }
 
+        public ValueTask<ArticleStoreLifecycleTransitionStatus> TransitionLifecycleAsync(
+            Ean13 ean13,
+            ArticleLifecycleStatus expectedStatus,
+            ArticleLifecycleStatus targetStatus,
+            ArticleLifecycleHistory transition,
+            CancellationToken cancellationToken = default)
+        {
+            TransitionCalls++;
+            var article = articles.SingleOrDefault(current => current.Ean13 == ean13);
+            if (article is null)
+            {
+                return ValueTask.FromResult(ArticleStoreLifecycleTransitionStatus.NotFound);
+            }
+
+            if (article.LifecycleStatus != expectedStatus)
+            {
+                return ValueTask.FromResult(ArticleStoreLifecycleTransitionStatus.Conflict);
+            }
+
+            if (TransitionError is not null)
+            {
+                throw TransitionError;
+            }
+
+            if (targetStatus == ArticleLifecycleStatus.Archived)
+            {
+                article.Archive();
+            }
+            else
+            {
+                article.Reactivate();
+            }
+
+            history.Add(transition);
+            return ValueTask.FromResult(ArticleStoreLifecycleTransitionStatus.Updated);
+        }
+
+        public ValueTask<IReadOnlyList<ArticleLifecycleHistory>> ListLifecycleHistoryAsync(
+            Ean13? ean13 = null,
+            CancellationToken cancellationToken = default)
+            => ValueTask.FromResult<IReadOnlyList<ArticleLifecycleHistory>>(
+                (ean13 is null
+                    ? history
+                    : history.Where(fact => fact.Ean13 == ean13.Value))
+                .ToArray());
+
         public ValueTask<ArticleStorePriceUpdateCandidate> FindForPriceUpdateAsync(
             Ean13 ean13,
             CancellationToken cancellationToken = default)
@@ -396,7 +520,7 @@ public sealed class ArticleApplicationTests
         }
 
         private static Article Clone(Article article)
-            => Assert.IsType<Article>(Article.Create(new ArticleDraft
+            => Assert.IsType<Article>(Article.Reconstitute(new ArticleDraft
             {
                 Ean13 = article.Ean13.Value,
                 Type = article.Type == ArticleType.Food ? "food" : "nonFood",
@@ -416,6 +540,6 @@ public sealed class ArticleApplicationTests
                     _ => null
                 },
                 PackagingProvided = article.Packaging is not null
-            }).Value);
+            }, article.IsActive).Value);
     }
 }

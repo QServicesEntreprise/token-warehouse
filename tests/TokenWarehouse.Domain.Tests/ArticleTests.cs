@@ -139,4 +139,61 @@ public sealed class ArticleTests
         Assert.Contains(result.Errors, error => error.Code == "article.packaging.not_applicable");
         Assert.Contains(result.Errors, error => error.Code == "article.consumptionModes.duplicate");
     }
+
+    [Fact]
+    public void Archives_and_reactivates_an_article_without_changing_its_catalogue_identity()
+    {
+        var article = Assert.IsType<Article>(Article.Create(new ArticleDraft
+        {
+            Ean13 = "0123456789012",
+            Type = "food",
+            Name = "Chocolat noir",
+            PriceHtCents = 199,
+            Dlc = "2026-12-31",
+            DlcProvided = true,
+            ConsumptionModes = ["takeaway"],
+            ConsumptionModesProvided = true
+        }).Value);
+
+        var archive = article.Archive();
+
+        Assert.True(archive.IsSuccess);
+        Assert.Equal(ArticleLifecycleStatus.Active, archive.PreviousStatus);
+        Assert.Equal(ArticleLifecycleStatus.Archived, archive.CurrentStatus);
+        Assert.Equal(ArticleLifecycleStatus.Archived, article.LifecycleStatus);
+        Assert.Equal("0123456789012", article.Ean13.Value);
+        Assert.Equal(199, article.PriceHt.Cents);
+
+        var reactivate = article.Reactivate();
+
+        Assert.True(reactivate.IsSuccess);
+        Assert.Equal(ArticleLifecycleStatus.Archived, reactivate.PreviousStatus);
+        Assert.Equal(ArticleLifecycleStatus.Active, reactivate.CurrentStatus);
+        Assert.True(article.IsActive);
+    }
+
+    [Fact]
+    public void Rejects_repeated_lifecycle_transitions_without_changing_state()
+    {
+        var article = Assert.IsType<Article>(Article.Create(new ArticleDraft
+        {
+            Ean13 = "4006381333931",
+            Type = "nonFood",
+            Name = "Batterie",
+            PriceHtCents = 2500,
+            Packaging = "new",
+            PackagingProvided = true
+        }).Value);
+
+        var alreadyActive = article.Reactivate();
+        var archive = article.Archive();
+        var alreadyArchived = article.Archive();
+
+        Assert.False(alreadyActive.IsSuccess);
+        Assert.Contains(alreadyActive.Errors, error => error.Code == "article.lifecycle.already_active");
+        Assert.True(archive.IsSuccess);
+        Assert.False(alreadyArchived.IsSuccess);
+        Assert.Contains(alreadyArchived.Errors, error => error.Code == "article.lifecycle.already_archived");
+        Assert.Equal(ArticleLifecycleStatus.Archived, article.LifecycleStatus);
+    }
 }

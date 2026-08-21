@@ -21,7 +21,19 @@ public enum PackagingCondition
     Unsellable
 }
 
+public enum ArticleLifecycleStatus
+{
+    Active,
+    Archived
+}
+
 public sealed record ArticleValidationError(string Code, string Field, string Message);
+
+public sealed record ArticleLifecycleTransitionResult(
+    bool IsSuccess,
+    ArticleLifecycleStatus PreviousStatus,
+    ArticleLifecycleStatus CurrentStatus,
+    IReadOnlyList<ArticleValidationError> Errors);
 
 public sealed record ArticleDraft
 {
@@ -110,7 +122,10 @@ public sealed class Article
 
     public Money PriceHt { get; private set; }
 
-    public bool IsActive { get; }
+    public bool IsActive { get; private set; }
+
+    public ArticleLifecycleStatus LifecycleStatus
+        => IsActive ? ArticleLifecycleStatus.Active : ArticleLifecycleStatus.Archived;
 
     public DateOnly? Dlc { get; }
 
@@ -120,11 +135,37 @@ public sealed class Article
 
     public void ChangePriceHt(Money priceHt) => PriceHt = priceHt;
 
+    public ArticleLifecycleTransitionResult Archive()
+        => TransitionTo(ArticleLifecycleStatus.Archived);
+
+    public ArticleLifecycleTransitionResult Reactivate()
+        => TransitionTo(ArticleLifecycleStatus.Active);
+
     public static ArticleCreationResult Create(ArticleDraft draft)
         => Create(draft, true);
 
     public static ArticleCreationResult Reconstitute(ArticleDraft draft, bool isActive)
         => Create(draft, isActive);
+
+    private ArticleLifecycleTransitionResult TransitionTo(ArticleLifecycleStatus targetStatus)
+    {
+        var currentStatus = LifecycleStatus;
+        if (currentStatus == targetStatus)
+        {
+            var (code, message) = targetStatus == ArticleLifecycleStatus.Archived
+                ? ("article.lifecycle.already_archived", "L’Article est déjà archivé.")
+                : ("article.lifecycle.already_active", "L’Article est déjà actif.");
+
+            return new(
+                false,
+                currentStatus,
+                currentStatus,
+                [new(code, "status", message)]);
+        }
+
+        IsActive = targetStatus == ArticleLifecycleStatus.Active;
+        return new(true, currentStatus, targetStatus, []);
+    }
 
     private static ArticleCreationResult Create(ArticleDraft draft, bool isActive)
     {

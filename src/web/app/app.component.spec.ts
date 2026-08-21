@@ -178,6 +178,261 @@ describe('AppComponent', () => {
     http.verify();
   });
 
+  it('archives a catalogue row through the API and reloads the active view', async () => {
+    const fixture = TestBed.configureTestingModule({
+      imports: [AppComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    }).createComponent(AppComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    const initial = http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles');
+    initial.flush([
+      {
+        ean13: '0123456789012',
+        type: 'food',
+        name: 'Café du Comptoir',
+        priceHtCents: 199,
+        isActive: true,
+        status: 'active',
+        dlc: '2026-12-31',
+        consumptionModes: ['takeaway'],
+      },
+    ]);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const action = fixture.nativeElement.querySelector('[aria-label="Archiver Café du Comptoir"]') as HTMLButtonElement;
+    expect(action).not.toBeNull();
+    action.click();
+    const archive = http.expectOne('/api/articles/0123456789012/archive');
+    expect(archive.request.method).toBe('POST');
+    archive.flush({
+      ean13: '0123456789012',
+      type: 'food',
+      name: 'Café du Comptoir',
+      priceHtCents: 199,
+      isActive: false,
+      status: 'archived',
+      dlc: '2026-12-31',
+      consumptionModes: ['takeaway'],
+      priceQuotes: [],
+    });
+    await fixture.whenStable();
+    const reload = http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles');
+    expect(reload.request.params.get('status')).toBe('active');
+    reload.flush([]);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('Archivé');
+    expect(fixture.nativeElement.querySelector('[aria-label="Archiver Café du Comptoir"]')).toBeNull();
+    http.verify();
+  });
+
+  it('actualise après un succès obsolète sans remplacer le message le plus récent', async () => {
+    const fixture = TestBed.configureTestingModule({
+      imports: [AppComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    }).createComponent(AppComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    const initial = http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles');
+    initial.flush([
+      {
+        ean13: '0123456789012',
+        type: 'food',
+        name: 'Café du Comptoir',
+        priceHtCents: 199,
+        isActive: true,
+        status: 'active',
+        dlc: '2026-12-31',
+        consumptionModes: ['takeaway'],
+      },
+      {
+        ean13: '7351353713578',
+        type: 'nonFood',
+        name: 'Batterie atelier',
+        priceHtCents: 2500,
+        isActive: true,
+        status: 'active',
+        packaging: 'new',
+      },
+    ]);
+    await fixture.whenStable();
+
+    const component = fixture.componentInstance;
+    component.lookupEan.set('0123456789012');
+    const detailLookup = component.onLookup(new Event('submit'));
+    const detailRequest = http.expectOne('/api/articles/0123456789012');
+    detailRequest.flush({
+      ean13: '0123456789012',
+      type: 'food',
+      name: 'Café du Comptoir',
+      priceHtCents: 199,
+      isActive: true,
+      status: 'active',
+      dlc: '2026-12-31',
+      consumptionModes: ['takeaway'],
+      priceQuotes: [{
+        saleContext: 'takeaway',
+        taxRate: { code: 'takeaway', ratio: '11/200', numerator: 11, denominator: 200 },
+        vatCents: 11,
+        priceTtcCents: 210,
+      }],
+    });
+    await detailLookup;
+    fixture.detectChanges();
+
+    const olderTransition = component.onCatalogLifecycle(component.detail()!);
+    const newerTransition = component.onCatalogLifecycle(component.catalogArticles()[1]);
+    const archives = http.match((request) => request.method === 'POST' && request.url.endsWith('/archive'));
+    expect(archives).toHaveLength(2);
+
+    archives[1].flush({
+      ean13: '7351353713578',
+      type: 'nonFood',
+      name: 'Batterie atelier',
+      priceHtCents: 2500,
+      isActive: false,
+      status: 'archived',
+      packaging: 'new',
+      priceQuotes: [],
+    });
+    await fixture.whenStable();
+    const reload = http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles');
+    reload.flush([
+      {
+        ean13: '0123456789012',
+        type: 'food',
+        name: 'Café du Comptoir',
+        priceHtCents: 199,
+        isActive: true,
+        status: 'active',
+        dlc: '2026-12-31',
+        consumptionModes: ['takeaway'],
+      },
+    ]);
+    await newerTransition;
+
+    archives[0].flush({
+      ean13: '0123456789012',
+      type: 'food',
+      name: 'Café du Comptoir',
+      priceHtCents: 199,
+      isActive: false,
+      status: 'archived',
+      dlc: '2026-12-31',
+      consumptionModes: ['takeaway'],
+      priceQuotes: [],
+    });
+    await fixture.whenStable();
+    const staleDetail = http.expectOne('/api/articles/0123456789012');
+    staleDetail.flush({
+      ean13: '0123456789012',
+      type: 'food',
+      name: 'Café du Comptoir',
+      priceHtCents: 199,
+      isActive: false,
+      status: 'archived',
+      dlc: '2026-12-31',
+      consumptionModes: ['takeaway'],
+      priceQuotes: [],
+    });
+    await fixture.whenStable();
+    await fixture.whenStable();
+    const staleReload = http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles');
+    staleReload.flush([]);
+    await olderTransition;
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(component.lifecycleMessage()).toBe('Batterie atelier est archivé.');
+    expect(component.catalogArticles()).toEqual([]);
+    expect(component.catalogState()).toBe('empty');
+    expect(component.detail()?.status).toBe('archived');
+    expect(fixture.nativeElement.querySelector('.article-detail').textContent).toContain('Archivé');
+    expect(fixture.nativeElement.querySelector('.article-detail button').textContent).toContain('Réactiver l’Article');
+    http.verify();
+  });
+
+  it('réconcilie le détail après un succès obsolète du même EAN', async () => {
+    const fixture = TestBed.configureTestingModule({
+      imports: [AppComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    }).createComponent(AppComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    const initial = http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles');
+    const activeRow = {
+      ean13: '0123456789012',
+      type: 'food' as const,
+      name: 'Café du Comptoir',
+      priceHtCents: 199,
+      isActive: true,
+      status: 'active' as const,
+      dlc: '2026-12-31',
+      consumptionModes: ['takeaway' as const],
+    };
+    initial.flush([activeRow]);
+    await fixture.whenStable();
+
+    const component = fixture.componentInstance;
+    component.lookupEan.set(activeRow.ean13);
+    const detailLookup = component.onLookup(new Event('submit'));
+    const detailRequest = http.expectOne(`/api/articles/${activeRow.ean13}`);
+    detailRequest.flush({ ...activeRow, priceQuotes: [] });
+    await detailLookup;
+    fixture.detectChanges();
+
+    const olderTransition = component.onCatalogLifecycle(component.detail()!);
+    const newerTransition = component.onCatalogLifecycle({
+      ...component.detail()!,
+      isActive: false,
+      status: 'archived',
+    });
+    const transitions = http.match((request) => request.method === 'POST' && request.url.includes('/api/articles/'));
+    expect(transitions).toHaveLength(2);
+    expect(transitions[0].request.url).toContain('/archive');
+    expect(transitions[1].request.url).toContain('/reactivate');
+
+    const activeDetail = { ...activeRow, priceQuotes: [] };
+    transitions[1].flush(activeDetail);
+    await fixture.whenStable();
+    const newerReload = http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles');
+    newerReload.flush([activeRow]);
+    await newerTransition;
+
+    expect(component.detail()?.status).toBe('active');
+    expect(component.lifecycleMessage()).toBe('Café du Comptoir est actif.');
+
+    transitions[0].flush({ ...activeRow, isActive: false, status: 'archived', priceQuotes: [] });
+    await fixture.whenStable();
+    const currentDetail = http.expectOne(`/api/articles/${activeRow.ean13}`);
+    fixture.detectChanges();
+    expect(component.detail()?.status).toBe('active');
+    expect(fixture.nativeElement.querySelector('.article-detail button').textContent).toContain('Archiver l’Article');
+    const newerLookup = component.onLookup(new Event('submit'));
+    const newerDetail = http.expectOne(`/api/articles/${activeRow.ean13}`);
+    newerDetail.flush({ ...activeRow, isActive: false, status: 'archived', priceQuotes: [] });
+    await newerLookup;
+    fixture.detectChanges();
+    expect(component.detail()?.status).toBe('archived');
+    currentDetail.flush(activeDetail);
+    await fixture.whenStable();
+    await fixture.whenStable();
+    const staleReload = http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles');
+    staleReload.flush([]);
+    await olderTransition;
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(component.detail()?.status).toBe('archived');
+    expect(fixture.nativeElement.querySelector('.article-detail').textContent).toContain('Archivé');
+    expect(fixture.nativeElement.querySelector('.article-detail button').textContent).toContain('Réactiver l’Article');
+    expect(component.lifecycleMessage()).toBe('Café du Comptoir est actif.');
+    http.verify();
+  });
+
   it('shows two server quotes and submits only the editable HT price', async () => {
     const fixture = TestBed.configureTestingModule({
       imports: [AppComponent],
@@ -270,6 +525,7 @@ function foodArticle(
     name: 'Chocolat noir',
     priceHtCents,
     isActive: true,
+    status: 'active',
     dlc: '2026-12-31',
     consumptionModes: ['takeaway', 'onsite'],
     priceQuotes: [

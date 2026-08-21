@@ -6,6 +6,7 @@ export type ArticleType = 'food' | 'nonFood';
 export type ConsumptionMode = 'takeaway' | 'onsite';
 export type Packaging = 'new' | 'refurbished' | 'unsellable';
 export type ArticleListStatus = 'active' | 'archived' | 'all';
+export type ArticleStatus = 'active' | 'archived';
 
 export interface ArticleCreatePayload {
   ean13: string;
@@ -19,6 +20,7 @@ export interface ArticleCreatePayload {
 
 export interface ArticleResponse extends ArticleCreatePayload {
   isActive: boolean;
+  status: ArticleStatus;
   priceQuotes: PriceQuote[];
 }
 
@@ -86,5 +88,13 @@ export class ArticleApiService {
 
   updatePriceHt(ean13: string, payload: ArticlePriceUpdatePayload): Observable<ArticleResponse> {
     return this.http.patch<ArticleResponse>(`/api/articles/${encodeURIComponent(ean13)}`, payload);
+  }
+
+  archive(ean13: string): Observable<ArticleResponse> {
+    return this.http.post<ArticleResponse>(`/api/articles/${encodeURIComponent(ean13)}/archive`, null);
+  }
+
+  reactivate(ean13: string): Observable<ArticleResponse> {
+    return this.http.post<ArticleResponse>(`/api/articles/${encodeURIComponent(ean13)}/reactivate`, null);
   }
 }

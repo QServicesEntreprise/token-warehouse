@@ -139,6 +139,7 @@ const initialModel: ArticleFormModel = {
             }
           }
         </div>
+        <p id="catalog-lifecycle-status" aria-live="polite" role="status">{{ lifecycleMessage() }}</p>
 
         @if (catalogStale()) {
           <p id="catalog-stale" class="stale-result">Les lignes affichées proviennent d’une recherche précédente et ne sont plus à jour.</p>
@@ -165,7 +166,7 @@ const initialModel: ArticleFormModel = {
                     <th scope="row">{{ article.name }}</th>
                     <td>{{ article.ean13 }}</td>
                     <td>{{ article.type === 'food' ? 'Alimentaire' : 'Non alimentaire' }}</td>
-                    <td>{{ article.isActive ? 'Actif' : 'Archivé' }}</td>
+                    <td>{{ isActiveArticle(article) ? 'Actif' : 'Archivé' }}</td>
                     <td>
                       {{ article.type === 'food'
                         ? formatConsumptionModes(article.consumptionModes ?? [])
@@ -179,6 +180,14 @@ const initialModel: ArticleFormModel = {
                         [attr.aria-label]="'Consulter ' + article.name"
                         (click)="openCatalogArticle(article)">
                         Détail
+                      </button>
+                      <button
+                        type="button"
+                        class="table-action"
+                        [disabled]="transitioningEan() === article.ean13"
+                        [attr.aria-label]="(isActiveArticle(article) ? 'Archiver ' : 'Réactiver ') + article.name"
+                        (click)="onCatalogLifecycle(article)">
+                        {{ transitioningEan() === article.ean13 ? 'Traitement…' : (isActiveArticle(article) ? 'Archiver' : 'Réactiver') }}
                       </button>
                     </td>
                   </tr>
@@ -291,7 +300,7 @@ const initialModel: ArticleFormModel = {
               <div><dt>EAN-13</dt><dd>{{ article.ean13 }}</dd></div>
               <div><dt>Type</dt><dd>{{ article.type === 'food' ? 'Alimentaire' : 'Non alimentaire' }}</dd></div>
               <div><dt>Prix HT</dt><dd>{{ article.priceHtCents }} centimes</dd></div>
-              <div><dt>Statut</dt><dd>{{ article.isActive ? 'Actif' : 'Archivé' }}</dd></div>
+              <div><dt>Statut</dt><dd>{{ isActiveArticle(article) ? 'Actif' : 'Archivé' }}</dd></div>
               @if (article.dlc) {
                 <div><dt>DLC</dt><dd>{{ article.dlc }}</dd></div>
               }
@@ -302,6 +311,14 @@ const initialModel: ArticleFormModel = {
                 <div><dt>Packaging</dt><dd>{{ article.packaging }}</dd></div>
               }
             </dl>
+
+            <button
+              type="button"
+              class="secondary-button"
+              [disabled]="transitioningEan() === article.ean13"
+              (click)="onCatalogLifecycle(article)">
+              {{ transitioningEan() === article.ean13 ? 'Traitement…' : (isActiveArticle(article) ? 'Archiver l’Article' : 'Réactiver l’Article') }}
+            </button>
 
             <form id="price-update-form" (submit)="onPriceUpdate($event)" aria-labelledby="price-update-title">
               <h4 id="price-update-title">Prix de référence</h4>
@@ -389,8 +406,12 @@ export class AppComponent implements OnInit {
   readonly catalogType = signal<CatalogType>('all');
   readonly catalogMode = signal<ConsumptionMode | ''>('');
   readonly catalogPackaging = signal<Packaging | ''>('');
+  readonly transitioningEan = signal('');
+  readonly lifecycleMessage = signal('');
 
   private catalogRequestId = 0;
+  private detailRequestId = 0;
+  private lifecycleRequestId = 0;
 
   ngOnInit(): void {
     void this.loadCatalog();
@@ -475,6 +496,49 @@ export class AppComponent implements OnInit {
     void this.loadDetail(article.ean13);
   }
 
+  isActiveArticle(article: ArticleListResponse | ArticleResponse): boolean {
+    return article.status ? article.status === 'active' : article.isActive;
+  }
+
+  async onCatalogLifecycle(article: ArticleListResponse | ArticleResponse): Promise<void> {
+    const requestId = ++this.lifecycleRequestId;
+    const ean13 = article.ean13;
+    this.lifecycleMessage.set('');
+    this.transitioningEan.set(ean13);
+    try {
+      const updated = await firstValueFrom(
+        this.isActiveArticle(article)
+        ? this.api.archive(ean13)
+        : this.api.reactivate(ean13),
+      );
+      if (requestId !== this.lifecycleRequestId) {
+        if (this.detail()?.ean13 === ean13) {
+          await this.loadDetail(ean13, true);
+        }
+      } else {
+        if (this.detail()?.ean13 === ean13) {
+          this.showDetail(updated);
+        }
+        this.lifecycleMessage.set(
+          `${updated.name} est ${updated.status === 'active' ? 'actif' : 'archivé'}.`,
+        );
+      }
+      await this.loadCatalog();
+    } catch (error) {
+      if (requestId !== this.lifecycleRequestId) {
+        return;
+      }
+
+      this.lifecycleMessage.set(
+        this.problemMessage(error, 'La transition du cycle de vie a échoué.'),
+      );
+    } finally {
+      if (requestId === this.lifecycleRequestId && this.transitioningEan() === ean13) {
+        this.transitioningEan.set('');
+      }
+    }
+  }
+
   formatConsumptionModes(modes: ConsumptionMode[]): string {
     return modes
       .map((mode) => mode === 'takeaway' ? 'À emporter' : 'Sur place')
@@ -496,18 +560,29 @@ export class AppComponent implements OnInit {
     await this.loadDetail(this.lookupEan().trim());
   }
 
-  private async loadDetail(ean13: string): Promise<void> {
+  private async loadDetail(ean13: string, preserveCurrentDetail = false): Promise<void> {
+    this.invalidateDetailRequest();
+    const requestId = this.detailRequestId;
     this.lookupError.set('');
-    this.detail.set(null);
-    this.priceUpdateError.set('');
-    this.priceHtFieldError.set('');
+    if (!preserveCurrentDetail) {
+      this.detail.set(null);
+      this.priceUpdateError.set('');
+      this.priceHtFieldError.set('');
+    }
     this.lookingUp.set(true);
     try {
-      this.showDetail(await firstValueFrom(this.api.getByEan13(ean13)));
+      const article = await firstValueFrom(this.api.getByEan13(ean13));
+      if (requestId === this.detailRequestId) {
+        this.setDetail(article);
+      }
     } catch (error) {
-      this.lookupError.set(this.problemMessage(error, 'Article introuvable.'));
+      if (requestId === this.detailRequestId) {
+        this.lookupError.set(this.problemMessage(error, 'Article introuvable.'));
+      }
     } finally {
-      this.lookingUp.set(false);
+      if (requestId === this.detailRequestId) {
+        this.lookingUp.set(false);
+      }
     }
   }
 
@@ -546,6 +621,7 @@ export class AppComponent implements OnInit {
 
   private async createArticle(): Promise<TreeValidationResult> {
     this.submitting.set(true);
+    this.invalidateDetailRequest();
     this.detail.set(null);
     try {
       const created = await firstValueFrom(this.api.create(this.toPayload()));
@@ -691,10 +767,20 @@ export class AppComponent implements OnInit {
   }
 
   private showDetail(article: ArticleResponse): void {
+    this.invalidateDetailRequest();
+    this.setDetail(article);
+  }
+
+  private setDetail(article: ArticleResponse): void {
     this.detail.set(article);
     this.priceHtDraft.set(String(article.priceHtCents));
     this.priceUpdateError.set('');
     this.priceHtFieldError.set('');
+  }
+
+  private invalidateDetailRequest(): void {
+    this.detailRequestId += 1;
+    this.lookingUp.set(false);
   }
 
   private setPriceUpdateError(message: string, fieldMessage: string): void {

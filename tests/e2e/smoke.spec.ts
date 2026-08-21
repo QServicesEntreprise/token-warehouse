@@ -76,6 +76,86 @@ test('searches and filters the catalogue, including an archived detail', async (
   await page.locator('#catalog-search').fill(foodEan);
   await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
   await expect(articleRow(foodEan)).toBeVisible();
+  const archiveAction = articleRow(foodEan).getByRole('button', { name: 'Archiver Chocolat noir' });
+  await archiveAction.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#catalog-lifecycle-status')).toContainText('archivé');
+  await expect(articleRow(foodEan)).toHaveCount(0);
+
+  await page.locator('#catalog-status').selectOption('archived');
+  await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
+  await expect(articleRow(foodEan)).toBeVisible();
+
+  await page.getByRole('button', { name: 'Consulter Chocolat noir' }).click();
+  await expect(page.getByRole('heading', { name: 'Chocolat noir' })).toBeVisible();
+  await expect(page.locator('.article-detail').getByText(foodEan)).toBeVisible();
+  await expect(page.locator('section[aria-labelledby="lookup-title"]').getByText('Archivé', { exact: true })).toBeVisible();
+  await expect(articleDetailText('Alimentaire')).toBeVisible();
+  await expect(articleDetailText('199 centimes')).toBeVisible();
+  await expect(articleDetailText('2026-12-31')).toBeVisible();
+  await expect(articleDetailText('takeaway, onsite')).toBeVisible();
+
+  await page.reload();
+  await page.locator('#lookupEan13').fill(foodEan);
+  await page.getByRole('button', { name: 'Consulter', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Chocolat noir' })).toBeVisible();
+  await expect(page.locator('.article-detail').getByText(foodEan)).toBeVisible();
+  await expect(page.locator('section[aria-labelledby="lookup-title"]').getByText('Archivé', { exact: true })).toBeVisible();
+  await expect(articleDetailText('Alimentaire')).toBeVisible();
+  await expect(articleDetailText('199 centimes')).toBeVisible();
+  await expect(articleDetailText('2026-12-31')).toBeVisible();
+  await expect(articleDetailText('takeaway, onsite')).toBeVisible();
+
+  await page.locator('#ean13').fill(foodEan);
+  await page.locator('#name').fill('Doublon archivé');
+  await page.locator('#priceHtCents').fill('1000');
+  await page.locator('#dlc').fill('2026-12-31');
+  await page.locator('#consumptionModes').getByLabel('À emporter').check();
+  const reuseResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'POST' && url.pathname === '/api/articles';
+  });
+  await page.getByRole('button', { name: 'Créer l’Article' }).click();
+  const reuseResponse = await reuseResponsePromise;
+  expect(reuseResponse.status()).toBe(409);
+  expect(reuseResponse.headers()['content-type']).toContain('application/problem+json');
+  await expect(reuseResponse.json()).resolves.toMatchObject({
+    code: 'article.ean13.conflict',
+    errors: { ean13: expect.arrayContaining([expect.stringMatching(/\S+/)]) },
+  });
+  await expect(page.locator('#ean13-error')).toContainText('déjà');
+  await expect(page.locator('#ean13')).toBeFocused();
+
+  await page.locator('#catalog-search').fill(foodEan);
+  await page.locator('#catalog-status').selectOption('archived');
+  const archivedListResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'GET'
+      && url.pathname === '/api/articles'
+      && url.searchParams.get('status') === 'archived'
+      && url.searchParams.get('search') === foodEan;
+  });
+  await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
+  const archivedListResponse = await archivedListResponsePromise;
+  const archivedArticles = await archivedListResponse.json() as Array<{ ean13: string }>;
+  expect(archivedListResponse.status()).toBe(200);
+  expect(archivedArticles).toHaveLength(1);
+  expect(archivedArticles[0]?.ean13).toBe(foodEan);
+  await expect(articleRow(foodEan)).toHaveCount(1);
+
+  const reactivateAction = articleRow(foodEan).getByRole('button', { name: 'Réactiver Chocolat noir' });
+  await reactivateAction.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#catalog-lifecycle-status')).toContainText('actif');
+  await expect(articleRow(foodEan)).toHaveCount(0);
+
+  await page.locator('#catalog-status').selectOption('active');
+  await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
+  await expect(articleRow(foodEan)).toBeVisible();
+
+  await page.locator('#catalog-search').fill(foodEan);
+  await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
+  await expect(articleRow(foodEan)).toBeVisible();
 
   await page.locator('#catalog-search').fill('aucune référence');
   await page.getByRole('button', { name: 'Rechercher', exact: true }).click();

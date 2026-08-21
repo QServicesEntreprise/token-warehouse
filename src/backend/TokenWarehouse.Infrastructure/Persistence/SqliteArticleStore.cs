@@ -78,6 +78,71 @@ public sealed class SqliteArticleStore(IDbContextFactory<WarehouseDbContext> con
         return entities.Select(ToDomain).ToArray();
     }
 
+    public async ValueTask<ArticleStoreLifecycleTransitionStatus> TransitionLifecycleAsync(
+        Ean13 ean13,
+        ArticleLifecycleStatus expectedStatus,
+        ArticleLifecycleStatus targetStatus,
+        ArticleLifecycleHistory history,
+        CancellationToken cancellationToken = default)
+    {
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+        try
+        {
+            await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+            var entity = await context.Articles
+                .SingleOrDefaultAsync(
+                    article => article.Ean13 == ean13.Value && article.IsActive == ToIsActive(expectedStatus),
+                    cancellationToken);
+
+            if (entity is null)
+            {
+                var exists = await context.Articles.AnyAsync(article => article.Ean13 == ean13.Value, cancellationToken);
+                return exists
+                    ? ArticleStoreLifecycleTransitionStatus.Conflict
+                    : ArticleStoreLifecycleTransitionStatus.NotFound;
+            }
+
+            entity.IsActive = ToIsActive(targetStatus);
+            context.ArticleLifecycleHistory.Add(ToEntity(history));
+
+            await context.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return ArticleStoreLifecycleTransitionStatus.Updated;
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return ArticleStoreLifecycleTransitionStatus.Conflict;
+        }
+        catch (DbUpdateException exception) when (IsSqliteLock(exception))
+        {
+            return ArticleStoreLifecycleTransitionStatus.Conflict;
+        }
+        catch (SqliteException exception) when (exception.SqliteErrorCode is 5 or 6)
+        {
+            return ArticleStoreLifecycleTransitionStatus.Conflict;
+        }
+    }
+
+    public async ValueTask<IReadOnlyList<ArticleLifecycleHistory>> ListLifecycleHistoryAsync(
+        Ean13? ean13 = null,
+        CancellationToken cancellationToken = default)
+    {
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+        var query = context.ArticleLifecycleHistory.AsNoTracking().AsQueryable();
+        if (ean13 is { } value)
+        {
+            query = query.Where(history => history.Ean13 == value.Value);
+        }
+
+        var entities = await query
+            .OrderBy(history => history.Id)
+            .ToListAsync(cancellationToken);
+        return entities
+            .Select(ToDomain)
+            .OrderBy(history => history.OccurredAt)
+            .ToArray();
+    }
+
     public async ValueTask<ArticleStoreInsertStatus> InsertAsync(
         Article article,
         CancellationToken cancellationToken = default)
@@ -166,6 +231,15 @@ public sealed class SqliteArticleStore(IDbContextFactory<WarehouseDbContext> con
             Packaging = article.Packaging is null ? null : ToWirePackaging(article.Packaging.Value)
         };
 
+    private static ArticleLifecycleHistoryEntity ToEntity(ArticleLifecycleHistory history)
+        => new()
+        {
+            Ean13 = history.Ean13.Value,
+            PreviousStatus = ToWireStatus(history.PreviousStatus),
+            NextStatus = ToWireStatus(history.NextStatus),
+            OccurredAt = history.OccurredAt.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture)
+        };
+
     private static Article ToDomain(ArticleEntity entity)
     {
         var result = Article.Reconstitute(
@@ -192,11 +266,46 @@ public sealed class SqliteArticleStore(IDbContextFactory<WarehouseDbContext> con
         return result.Value;
     }
 
+    private static ArticleLifecycleHistory ToDomain(ArticleLifecycleHistoryEntity entity)
+    {
+        if (!Ean13.TryCreate(entity.Ean13, out var ean13)
+            || !TryParseStatus(entity.PreviousStatus, out var previousStatus)
+            || !TryParseStatus(entity.NextStatus, out var nextStatus)
+            || !DateTimeOffset.TryParse(
+                entity.OccurredAt,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.RoundtripKind,
+                out var occurredAt))
+        {
+            throw new InvalidOperationException("Stored Article history data is invalid.");
+        }
+
+        return new ArticleLifecycleHistory(ean13, previousStatus, nextStatus, occurredAt);
+    }
+
     private static bool IsUniqueConstraintViolation(DbUpdateException exception)
         => exception.InnerException is SqliteException { SqliteErrorCode: 19 };
 
+    private static bool IsSqliteLock(DbUpdateException exception)
+        => exception.InnerException is SqliteException { SqliteErrorCode: 5 or 6 };
+
     private static string ToWireMode(ConsumptionMode mode)
         => mode == ConsumptionMode.Takeaway ? "takeaway" : "onsite";
+
+    private static bool ToIsActive(ArticleLifecycleStatus status)
+        => status == ArticleLifecycleStatus.Active;
+
+    private static string ToWireStatus(ArticleLifecycleStatus status)
+        => status == ArticleLifecycleStatus.Active ? "active" : "archived";
+
+    private static bool TryParseStatus(string value, out ArticleLifecycleStatus status)
+    {
+        status = value.Equals("active", StringComparison.OrdinalIgnoreCase)
+            ? ArticleLifecycleStatus.Active
+            : ArticleLifecycleStatus.Archived;
+        return value.Equals("active", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("archived", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static string ToWireType(ArticleType type)
         => type == ArticleType.Food ? "food" : "nonFood";

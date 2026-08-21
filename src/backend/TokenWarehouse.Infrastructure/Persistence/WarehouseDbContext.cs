@@ -6,6 +6,8 @@ public sealed class WarehouseDbContext(DbContextOptions<WarehouseDbContext> opti
 {
     public DbSet<ArticleEntity> Articles => Set<ArticleEntity>();
 
+    public DbSet<ArticleLifecycleHistoryEntity> ArticleLifecycleHistory => Set<ArticleLifecycleHistoryEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         var article = modelBuilder.Entity<ArticleEntity>();
@@ -14,5 +16,17 @@ public sealed class WarehouseDbContext(DbContextOptions<WarehouseDbContext> opti
         article.Property(entity => entity.Name).IsRequired();
         article.Property(entity => entity.NameSearchKey).IsRequired();
         article.Property(entity => entity.IsActive).IsRequired();
+        article.Property(entity => entity.IsActive).IsConcurrencyToken();
+
+        var history = modelBuilder.Entity<ArticleLifecycleHistoryEntity>();
+        history.HasKey(entity => entity.Id);
+        history.Property(entity => entity.Ean13).IsRequired();
+        history.Property(entity => entity.PreviousStatus).IsRequired();
+        history.Property(entity => entity.NextStatus).IsRequired();
+        history.Property(entity => entity.OccurredAt).IsRequired();
+        history.HasOne<ArticleEntity>()
+            .WithMany()
+            .HasForeignKey(entity => entity.Ean13)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }
