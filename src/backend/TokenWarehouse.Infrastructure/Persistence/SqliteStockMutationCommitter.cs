@@ -19,12 +19,23 @@ public sealed class SqliteStockMutationCommitter(
         try
         {
             var eans = plan.Lines.Select(line => line.Ean13.Value).ToArray();
+            var currentArticles = await context.Articles
+                .Where(article => eans.Contains(article.Ean13))
+                .ToDictionaryAsync(article => article.Ean13, StringComparer.Ordinal, cancellationToken);
             var currentPositions = await context.StockPositions
                 .Where(position => eans.Contains(position.Ean13))
                 .ToDictionaryAsync(position => position.Ean13, StringComparer.Ordinal, cancellationToken);
 
             foreach (var line in plan.Lines)
             {
+                if (!currentArticles.TryGetValue(line.Ean13.Value, out var currentArticle)
+                    || currentArticle.Version != line.ExpectedArticleVersion)
+                {
+                    return StockMutationCommitResult.Conflict();
+                }
+
+                // Keep the Article in this SaveChanges call so its concurrency tokens are checked atomically.
+                context.Entry(currentArticle).Property(article => article.Version).IsModified = true;
                 currentPositions.TryGetValue(line.Ean13.Value, out var current);
                 if ((current is null
                         && (line.ExpectedPreviousPhysicalStock != 0

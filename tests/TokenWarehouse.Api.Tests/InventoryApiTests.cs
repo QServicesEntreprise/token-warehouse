@@ -234,6 +234,35 @@ public sealed class InventoryApiTests
     }
 
     [Fact]
+    public async Task Rejects_bulk_inventory_when_an_article_changes_before_commit_without_partial_rows()
+    {
+        using var factory = new InventoryHostFactory("0123456789012");
+        using var client = factory.CreateClient();
+        await factory.SeedArticleAsync("0123456789012", "Premier Article", true, 8);
+        await factory.SeedArticleAsync("7351353713578", "Second Article", true, 5);
+
+        using var response = await client.PostAsJsonAsync(
+            "/api/inventories/bulk",
+            new
+            {
+                lines = new[]
+                {
+                    new { ean13 = "0123456789012", countedQuantity = 11 },
+                    new { ean13 = "7351353713578", countedQuantity = 2 }
+                }
+            });
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("POSITION_CONFLICT", body.RootElement.GetProperty("code").GetString());
+        Assert.Equal(8, await factory.ReadPhysicalQuantityAsync("0123456789012"));
+        Assert.Equal(5, await factory.ReadPhysicalQuantityAsync("7351353713578"));
+        Assert.Equal(0, await factory.CountOperationsAsync());
+        Assert.Equal(0, await factory.CountOperationLinesAsync());
+    }
+
+    [Fact]
     public async Task Persists_a_zero_difference_and_rereads_it_after_a_fresh_context()
     {
         using var factory = new InventoryHostFactory();
@@ -551,6 +580,12 @@ public sealed class InventoryApiTests
         private readonly string databasePath = Path.Combine(
             Path.GetTempPath(),
             $"token-warehouse-inventory-{Guid.NewGuid():N}.db");
+        private readonly string? articleToChangeBeforeCommit;
+
+        public InventoryHostFactory(string? articleToChangeBeforeCommit = null)
+        {
+            this.articleToChangeBeforeCommit = articleToChangeBeforeCommit;
+        }
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -560,6 +595,14 @@ public sealed class InventoryApiTests
             {
                 services.RemoveAll<IClock>();
                 services.AddSingleton<IClock>(new FixedClock());
+                if (articleToChangeBeforeCommit is not null)
+                {
+                    services.RemoveAll<IStockMutationCommitter>();
+                    services.AddScoped<IStockMutationCommitter>(serviceProvider =>
+                        new ArticleChangingCommitter(
+                            serviceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>(),
+                            articleToChangeBeforeCommit));
+                }
             });
         }
 
@@ -674,6 +717,26 @@ public sealed class InventoryApiTests
                 File.Delete($"{databasePath}-shm");
                 File.Delete($"{databasePath}-wal");
             }
+        }
+    }
+
+    private sealed class ArticleChangingCommitter(
+        IDbContextFactory<WarehouseDbContext> contextFactory,
+        string ean13) : IStockMutationCommitter
+    {
+        public async ValueTask<StockMutationCommitResult> CommitAsync(
+            InventoryCommitPlan plan,
+            CancellationToken cancellationToken = default)
+        {
+            await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+            var article = await context.Articles
+                .SingleAsync(candidate => candidate.Ean13 == ean13, cancellationToken);
+            article.IsActive = false;
+            article.Version++;
+            await context.SaveChangesAsync(cancellationToken);
+
+            return await new SqliteStockMutationCommitter(contextFactory)
+                .CommitAsync(plan, cancellationToken);
         }
     }
 

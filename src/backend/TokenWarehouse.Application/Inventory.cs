@@ -27,7 +27,8 @@ public sealed record InventoryCommitLinePlan(
     Ean13 Ean13,
     int ExpectedPreviousPhysicalStock,
     StockOperationLine OperationLine,
-    int ExpectedPositionVersion = 0);
+    int ExpectedPositionVersion,
+    int ExpectedArticleVersion);
 
 public sealed record InventoryCommitPlan
 {
@@ -35,7 +36,8 @@ public sealed record InventoryCommitPlan
         Ean13 ean13,
         int expectedPreviousPhysicalStock,
         StockOperation operation,
-        int expectedPositionVersion = 0)
+        int expectedPositionVersion = 0,
+        int expectedArticleVersion = 0)
     {
         Operation = operation;
         Lines =
@@ -44,7 +46,8 @@ public sealed record InventoryCommitPlan
                 ean13,
                 expectedPreviousPhysicalStock,
                 operation.Lines[0],
-                expectedPositionVersion)
+                expectedPositionVersion,
+                expectedArticleVersion)
         ];
     }
 
@@ -72,6 +75,8 @@ public sealed record InventoryCommitPlan
     public int ExpectedPreviousPhysicalStock => Lines[0].ExpectedPreviousPhysicalStock;
 
     public int ExpectedPositionVersion => Lines[0].ExpectedPositionVersion;
+
+    public int ExpectedArticleVersion => Lines[0].ExpectedArticleVersion;
 }
 
 public enum StockMutationCommitStatus
@@ -296,7 +301,8 @@ public sealed class InventoryApplication(
                 ean13,
                 previousPhysicalStock,
                 operation,
-                position?.Version ?? 0);
+                position?.Version ?? 0,
+                article.Version);
             var commit = await committer.CommitAsync(plan, cancellationToken);
 
             return commit.Status switch
@@ -456,7 +462,8 @@ public sealed class InventoryApplication(
                             line.Ean13,
                             line.PreviousPhysicalStock,
                             line,
-                            position?.Version ?? 0);
+                            position?.Version ?? 0,
+                            articles[line.Ean13].Version);
                     })
                     .ToArray());
             var commit = await committer.CommitAsync(plan, cancellationToken);

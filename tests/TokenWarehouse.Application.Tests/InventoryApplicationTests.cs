@@ -22,7 +22,8 @@ public sealed class InventoryApplicationTests
                 true,
                 new DateOnly(2030, 1, 15),
                 [ConsumptionMode.Takeaway],
-                null)),
+                null,
+                4)),
             new FakePositionReader(new StockPosition(ean13, 8)),
             committer,
             new FixedClock(FixedNow));
@@ -43,6 +44,7 @@ public sealed class InventoryApplicationTests
         Assert.NotNull(result.Receipt);
         Assert.NotEmpty(result.Receipt!.Operation.Id);
         Assert.Equal(8, committer.Plan?.ExpectedPreviousPhysicalStock);
+        Assert.Equal(4, committer.Plan?.ExpectedArticleVersion);
     }
 
     [Fact]
@@ -58,7 +60,8 @@ public sealed class InventoryApplicationTests
                 false,
                 null,
                 [],
-                PackagingCondition.New)),
+                PackagingCondition.New,
+                2)),
             new FakePositionReader(new StockPosition(ean13, 4)),
             committer,
             new FixedClock(FixedNow));
@@ -114,8 +117,8 @@ public sealed class InventoryApplicationTests
         var second = ParseEan("7351353713578");
         var articles = new Dictionary<Ean13, ArticleSellabilitySnapshot>
         {
-            [first] = new(first, "Premier Article", ArticleType.Food, true, new DateOnly(2030, 1, 15), [ConsumptionMode.Takeaway], null),
-            [second] = new(second, "Second Article", ArticleType.NonFood, true, null, [], PackagingCondition.New)
+            [first] = new(first, "Premier Article", ArticleType.Food, true, new DateOnly(2030, 1, 15), [ConsumptionMode.Takeaway], null, 3),
+            [second] = new(second, "Second Article", ArticleType.NonFood, true, null, [], PackagingCondition.New, 5)
         };
         var positions = new Dictionary<Ean13, StockPosition>
         {
@@ -149,6 +152,8 @@ public sealed class InventoryApplicationTests
         Assert.Equal(2, committer.Plan?.Lines.Count);
         Assert.Equal(8, committer.Plan?.Lines[0].ExpectedPreviousPhysicalStock);
         Assert.Equal(5, committer.Plan?.Lines[1].ExpectedPreviousPhysicalStock);
+        Assert.Equal(3, committer.Plan?.Lines[0].ExpectedArticleVersion);
+        Assert.Equal(5, committer.Plan?.Lines[1].ExpectedArticleVersion);
     }
 
     [Fact]

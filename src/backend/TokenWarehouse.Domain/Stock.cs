@@ -48,7 +48,8 @@ public sealed record ArticleSellabilitySnapshot(
     bool IsActive,
     DateOnly? Dlc,
     IReadOnlyList<ConsumptionMode> ConsumptionModes,
-    PackagingCondition? Packaging)
+    PackagingCondition? Packaging,
+    int Version)
 {
     public static ArticleSellabilitySnapshot From(Article article)
     {
@@ -61,7 +62,8 @@ public sealed record ArticleSellabilitySnapshot(
             article.IsActive,
             article.Dlc,
             article.ConsumptionModes,
-            article.Packaging);
+            article.Packaging,
+            article.Version);
     }
 }
 
