@@ -1143,6 +1143,15 @@ export class AppComponent implements OnInit {
     if (this.stockDetail()?.ean13 === position.ean13) {
       this.stockDetail.set(position);
     }
+    this.detail.update((article) => article?.ean13 === position.ean13
+      ? {
+          ...article,
+          stock: {
+            physicalQuantity: position.physicalQuantity,
+            sellableQuantity: position.sellableQuantity,
+          },
+        }
+      : article);
   }
 
   private toSupplyQuantity(value: string): number | string | null {

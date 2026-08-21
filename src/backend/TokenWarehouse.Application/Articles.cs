@@ -59,6 +59,13 @@ public interface IStockPositionReader
         CancellationToken cancellationToken = default);
 }
 
+public interface IArticleSellabilityReader
+{
+    ValueTask<ArticleSellabilitySnapshot?> FindSellabilityByEanAsync(
+        Ean13 ean13,
+        CancellationToken cancellationToken = default);
+}
+
 public sealed record ArticleListItemView(
     Ean13 Ean13,
     ArticleType Type,

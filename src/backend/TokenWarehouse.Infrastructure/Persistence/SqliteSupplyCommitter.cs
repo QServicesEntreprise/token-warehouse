@@ -20,12 +20,12 @@ public sealed class SqliteSupplyCommitter(
         try
         {
             await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
-            var article = await context.Articles.SingleOrDefaultAsync(
-                candidate => candidate.Ean13 == request.Article.Ean13.Value
+            var articleEntity = await context.Articles.SingleOrDefaultAsync(
+                candidate => candidate.Ean13 == request.ArticleSnapshot.Ean13.Value
                     && candidate.IsActive
-                    && candidate.Version == request.Article.Version,
+                    && candidate.Version == request.ArticleSnapshot.Version,
                 cancellationToken);
-            if (article is null)
+            if (articleEntity is null)
             {
                 return Conflict();
             }

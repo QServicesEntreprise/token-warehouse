@@ -29,7 +29,7 @@ public sealed record SupplyResult(
     IReadOnlyList<ArticleValidationError> Errors);
 
 public sealed record SupplyCommitRequest(
-    Article Article,
+    ArticleSellabilitySnapshot ArticleSnapshot,
     StockPosition? CurrentPosition,
     StockPosition Position,
     StockOperation Operation);
@@ -60,7 +60,7 @@ public interface IRecordSupplyUseCase
 }
 
 public sealed class SupplyApplication(
-    IArticleStore articleStore,
+    IArticleSellabilityReader articleReader,
     IStockPositionReader stockReader,
     ISupplyCommitter committer,
     IClock clock) : IRecordSupplyUseCase
@@ -100,13 +100,13 @@ public sealed class SupplyApplication(
             return new(SupplyStatus.ValidationFailed, null, errors);
         }
 
-        var article = await articleStore.FindByEanAsync(ean13, cancellationToken);
-        if (article is null)
+        var articleSnapshot = await articleReader.FindSellabilityByEanAsync(ean13, cancellationToken);
+        if (articleSnapshot is null)
         {
             return new(SupplyStatus.NotFound, null, []);
         }
 
-        if (!article.IsActive)
+        if (!articleSnapshot.IsActive)
         {
             return new(
                 SupplyStatus.Conflict,
@@ -140,7 +140,7 @@ public sealed class SupplyApplication(
             quantity,
             clock.UtcNow);
         var committed = await committer.CommitAsync(
-            new SupplyCommitRequest(article, currentPosition, nextPosition, operation),
+            new SupplyCommitRequest(articleSnapshot, currentPosition, nextPosition, operation),
             cancellationToken);
 
         if (committed.Status != SupplyCommitStatus.Committed)
@@ -163,7 +163,7 @@ public sealed class SupplyApplication(
             new SupplyReceipt(
                 committedOperation,
                 StockPositionView.From(
-                    ArticleSellabilitySnapshot.From(article),
+                    articleSnapshot,
                     committedPosition.PhysicalQuantity,
                     clock.WarehouseDate)),
             []);

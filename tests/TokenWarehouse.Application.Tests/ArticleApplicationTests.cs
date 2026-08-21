@@ -503,6 +503,43 @@ public sealed class ArticleApplicationTests
     }
 
     [Fact]
+    public async Task Leaves_position_and_history_unchanged_when_commit_rolls_back()
+    {
+        var store = new InMemoryArticleStore();
+        var articleApplication = CreateApplication(store);
+        await articleApplication.CreateAsync(new CreateArticleCommand
+        {
+            Ean13 = "0123456789012",
+            Type = "food",
+            Name = "Article existant",
+            PriceHtCents = 100,
+            Dlc = "2026-12-31",
+            ConsumptionModes = ["takeaway"]
+        });
+
+        var ean13 = CreateEan("0123456789012");
+        var positions = new List<StockPosition> { new(ean13, 4) };
+        Assert.True(Quantity.TryCreatePositive(1, out var sourceQuantity));
+        var source = StockOperation.CreateSupply("source-operation", ean13, sourceQuantity, TestClock.UtcNow);
+        var operations = new List<StockOperation> { source };
+        var supply = new SupplyApplication(
+            store,
+            new InMemoryStockPositionReader(positions),
+            new RollingBackSupplyCommitter(positions, operations),
+            TestClock);
+
+        var result = await supply.RecordAsync(new SupplyCommand
+        {
+            Ean13 = ean13.Value,
+            Quantity = 2
+        });
+
+        Assert.Equal(SupplyStatus.Conflict, result.Status);
+        Assert.Equal(4, Assert.Single(positions).PhysicalQuantity);
+        Assert.Equal([source], operations);
+    }
+
+    [Fact]
     public async Task Rejects_invalid_or_archived_supplies_before_the_commit_seam()
     {
         var store = new InMemoryArticleStore();
@@ -677,7 +714,44 @@ public sealed class ArticleApplicationTests
         }
     }
 
-    private sealed class InMemoryArticleStore : IArticleStore
+    private sealed class RollingBackSupplyCommitter(
+        IList<StockPosition> positions,
+        IList<StockOperation> operations) : ISupplyCommitter
+    {
+        public ValueTask<SupplyCommitResult> CommitAsync(
+            SupplyCommitRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            var previousPositions = positions.ToArray();
+            var previousOperations = operations.ToArray();
+
+            if (request.CurrentPosition is { } current)
+            {
+                positions[positions.IndexOf(current)] = request.Position;
+            }
+            else
+            {
+                positions.Add(request.Position);
+            }
+
+            operations.Add(request.Operation);
+            positions.Clear();
+            foreach (var position in previousPositions)
+            {
+                positions.Add(position);
+            }
+
+            operations.Clear();
+            foreach (var operation in previousOperations)
+            {
+                operations.Add(operation);
+            }
+
+            return ValueTask.FromResult(new SupplyCommitResult(SupplyCommitStatus.Conflict, null, null));
+        }
+    }
+
+    private sealed class InMemoryArticleStore : IArticleStore, IArticleSellabilityReader
     {
         private readonly List<Article> articles = [];
         private readonly List<ArticleLifecycleHistory> history = [];
@@ -709,6 +783,14 @@ public sealed class ArticleApplicationTests
             => ValueTask.FromResult(
                 articles.SingleOrDefault(article => article.Ean13 == ean13) is { } article
                     ? Clone(article)
+                    : null);
+
+        public ValueTask<ArticleSellabilitySnapshot?> FindSellabilityByEanAsync(
+            Ean13 ean13,
+            CancellationToken cancellationToken = default)
+            => ValueTask.FromResult(
+                articles.SingleOrDefault(article => article.Ean13 == ean13) is { } article
+                    ? ArticleSellabilitySnapshot.From(article)
                     : null);
 
         public ValueTask<ArticleStoreInsertStatus> InsertAsync(Article article, CancellationToken cancellationToken = default)
