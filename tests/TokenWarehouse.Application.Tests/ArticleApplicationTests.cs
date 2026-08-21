@@ -423,6 +423,48 @@ public sealed class ArticleApplicationTests
         Assert.Equal("Batterie", (await application.GetAsync(ean13)).Article?.Name);
     }
 
+    [Fact]
+    public async Task Stock_read_returns_one_ordered_position_per_article_and_fills_missing_stock_with_zero()
+    {
+        var active = CreateArticle("0123456789012", "food", "Alimentaire double mode", ["takeaway", "onsite"]);
+        var archived = CreateArticle("4006381333931", "nonFood", "Infrastructure archivée", null, isActive: false);
+        var withoutPosition = CreateArticle("7351353713578", "nonFood", "Infrastructure sans position", null);
+        var stockReader = new InMemoryStockReadReader(
+            [
+                ArticleSellabilitySnapshot.From(withoutPosition),
+                ArticleSellabilitySnapshot.From(archived),
+                ArticleSellabilitySnapshot.From(active)
+            ],
+            [
+                new StockPosition(archived.Ean13, 4),
+                new StockPosition(active.Ean13, 5)
+            ]);
+        var application = new StockApplication(stockReader, TestClock);
+
+        var result = await application.ListAsync();
+
+        Assert.Equal(StockReadStatus.Success, result.Status);
+        Assert.Equal(
+            ["0123456789012", "4006381333931", "7351353713578"],
+            result.Positions.Select(position => position.Ean13.Value).ToArray());
+        Assert.Equal((5, 5, StockAvailability.Available, null),
+            (result.Positions[0].PhysicalQuantity,
+             result.Positions[0].SellableQuantity,
+             result.Positions[0].Availability,
+             result.Positions[0].Reason));
+        Assert.Equal((4, 0, StockAvailability.NotSellable, SellabilityReason.Archived),
+            (result.Positions[1].PhysicalQuantity,
+             result.Positions[1].SellableQuantity,
+             result.Positions[1].Availability,
+             result.Positions[1].Reason));
+        Assert.Equal((0, 0, StockAvailability.OutOfStock, null),
+            (result.Positions[2].PhysicalQuantity,
+             result.Positions[2].SellableQuantity,
+             result.Positions[2].Availability,
+             result.Positions[2].Reason));
+        Assert.Equal(1, stockReader.Calls);
+    }
+
     private static Article CreateArticle(
         string ean13,
         string type,
@@ -455,6 +497,21 @@ public sealed class ArticleApplicationTests
     private sealed class FixedClock(DateTimeOffset now) : IClock
     {
         public DateTimeOffset UtcNow => now;
+    }
+
+    private sealed class InMemoryStockReadReader(
+        IReadOnlyList<ArticleSellabilitySnapshot> articles,
+        IReadOnlyList<StockPosition> positions) : IStockReadReader
+    {
+        public int Calls { get; private set; }
+
+        public ValueTask<StockReadSnapshot> ReadAsync(
+            Ean13? ean13 = null,
+            CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            return ValueTask.FromResult(new StockReadSnapshot(articles, positions));
+        }
     }
 
     private sealed class InMemoryArticleStore : IArticleStore

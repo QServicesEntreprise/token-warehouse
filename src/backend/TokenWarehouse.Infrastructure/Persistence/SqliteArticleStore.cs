@@ -339,7 +339,7 @@ public sealed class SqliteArticleStore(IDbContextFactory<WarehouseDbContext> con
             ChangesJson = JsonSerializer.Serialize(history.Changes)
         };
 
-    private static Article ToDomain(ArticleEntity entity)
+    internal static Article ToDomain(ArticleEntity entity)
     {
         var result = Article.Reconstitute(
             new ArticleDraft

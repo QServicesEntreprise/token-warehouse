@@ -51,6 +51,9 @@ public sealed record ArticleStockView(int PhysicalQuantity, int SellableQuantity
 
 public interface IStockPositionReader
 {
+    ValueTask<IReadOnlyList<StockPosition>> ListAsync(
+        CancellationToken cancellationToken = default);
+
     ValueTask<StockPosition?> FindByEanAsync(
         Ean13 ean13,
         CancellationToken cancellationToken = default);
@@ -741,7 +744,7 @@ public sealed class ArticleApplication(IArticleStore store, IClock clock, IStock
         var sellableQuantity = SellabilityPolicy.Calculate(
             article,
             physicalQuantity,
-            DateOnly.FromDateTime(Clock.UtcNow.DateTime));
+            Clock.WarehouseDate);
 
         return new(
             article.Ean13,
@@ -777,6 +780,10 @@ public sealed class ArticleApplication(IArticleStore store, IClock clock, IStock
     private sealed class EmptyStockPositionReader : IStockPositionReader
     {
         public static readonly EmptyStockPositionReader Instance = new();
+
+        public ValueTask<IReadOnlyList<StockPosition>> ListAsync(
+            CancellationToken cancellationToken = default)
+            => ValueTask.FromResult<IReadOnlyList<StockPosition>>([]);
 
         public ValueTask<StockPosition?> FindByEanAsync(
             Ean13 ean13,

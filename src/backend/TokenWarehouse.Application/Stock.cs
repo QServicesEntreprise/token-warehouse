@@ -1,0 +1,120 @@
+using TokenWarehouse.Domain;
+
+namespace TokenWarehouse.Application;
+
+public sealed record StockPositionView(
+    Ean13 Ean13,
+    string Name,
+    ArticleType Type,
+    bool IsActive,
+    DateOnly? Dlc,
+    IReadOnlyList<ConsumptionMode> ConsumptionModes,
+    PackagingCondition? Packaging,
+    int PhysicalQuantity,
+    int SellableQuantity,
+    StockAvailability Availability,
+    SellabilityReason? Reason);
+
+public enum StockReadStatus
+{
+    Success,
+    ValidationFailed,
+    NotFound
+}
+
+public sealed record StockReadSnapshot(
+    IReadOnlyList<ArticleSellabilitySnapshot> Articles,
+    IReadOnlyList<StockPosition> Positions);
+
+public interface IStockReadReader
+{
+    ValueTask<StockReadSnapshot> ReadAsync(
+        Ean13? ean13 = null,
+        CancellationToken cancellationToken = default);
+}
+
+public sealed record StockReadResult(
+    StockReadStatus Status,
+    IReadOnlyList<StockPositionView> Positions,
+    StockPositionView? Position,
+    IReadOnlyList<ArticleValidationError> Errors);
+
+public interface IReadStockUseCase
+{
+    Task<StockReadResult> ListAsync(CancellationToken cancellationToken = default);
+
+    Task<StockReadResult> GetAsync(string ean13, CancellationToken cancellationToken = default);
+}
+
+public sealed class StockApplication(
+    IStockReadReader stockReader,
+    IClock clock) : IReadStockUseCase
+{
+    public async Task<StockReadResult> ListAsync(CancellationToken cancellationToken = default)
+    {
+        var snapshot = await stockReader.ReadAsync(cancellationToken: cancellationToken);
+        var positions = snapshot.Positions
+            .GroupBy(position => position.Ean13)
+            .ToDictionary(group => group.Key, group => group.First());
+
+        return new(
+            StockReadStatus.Success,
+            snapshot.Articles
+                .OrderBy(article => article.Ean13.Value, StringComparer.Ordinal)
+                .Select(article => ToView(article, positions.GetValueOrDefault(article.Ean13)))
+                .ToArray(),
+            null,
+            []);
+    }
+
+    public async Task<StockReadResult> GetAsync(
+        string ean13,
+        CancellationToken cancellationToken = default)
+    {
+        if (!Ean13.TryCreate(ean13, out var parsedEan13))
+        {
+            return new(
+                StockReadStatus.ValidationFailed,
+                [],
+                null,
+                [new(
+                    "stock.ean13.invalid",
+                    "ean13",
+                    "L’EAN-13 doit contenir 13 chiffres et un checksum valide.")]);
+        }
+
+        var snapshot = await stockReader.ReadAsync(parsedEan13, cancellationToken);
+        var article = snapshot.Articles.SingleOrDefault(candidate => candidate.Ean13 == parsedEan13);
+        return article is null
+            ? new(StockReadStatus.NotFound, [], null, [])
+            : new(
+                StockReadStatus.Success,
+                [],
+                ToView(
+                    article,
+                    snapshot.Positions.SingleOrDefault(position => position.Ean13 == parsedEan13)),
+                []);
+    }
+
+    private StockPositionView ToView(ArticleSellabilitySnapshot article, StockPosition? position)
+    {
+        var physicalQuantity = position?.PhysicalQuantity ?? 0;
+        var decision = SellabilityPolicy.Decide(
+            article,
+            physicalQuantity,
+            clock.WarehouseDate);
+
+        return new(
+            article.Ean13,
+            article.Name,
+            article.Type,
+            article.IsActive,
+            article.Dlc,
+            article.ConsumptionModes,
+            article.Packaging,
+            physicalQuantity,
+            decision.SellableQuantity,
+            decision.Availability,
+            decision.Reason);
+    }
+}

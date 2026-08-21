@@ -5,6 +5,8 @@ namespace TokenWarehouse.Application;
 public interface IClock
 {
     DateTimeOffset UtcNow { get; }
+
+    DateOnly WarehouseDate => DateOnly.FromDateTime(UtcNow.DateTime);
 }
 
 public enum ArticleLifecycleChangeStatus

@@ -83,6 +83,19 @@ et ajoute un fait immuable à l’Historique.
 Le host applique les migrations SQLite au démarrage sans service externe ni
 secret.
 
+## Contrat Stock courant
+
+`GET /api/stock` retourne une ligne ordonnée par EAN-13 pour chaque Article du
+Catalogue, y compris les Articles archivés et ceux sans position courante.
+`GET /api/stock/{ean13}` retourne la même représentation pour un Article connu.
+Chaque ligne conserve l’EAN-13 comme chaîne et expose `physicalQuantity`,
+`sellableQuantity`, `availability` (`AVAILABLE`, `OUT_OF_STOCK` ou
+`NOT_SELLABLE`) et `reason` (`ARCHIVED`, `DLC_EXPIRED`,
+`UNSELLABLE_PACKAGING` ou `null`). Les quantités vendables sont calculées par
+le backend et ne sont jamais recalculées par Angular. Un EAN mal formé renvoie
+`400`, un Article inconnu `404`, et les erreurs techniques utilisent
+`application/problem+json` avec `code: internal_error`.
+
 ## Contrat Article
 
 Les valeurs canoniques du JSON sont `food`/`nonFood`, `takeaway`/`onsite` et
