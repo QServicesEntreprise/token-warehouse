@@ -11,4 +11,14 @@ public sealed class StockOperationEntity
     public int Quantity { get; set; }
 
     public string OccurredAt { get; set; } = string.Empty;
+
+    public int PreviousPhysicalStock { get; set; }
+
+    public int CountedQuantity { get; set; }
+
+    public int InventoryDifference { get; set; }
+
+    public int ResultingPhysicalStock { get; set; }
+
+    public string TimestampUtc { get; set; } = string.Empty;
 }

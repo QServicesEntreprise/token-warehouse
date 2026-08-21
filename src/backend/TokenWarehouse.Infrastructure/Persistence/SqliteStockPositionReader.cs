@@ -42,6 +42,6 @@ public sealed class SqliteStockPositionReader(IDbContextFactory<WarehouseDbConte
 
     internal static StockPosition? ToDomain(StockPositionEntity entity)
         => Ean13.TryCreate(entity.Ean13, out var ean13)
-            ? new StockPosition(ean13, entity.PhysicalQuantity)
+            ? new StockPosition(ean13, entity.PhysicalQuantity, entity.Version)
             : null;
 }

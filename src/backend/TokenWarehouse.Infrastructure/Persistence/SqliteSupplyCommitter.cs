@@ -45,18 +45,21 @@ public sealed class SqliteSupplyCommitter(
                 context.StockPositions.Add(new StockPositionEntity
                 {
                     Ean13 = request.Position.Ean13.Value,
-                    PhysicalQuantity = request.Position.PhysicalQuantity
+                    PhysicalQuantity = request.Position.PhysicalQuantity,
+                    Version = 1
                 });
             }
             else
             {
-                if (currentPosition is null || currentPosition.PhysicalQuantity != request.CurrentPosition.PhysicalQuantity)
+                if (currentPosition is null
+                    || currentPosition.PhysicalQuantity != request.CurrentPosition.PhysicalQuantity
+                    || currentPosition.Version != request.CurrentPosition.Version)
                 {
                     return Conflict();
                 }
 
                 var affectedRows = await context.Database.ExecuteSqlInterpolatedAsync(
-                    $"UPDATE StockPositions SET PhysicalQuantity = {request.Position.PhysicalQuantity} WHERE Ean13 = {request.Position.Ean13.Value} AND PhysicalQuantity = {request.CurrentPosition.PhysicalQuantity}",
+                    $"UPDATE StockPositions SET PhysicalQuantity = {request.Position.PhysicalQuantity}, Version = {request.CurrentPosition.Version + 1} WHERE Ean13 = {request.Position.Ean13.Value} AND PhysicalQuantity = {request.CurrentPosition.PhysicalQuantity} AND Version = {request.CurrentPosition.Version}",
                     cancellationToken);
                 if (affectedRows != 1)
                 {
@@ -67,9 +70,13 @@ public sealed class SqliteSupplyCommitter(
             context.StockOperations.Add(ToEntity(request.Operation));
             await context.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
+            var committedPosition = new StockPosition(
+                request.Position.Ean13,
+                request.Position.PhysicalQuantity,
+                request.CurrentPosition?.Version + 1 ?? 1);
             return new(
                 SupplyCommitStatus.Committed,
-                request.Position,
+                committedPosition,
                 request.Operation);
         }
         catch (DbUpdateException exception) when (IsConflict(exception))
@@ -89,7 +96,12 @@ public sealed class SqliteSupplyCommitter(
             Type = "supply",
             Ean13 = operation.Ean13.Value,
             Quantity = operation.Quantity.Value,
-            OccurredAt = operation.OccurredAt.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture)
+            OccurredAt = operation.OccurredAt.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
+            PreviousPhysicalStock = 0,
+            CountedQuantity = 0,
+            InventoryDifference = 0,
+            ResultingPhysicalStock = 0,
+            TimestampUtc = operation.OccurredAt.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture)
         };
 
     private static SupplyCommitResult Conflict()

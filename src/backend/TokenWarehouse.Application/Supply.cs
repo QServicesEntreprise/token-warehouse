@@ -164,7 +164,7 @@ public sealed class SupplyApplication(
                 committedOperation,
                 StockPositionView.From(
                     articleSnapshot,
-                    committedPosition.PhysicalQuantity,
+                    committedPosition,
                     clock.WarehouseDate)),
             []);
     }

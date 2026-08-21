@@ -17,9 +17,12 @@ public sealed record StockPositionView(
 {
     public static StockPositionView From(
         ArticleSellabilitySnapshot article,
-        int physicalQuantity,
+        StockPosition? position,
         DateOnly warehouseDate)
     {
+        ArgumentNullException.ThrowIfNull(article);
+
+        var physicalQuantity = position?.PhysicalQuantity ?? 0;
         var decision = SellabilityPolicy.Decide(article, physicalQuantity, warehouseDate);
         return new(
             article.Ean13,
@@ -118,8 +121,5 @@ public sealed class StockApplication(
     }
 
     private StockPositionView ToView(ArticleSellabilitySnapshot article, StockPosition? position)
-        => StockPositionView.From(
-            article,
-            position?.PhysicalQuantity ?? 0,
-            clock.WarehouseDate);
+        => StockPositionView.From(article, position, clock.WarehouseDate);
 }

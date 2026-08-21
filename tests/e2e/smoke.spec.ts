@@ -1,5 +1,6 @@
-import { expect, type Route } from '@playwright/test';
+import { expect } from '@playwright/test';
 import { test } from './fixtures';
+import type { Route } from '@playwright/test';
 
 const ean13ForAttempt = (prefix: string, attempt: number): string => {
   const body = `${prefix}${String(attempt).padStart(3, '0')}`;
@@ -290,7 +291,7 @@ test('searches and filters the catalogue, including an archived detail', async (
 
 test('recomputes sellable stock after food DLC and non-food packaging updates', async ({ page }) => {
   const foodEan = '0123456789012';
-  const nonFoodEan = '4006381333931';
+  const nonFoodEan = '4012345678901';
   const today = '2030-01-15';
   const yesterday = '2030-01-14';
   const detailStock = (quantity: number) => page.locator('.article-detail').getByText(`${quantity} unités`, { exact: true });
@@ -302,13 +303,13 @@ test('recomputes sellable stock after food DLC and non-food packaging updates', 
   await page.locator('#detailDlc').fill(today);
   await page.getByRole('button', { name: 'Enregistrer les attributs' }).click();
   await expect(page.locator('#attribute-update-error')).toContainText('mis à jour');
-  await expect(detailStock(12)).toHaveCount(2);
+  await expect(detailStock(8)).toHaveCount(2);
 
   await page.locator('#detailDlc').fill(yesterday);
   await page.getByRole('button', { name: 'Enregistrer les attributs' }).click();
   await expect(page.locator('#attribute-update-error')).toContainText('mis à jour');
   await expect(page.locator('.article-detail').getByText(yesterday, { exact: true })).toBeVisible();
-  await expect(detailStock(12)).toHaveCount(1);
+  await expect(detailStock(8)).toHaveCount(1);
   await expect(detailStock(0)).toHaveCount(1);
 
   await page.locator('#lookupEan13').fill(nonFoodEan);
@@ -339,7 +340,7 @@ test('consults Stock positions, distinguishes blocked quantities and opens detai
   await page.goto('/');
   await expect(stockPanel.getByText(/Articles trouvés/)).toBeVisible();
   await expect(stockPanel.getByRole('row', { name: /DLC de démonstration/ })).toContainText('0123456789012');
-  await expect(stockPanel.getByRole('row', { name: /DLC de démonstration/ })).toContainText('12 unités');
+  await expect(stockPanel.getByRole('row', { name: /DLC de démonstration/ })).toContainText('8 unités');
   await expect(stockPanel.getByRole('row', { name: /Alimentaire expiré/ })).toContainText('7 unités');
   await expect(stockPanel.getByRole('row', { name: /Alimentaire expiré/ })).toContainText('DLC dépassée');
   await expect(stockPanel.getByRole('row', { name: /Biscuit historique/ })).toContainText('4 unités');
@@ -530,7 +531,7 @@ test('records a unit supply and shows the committed stocks after reload', async 
   await expect(supplyPanel.locator('#supplyQuantity')).toBeFocused();
   await expect(stockRow(ean13)).toContainText('14 unités');
 
-  await supplyPanel.locator('#supplyEan13').fill('7351353713578');
+  await supplyPanel.locator('#supplyEan13').fill('4006381333931');
   await supplyPanel.locator('#supplyQuantity').fill('2');
   const unknownResponsePromise = page.waitForResponse((response) => {
     const url = new URL(response.url());
@@ -542,7 +543,7 @@ test('records a unit supply and shows the committed stocks after reload', async 
   expect(unknownResponse.headers()['content-type']).toContain('application/problem+json');
   await expect(supplyPanel.locator('#supply-status')).toContainText('introuvable');
   await expect(supplyPanel.locator('#supply-status')).toBeFocused();
-  await expect(supplyPanel.locator('#supplyEan13')).toHaveValue('7351353713578');
+  await expect(supplyPanel.locator('#supplyEan13')).toHaveValue('4006381333931');
   await expect(supplyPanel.locator('#supplyQuantity')).toHaveValue('2');
 
   await supplyPanel.locator('#supplyEan13').fill('5901234123457');

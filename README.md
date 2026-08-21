@@ -82,6 +82,11 @@ positive; le succès `201` retourne l’`operation` immuable (`id`, `type`,
 `ean13`, `quantity`, `occurredAt`) et la `position` engagée. Les erreurs sont
 des Problem Details: `400` pour la structure ou la quantité, `404` pour un
 Article inconnu et `409` avec `code: article_archived` pour un Article archivé.
+`POST /api/inventories` et `GET /api/inventories/{id}` enregistrent ou relisent
+un Inventaire. Un Inventaire reçoit `ean13` et `countedQuantity`, puis renvoie le
+fait immuable, l’écart calculé, la nouvelle base physique et le Stock vendable.
+Le GET par identifiant relit le fait sans modifier la position courante.
+`GET /api/history?ean13={ean13}` relit l’Historique.
 Le PATCH accepte `priceHtCents` pour le
 parcours de prix existant, ou les attributs évolutifs `name`, `dlc` et
 `consumptionModes` pour un Article alimentaire, et `name` et `packaging` pour
@@ -90,6 +95,10 @@ une modification d’attributs renvoie la représentation canonique après commi
 et ajoute un fait immuable à l’Historique.
 Le host applique les migrations SQLite au démarrage sans service externe ni
 secret.
+
+Pour les tests déterministes, `TOKEN_WAREHOUSE_UTC_NOW` peut fixer l’instant
+UTC des opérations et `TOKEN_WAREHOUSE_WAREHOUSE_DATE` la date métier de
+l’Entrepôt.
 
 ## Contrat Stock courant
 
