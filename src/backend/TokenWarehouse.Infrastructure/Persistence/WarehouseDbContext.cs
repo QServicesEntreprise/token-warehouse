@@ -92,6 +92,9 @@ public sealed class WarehouseDbContext(DbContextOptions<WarehouseDbContext> opti
         var operationLine = modelBuilder.Entity<StockOperationLineEntity>();
         operationLine.HasKey(entity => new { entity.OperationId, entity.LineNumber });
         operationLine.Property(entity => entity.Ean13).IsRequired();
+        operationLine.Property(entity => entity.OperationType)
+            .IsRequired()
+            .HasDefaultValue("INVENTORY");
         operationLine.Property(entity => entity.Quantity).IsRequired();
         operationLine.Property(entity => entity.PreviousPhysicalStock).IsRequired();
         operationLine.Property(entity => entity.CountedQuantity).IsRequired();
@@ -104,8 +107,14 @@ public sealed class WarehouseDbContext(DbContextOptions<WarehouseDbContext> opti
                 "CK_StockOperationLines_LineNumber_Positive",
                 "LineNumber >= 1");
             table.HasCheckConstraint(
+                "CK_StockOperationLines_OperationType_Valid",
+                "OperationType IN ('supply', 'INVENTORY')");
+            table.HasCheckConstraint(
                 "CK_StockOperationLines_Quantity_NonNegative",
                 "Quantity >= 0");
+            table.HasCheckConstraint(
+                "CK_StockOperationLines_Quantity_PositiveForSupply",
+                "OperationType <> 'supply' OR Quantity > 0");
             table.HasCheckConstraint(
                 "CK_StockOperationLines_PreviousPhysicalStock_NonNegative",
                 "PreviousPhysicalStock >= 0");

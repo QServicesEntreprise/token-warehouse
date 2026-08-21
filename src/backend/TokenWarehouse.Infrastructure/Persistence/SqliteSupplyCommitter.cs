@@ -124,6 +124,7 @@ public sealed class SqliteSupplyCommitter(
                 OperationId = request.Operation.Id,
                 LineNumber = line.LineNumber,
                 Ean13 = line.Ean13.Value,
+                OperationType = "supply",
                 Quantity = line.Quantity.Value
             }));
             await context.SaveChangesAsync(cancellationToken);
