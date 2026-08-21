@@ -245,7 +245,8 @@ public sealed class SupplyApplication(
             }
         }
 
-        if (errors.Count > 0)
+        var hasValidationErrors = errors.Count > 0;
+        if (parsedLines.Count == 0)
         {
             return new(BulkSupplyStatus.ValidationFailed, null, errors);
         }
@@ -274,15 +275,6 @@ public sealed class SupplyApplication(
             }
         }
 
-        if (errors.Count > 0)
-        {
-            return archivedArticle
-                ? new(BulkSupplyStatus.Conflict, null, errors)
-                : unknownArticle
-                    ? new(BulkSupplyStatus.NotFound, null, errors)
-                    : new(BulkSupplyStatus.ValidationFailed, null, errors);
-        }
-
         var currentPositions = (await stockReader.ListAsync(cancellationToken))
             .GroupBy(position => position.Ean13)
             .ToDictionary(group => group.Key, group => group.First());
@@ -298,10 +290,16 @@ public sealed class SupplyApplication(
             }
             catch (OverflowException)
             {
+                hasValidationErrors = true;
                 errors.Add(new(
                     "bulk_supply.quantity.overflow",
                     $"{LineField(line.Index)}.quantity",
                     "La quantité dépasse la capacité du Stock."));
+                continue;
+            }
+
+            if (!articles.TryGetValue(line.Ean13, out var article) || !article.IsActive)
+            {
                 continue;
             }
 
@@ -311,7 +309,7 @@ public sealed class SupplyApplication(
                 line.Quantity);
             operationLines.Add(operationLine);
             commitLines.Add(new(
-                articles[line.Ean13],
+                article,
                 currentPosition,
                 nextPosition,
                 operationLine));
@@ -319,7 +317,13 @@ public sealed class SupplyApplication(
 
         if (errors.Count > 0)
         {
-            return new(BulkSupplyStatus.ValidationFailed, null, errors);
+            return hasValidationErrors
+                ? new(BulkSupplyStatus.ValidationFailed, null, errors)
+                : archivedArticle
+                    ? new(BulkSupplyStatus.Conflict, null, errors)
+                    : unknownArticle
+                        ? new(BulkSupplyStatus.NotFound, null, errors)
+                        : new(BulkSupplyStatus.ValidationFailed, null, errors);
         }
 
         StockOperation operation;

@@ -48,10 +48,39 @@ public sealed class BulkSupplyApplicationTests
     }
 
     [Fact]
-    public async Task Invalid_bulk_line_rejects_the_whole_command_before_any_read_or_commit()
+    public async Task Invalid_bulk_line_still_validates_other_lines_before_rejecting()
     {
-        var reader = new FakeArticleReader();
-        var positions = new FakePositionReader();
+        var first = ParseEan("0123456789012");
+        var capacity = ParseEan("4006381333931");
+        var archived = ParseEan("7351353713578");
+        var reader = new FakeArticleReader(
+            new ArticleSellabilitySnapshot(
+                first,
+                "Premier",
+                ArticleType.Food,
+                true,
+                new DateOnly(2030, 1, 15),
+                [ConsumptionMode.Takeaway],
+                null),
+            new ArticleSellabilitySnapshot(
+                archived,
+                "Archivé",
+                ArticleType.Food,
+                false,
+                new DateOnly(2030, 1, 15),
+                [ConsumptionMode.Takeaway],
+                null),
+            new ArticleSellabilitySnapshot(
+                capacity,
+                "Capacité",
+                ArticleType.Food,
+                true,
+                new DateOnly(2030, 1, 15),
+                [ConsumptionMode.Takeaway],
+                null));
+        var positions = new FakePositionReader(
+            new StockPosition(capacity, int.MaxValue),
+            new StockPosition(archived, int.MaxValue));
         var committer = new FakeBulkCommitter();
         var application = new SupplyApplication(
             reader,
@@ -64,16 +93,23 @@ public sealed class BulkSupplyApplicationTests
             Lines =
             [
                 new() { Ean13 = "0123456789012", Quantity = 3 },
-                new() { Ean13 = "5901234123457", Quantity = 0 }
+                new() { Ean13 = "5901234123457", Quantity = 0 },
+                new() { Ean13 = "1234567890128", Quantity = 1 },
+                new() { Ean13 = "4006381333931", Quantity = 1 },
+                new() { Ean13 = "7351353713578", Quantity = 1 }
             ]
         });
 
         Assert.Equal(BulkSupplyStatus.ValidationFailed, result.Status);
         Assert.Null(result.Receipt);
-        Assert.Equal(0, reader.Calls);
-        Assert.Equal(0, positions.Calls);
+        Assert.Equal(1, reader.Calls);
+        Assert.Equal(1, positions.Calls);
         Assert.Equal(0, committer.Calls);
         Assert.Contains(result.Errors, error => error.Field == "lines[1].quantity");
+        Assert.Contains(result.Errors, error => error.Field == "lines[2].ean13");
+        Assert.Contains(result.Errors, error => error.Field == "lines[3].quantity");
+        Assert.Contains(result.Errors, error => error.Field == "lines[4].ean13");
+        Assert.Contains(result.Errors, error => error.Field == "lines[4].quantity");
     }
 
     private static Ean13 ParseEan(string value)

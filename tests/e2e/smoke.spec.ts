@@ -652,6 +652,38 @@ test('records a multi-Article supply atomically and keeps all drafts after rejec
   await expect(supplyPanel.locator('#supplyEan13-1')).toHaveValue(unknownEan13);
   await expect(supplyPanel.locator('#supplyQuantity-1')).toHaveValue('5');
   await expect(supplyPanel.locator('#supply-status')).toContainText('introuvable');
+
+  await supplyPanel.locator('#supplyQuantity').fill('0');
+  const mixedResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'POST' && url.pathname === '/api/supplies/bulk';
+  });
+  await supplyPanel.getByRole('button', { name: 'Enregistrer l’Approvisionnement' }).click();
+  const mixedResponse = await mixedResponsePromise;
+  expect(mixedResponse.status()).toBe(400);
+  expect(mixedResponse.headers()['content-type']).toContain('application/problem+json');
+  await expect(supplyPanel.locator('#supply-quantity-error')).toContainText('quantité');
+  await expect(supplyPanel.locator('#supply-ean13-1-error')).toContainText('introuvable');
+  await expect(supplyPanel.locator('#supply-status')).toContainText('invalide');
+  await expect(supplyPanel.locator('#supplyEan13')).toHaveValue(firstEan13);
+  await expect(supplyPanel.locator('#supplyQuantity')).toHaveValue('0');
+  await expect(supplyPanel.locator('#supplyEan13-1')).toHaveValue(unknownEan13);
+  await expect(supplyPanel.locator('#supplyQuantity-1')).toHaveValue('5');
+
+  await supplyPanel.locator('#supplyQuantity').fill('3');
+  await supplyPanel.locator('#supplyEan13-1').fill(firstEan13);
+  const duplicateResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'POST' && url.pathname === '/api/supplies/bulk';
+  });
+  await supplyPanel.getByRole('button', { name: 'Enregistrer l’Approvisionnement' }).click();
+  const duplicateResponse = await duplicateResponsePromise;
+  expect(duplicateResponse.status()).toBe(400);
+  expect(duplicateResponse.headers()['content-type']).toContain('application/problem+json');
+  await expect(supplyPanel.locator('#supply-ean13-error')).toContainText('seule');
+  await expect(supplyPanel.locator('#supply-ean13-1-error')).toContainText('seule');
+  await expect(supplyPanel.locator('#supply-status')).toContainText('invalide');
+  await expect(firstStockRow).toContainText('11 unités');
   await page.screenshot({ path: 'artifacts/playwright/bulk-supply.png', fullPage: true });
 });
 

@@ -107,6 +107,34 @@ public sealed class SupplyApiTests
         Assert.True(invalidErrors.TryGetProperty("lines[0].ean13", out _));
         Assert.True(invalidErrors.TryGetProperty("lines[1].ean13", out _));
 
+        using var mixedValidation = await client.PostAsJsonAsync(
+            "/api/supplies/bulk",
+            new
+            {
+                lines = new[]
+                {
+                    new { ean13 = "0123456789012", quantity = 0 },
+                    new { ean13 = "1234567890128", quantity = 1 },
+                    new { ean13 = "7351353713578", quantity = 1 }
+                }
+            });
+        Assert.Equal(HttpStatusCode.BadRequest, mixedValidation.StatusCode);
+        using var mixedValidationBody = JsonDocument.Parse(await mixedValidation.Content.ReadAsStringAsync());
+        var mixedValidationErrors = mixedValidationBody.RootElement.GetProperty("errors");
+        var mixedValidationCodes = mixedValidationBody.RootElement.GetProperty("errorCodes");
+        Assert.True(mixedValidationErrors.TryGetProperty("lines[0].quantity", out _));
+        Assert.True(mixedValidationErrors.TryGetProperty("lines[1].ean13", out _));
+        Assert.True(mixedValidationErrors.TryGetProperty("lines[2].ean13", out _));
+        Assert.Contains(
+            "bulk_supply.quantity.invalid",
+            mixedValidationCodes.GetProperty("lines[0].quantity").EnumerateArray().Select(code => code.GetString()));
+        Assert.Contains(
+            "bulk_supply.article.not_found",
+            mixedValidationCodes.GetProperty("lines[1].ean13").EnumerateArray().Select(code => code.GetString()));
+        Assert.Contains(
+            "article_archived",
+            mixedValidationCodes.GetProperty("lines[2].ean13").EnumerateArray().Select(code => code.GetString()));
+
         using var mixed = await client.PostAsJsonAsync(
             "/api/supplies/bulk",
             new
@@ -134,6 +162,23 @@ public sealed class SupplyApiTests
         Assert.Equal(HttpStatusCode.Conflict, archived.StatusCode);
         using var archivedBody = JsonDocument.Parse(await archived.Content.ReadAsStringAsync());
         Assert.True(archivedBody.RootElement.GetProperty("errors").TryGetProperty("lines[1].ean13", out _));
+
+        using var mixedLifecycle = await client.PostAsJsonAsync(
+            "/api/supplies/bulk",
+            new
+            {
+                lines = new[]
+                {
+                    new { ean13 = "1234567890128", quantity = 1 },
+                    new { ean13 = "7351353713578", quantity = 1 }
+                }
+            });
+        Assert.Equal(HttpStatusCode.Conflict, mixedLifecycle.StatusCode);
+        using var mixedLifecycleBody = JsonDocument.Parse(await mixedLifecycle.Content.ReadAsStringAsync());
+        Assert.Equal("bulk_supply.conflict", mixedLifecycleBody.RootElement.GetProperty("code").GetString());
+        var mixedLifecycleErrors = mixedLifecycleBody.RootElement.GetProperty("errors");
+        Assert.True(mixedLifecycleErrors.TryGetProperty("lines[0].ean13", out _));
+        Assert.True(mixedLifecycleErrors.TryGetProperty("lines[1].ean13", out _));
 
         Assert.Equal(0, await ReadAsync(factory, context => context.StockPositions.CountAsync()));
         Assert.Equal(0, await ReadAsync(factory, context => context.StockOperations.CountAsync()));
