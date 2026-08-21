@@ -255,7 +255,7 @@ public sealed class ArticleApiTests
     }
 
     [Fact]
-    public async Task Patching_an_inactive_article_returns_conflict_without_mutating_persisted_price()
+    public async Task Patching_an_archived_article_returns_conflict_without_mutating_persisted_price()
     {
         using var factory = new ArticleHostFactory();
         using var client = factory.CreateClient();
@@ -269,7 +269,7 @@ public sealed class ArticleApiTests
         });
 
         Assert.Equal(HttpStatusCode.Created, create.StatusCode);
-        await SetArticleInactiveAsync(factory, "7351353713578");
+        await SetArticleArchivedAsync(factory, "7351353713578");
 
         using var patchRequest = new HttpRequestMessage(HttpMethod.Patch, "/api/articles/7351353713578")
         {
@@ -565,7 +565,7 @@ public sealed class ArticleApiTests
         }
     }
 
-    private static async Task SetArticleInactiveAsync(ArticleHostFactory factory, string ean13)
+    private static async Task SetArticleArchivedAsync(ArticleHostFactory factory, string ean13)
     {
         using var scope = factory.Services.CreateScope();
         var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>();
@@ -715,12 +715,12 @@ public sealed class ArticleApiTests
         public ValueTask<ArticleStoreInsertStatus> InsertAsync(Article article, CancellationToken cancellationToken = default)
             => throw new InvalidOperationException("database internals");
 
-        public ValueTask<ArticleStoreUpdateCandidate> FindForUpdateAsync(
+        public ValueTask<ArticleStorePriceUpdateCandidate> FindForPriceUpdateAsync(
             Ean13 ean13,
             CancellationToken cancellationToken = default)
             => throw new InvalidOperationException("database internals");
 
-        public ValueTask<ArticleStoreUpdateStatus> UpdateAsync(
+        public ValueTask<ArticleStoreUpdateStatus> UpdatePriceHtAsync(
             Article article,
             CancellationToken cancellationToken = default)
             => throw new InvalidOperationException("database internals");

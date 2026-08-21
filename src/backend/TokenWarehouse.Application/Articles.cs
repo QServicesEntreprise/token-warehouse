@@ -45,15 +45,15 @@ public sealed record ArticleView(
     public IReadOnlyList<PricingQuote> PriceQuotes { get; init; } = [];
 }
 
-public enum ArticleStoreUpdateCandidateStatus
+public enum ArticleStorePriceUpdateCandidateStatus
 {
     Active,
     NotFound,
-    Inactive
+    Archived
 }
 
-public sealed record ArticleStoreUpdateCandidate(
-    ArticleStoreUpdateCandidateStatus Status,
+public sealed record ArticleStorePriceUpdateCandidate(
+    ArticleStorePriceUpdateCandidateStatus Status,
     Article? Article);
 
 public enum ArticleStoreInsertStatus
@@ -68,11 +68,11 @@ public interface IArticleStore
 
     ValueTask<ArticleStoreInsertStatus> InsertAsync(Article article, CancellationToken cancellationToken = default);
 
-    ValueTask<ArticleStoreUpdateCandidate> FindForUpdateAsync(
+    ValueTask<ArticleStorePriceUpdateCandidate> FindForPriceUpdateAsync(
         Ean13 ean13,
         CancellationToken cancellationToken = default);
 
-    ValueTask<ArticleStoreUpdateStatus> UpdateAsync(
+    ValueTask<ArticleStoreUpdateStatus> UpdatePriceHtAsync(
         Article article,
         CancellationToken cancellationToken = default);
 }
@@ -228,13 +228,13 @@ public sealed class ArticleApplication(IArticleStore store)
             return new ArticleUpdateResult(ArticleUpdateStatus.ValidationFailed, null, errors);
         }
 
-        var candidate = await store.FindForUpdateAsync(parsedEan13, cancellationToken);
-        if (candidate.Status == ArticleStoreUpdateCandidateStatus.NotFound)
+        var candidate = await store.FindForPriceUpdateAsync(parsedEan13, cancellationToken);
+        if (candidate.Status == ArticleStorePriceUpdateCandidateStatus.NotFound)
         {
             return new ArticleUpdateResult(ArticleUpdateStatus.NotFound, null, []);
         }
 
-        if (candidate.Status == ArticleStoreUpdateCandidateStatus.Inactive)
+        if (candidate.Status == ArticleStorePriceUpdateCandidateStatus.Archived)
         {
             return UpdateConflictResult();
         }
@@ -242,7 +242,7 @@ public sealed class ArticleApplication(IArticleStore store)
         var article = candidate.Article!;
         article.ChangePriceHt(Money.FromCents(command.PriceHtCents!.Value));
 
-        var updateStatus = await store.UpdateAsync(article, cancellationToken);
+        var updateStatus = await store.UpdatePriceHtAsync(article, cancellationToken);
         if (updateStatus == ArticleStoreUpdateStatus.NotFound)
         {
             return new ArticleUpdateResult(ArticleUpdateStatus.NotFound, null, []);

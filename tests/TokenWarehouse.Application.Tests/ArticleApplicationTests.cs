@@ -170,7 +170,7 @@ public sealed class ArticleApplicationTests
 
         public ArticleStoreUpdateStatus UpdateStatus { get; set; } = ArticleStoreUpdateStatus.Updated;
 
-        public ArticleStoreUpdateCandidateStatus UpdateCandidateStatus { get; set; } = ArticleStoreUpdateCandidateStatus.Active;
+        public ArticleStorePriceUpdateCandidateStatus PriceUpdateCandidateStatus { get; set; } = ArticleStorePriceUpdateCandidateStatus.Active;
 
         public Article? UpdatedArticle { get; private set; }
 
@@ -189,25 +189,25 @@ public sealed class ArticleApplicationTests
             return ValueTask.FromResult(ArticleStoreInsertStatus.Created);
         }
 
-        public ValueTask<ArticleStoreUpdateCandidate> FindForUpdateAsync(
+        public ValueTask<ArticleStorePriceUpdateCandidate> FindForPriceUpdateAsync(
             Ean13 ean13,
             CancellationToken cancellationToken = default)
         {
             var article = articles.SingleOrDefault(existing => existing.Ean13 == ean13);
-            return UpdateCandidateStatus switch
+            return PriceUpdateCandidateStatus switch
             {
-                ArticleStoreUpdateCandidateStatus.NotFound => ValueTask.FromResult(
-                    new ArticleStoreUpdateCandidate(ArticleStoreUpdateCandidateStatus.NotFound, null)),
-                ArticleStoreUpdateCandidateStatus.Inactive => ValueTask.FromResult(
-                    new ArticleStoreUpdateCandidate(ArticleStoreUpdateCandidateStatus.Inactive, null)),
+                ArticleStorePriceUpdateCandidateStatus.NotFound => ValueTask.FromResult(
+                    new ArticleStorePriceUpdateCandidate(ArticleStorePriceUpdateCandidateStatus.NotFound, null)),
+                ArticleStorePriceUpdateCandidateStatus.Archived => ValueTask.FromResult(
+                    new ArticleStorePriceUpdateCandidate(ArticleStorePriceUpdateCandidateStatus.Archived, null)),
                 _ when article is null => ValueTask.FromResult(
-                    new ArticleStoreUpdateCandidate(ArticleStoreUpdateCandidateStatus.NotFound, null)),
+                    new ArticleStorePriceUpdateCandidate(ArticleStorePriceUpdateCandidateStatus.NotFound, null)),
                 _ => ValueTask.FromResult(
-                    new ArticleStoreUpdateCandidate(ArticleStoreUpdateCandidateStatus.Active, Clone(article)))
+                    new ArticleStorePriceUpdateCandidate(ArticleStorePriceUpdateCandidateStatus.Active, Clone(article)))
             };
         }
 
-        public ValueTask<ArticleStoreUpdateStatus> UpdateAsync(
+        public ValueTask<ArticleStoreUpdateStatus> UpdatePriceHtAsync(
             Article article,
             CancellationToken cancellationToken = default)
         {

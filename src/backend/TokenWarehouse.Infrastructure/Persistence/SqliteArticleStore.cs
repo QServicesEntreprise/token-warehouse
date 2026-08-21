@@ -38,7 +38,7 @@ public sealed class SqliteArticleStore(IDbContextFactory<WarehouseDbContext> con
         }
     }
 
-    public async ValueTask<ArticleStoreUpdateCandidate> FindForUpdateAsync(
+    public async ValueTask<ArticleStorePriceUpdateCandidate> FindForPriceUpdateAsync(
         Ean13 ean13,
         CancellationToken cancellationToken = default)
     {
@@ -49,18 +49,18 @@ public sealed class SqliteArticleStore(IDbContextFactory<WarehouseDbContext> con
 
         if (entity is null)
         {
-            return new(ArticleStoreUpdateCandidateStatus.NotFound, null);
+            return new(ArticleStorePriceUpdateCandidateStatus.NotFound, null);
         }
 
         if (!entity.IsActive)
         {
-            return new(ArticleStoreUpdateCandidateStatus.Inactive, null);
+            return new(ArticleStorePriceUpdateCandidateStatus.Archived, null);
         }
 
-        return new(ArticleStoreUpdateCandidateStatus.Active, ToDomain(entity));
+        return new(ArticleStorePriceUpdateCandidateStatus.Active, ToDomain(entity));
     }
 
-    public async ValueTask<ArticleStoreUpdateStatus> UpdateAsync(
+    public async ValueTask<ArticleStoreUpdateStatus> UpdatePriceHtAsync(
         Article article,
         CancellationToken cancellationToken = default)
     {
