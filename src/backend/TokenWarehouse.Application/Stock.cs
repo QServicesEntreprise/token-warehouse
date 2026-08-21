@@ -22,13 +22,14 @@ public enum StockReadStatus
     NotFound
 }
 
-public interface IArticleSellabilityReader
-{
-    ValueTask<IReadOnlyList<ArticleSellabilitySnapshot>> ListAsync(
-        CancellationToken cancellationToken = default);
+public sealed record StockReadSnapshot(
+    IReadOnlyList<ArticleSellabilitySnapshot> Articles,
+    IReadOnlyList<StockPosition> Positions);
 
-    ValueTask<ArticleSellabilitySnapshot?> FindByEanAsync(
-        Ean13 ean13,
+public interface IStockReadReader
+{
+    ValueTask<StockReadSnapshot> ReadAsync(
+        Ean13? ean13 = null,
         CancellationToken cancellationToken = default);
 }
 
@@ -46,20 +47,19 @@ public interface IReadStockUseCase
 }
 
 public sealed class StockApplication(
-    IArticleSellabilityReader articleReader,
-    IStockPositionReader positionReader,
+    IStockReadReader stockReader,
     IClock clock) : IReadStockUseCase
 {
     public async Task<StockReadResult> ListAsync(CancellationToken cancellationToken = default)
     {
-        var articles = await articleReader.ListAsync(cancellationToken);
-        var positions = (await positionReader.ListAsync(cancellationToken))
+        var snapshot = await stockReader.ReadAsync(cancellationToken: cancellationToken);
+        var positions = snapshot.Positions
             .GroupBy(position => position.Ean13)
             .ToDictionary(group => group.Key, group => group.First());
 
         return new(
             StockReadStatus.Success,
-            articles
+            snapshot.Articles
                 .OrderBy(article => article.Ean13.Value, StringComparer.Ordinal)
                 .Select(article => ToView(article, positions.GetValueOrDefault(article.Ean13)))
                 .ToArray(),
@@ -83,7 +83,8 @@ public sealed class StockApplication(
                     "L’EAN-13 doit contenir 13 chiffres et un checksum valide.")]);
         }
 
-        var article = await articleReader.FindByEanAsync(parsedEan13, cancellationToken);
+        var snapshot = await stockReader.ReadAsync(parsedEan13, cancellationToken);
+        var article = snapshot.Articles.SingleOrDefault(candidate => candidate.Ean13 == parsedEan13);
         return article is null
             ? new(StockReadStatus.NotFound, [], null, [])
             : new(
@@ -91,7 +92,7 @@ public sealed class StockApplication(
                 [],
                 ToView(
                     article,
-                    await positionReader.FindByEanAsync(parsedEan13, cancellationToken)),
+                    snapshot.Positions.SingleOrDefault(position => position.Ean13 == parsedEan13)),
                 []);
     }
 

@@ -455,16 +455,27 @@ public sealed class ArticleApiTests
         Assert.Equal("DLC_EXPIRED", expiredOnNextDay.GetProperty("reason").GetString());
         Assert.Equal(0, await CountStockPositionsAsync(factory.Services, "1234567890128"));
 
-        using var malformed = await client.GetAsync("/api/stock/123");
-        Assert.Equal(HttpStatusCode.BadRequest, malformed.StatusCode);
-        Assert.Equal("application/problem+json", malformed.Content.Headers.ContentType?.MediaType);
-        using var malformedBody = JsonDocument.Parse(await malformed.Content.ReadAsStringAsync());
-        Assert.Equal("stock.validation", malformedBody.RootElement.GetProperty("code").GetString());
-        Assert.True(malformedBody.RootElement.GetProperty("errors").TryGetProperty("ean13", out _));
-
         using var unknown = await client.GetAsync("/api/stock/9876543210982");
         Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
         Assert.Equal("application/problem+json", unknown.Content.Headers.ContentType?.MediaType);
+    }
+
+    [Theory]
+    [InlineData("123")]
+    [InlineData("01234567890X2")]
+    [InlineData("0123456789013")]
+    public async Task Malformed_stock_detail_eans_return_structured_validation_problem_details(string ean13)
+    {
+        using var factory = new ArticleHostFactory();
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync($"/api/stock/{ean13}");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("stock.validation", body.RootElement.GetProperty("code").GetString());
+        Assert.True(body.RootElement.GetProperty("errors").TryGetProperty("ean13", out _));
     }
 
     [Fact]
@@ -1209,14 +1220,17 @@ public sealed class ArticleApiTests
         using var factory = new FailingStoreHostFactory();
         using var client = factory.CreateClient();
 
-        using var response = await client.GetAsync("/api/stock");
+        foreach (var path in new[] { "/api/stock", "/api/stock/0123456789012" })
+        {
+            using var response = await client.GetAsync(path);
 
-        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
-        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
-        var body = await response.Content.ReadAsStringAsync();
-        Assert.DoesNotContain(nameof(InvalidOperationException), body);
-        Assert.DoesNotContain("database internals", body);
-        Assert.DoesNotContain("SQLite", body, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+            Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+            var body = await response.Content.ReadAsStringAsync();
+            Assert.DoesNotContain(nameof(InvalidOperationException), body);
+            Assert.DoesNotContain("database internals", body);
+            Assert.DoesNotContain("SQLite", body, StringComparison.OrdinalIgnoreCase);
+        }
     }
 
     private static async Task<IReadOnlyList<string?>> ReadNames(HttpResponseMessage response)
@@ -1471,8 +1485,18 @@ public sealed class ArticleApiTests
             {
                 services.RemoveAll<IArticleStore>();
                 services.AddScoped<IArticleStore, FailingArticleStore>();
+                services.RemoveAll<IStockReadReader>();
+                services.AddScoped<IStockReadReader, FailingStockReadReader>();
             });
         }
+    }
+
+    private sealed class FailingStockReadReader : IStockReadReader
+    {
+        public ValueTask<StockReadSnapshot> ReadAsync(
+            Ean13? ean13 = null,
+            CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("database internals");
     }
 
     private sealed class FailingArticleStore : IArticleStore

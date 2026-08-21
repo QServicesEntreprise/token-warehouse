@@ -86,6 +86,80 @@ public sealed class SqliteMigrationTests
     }
 
     [Fact]
+    public async Task Stock_positions_survive_sqlite_file_reopen_without_creating_missing_rows()
+    {
+        var filePath = Path.Combine(Path.GetTempPath(), $"token-warehouse-stock-{Guid.NewGuid():N}.db");
+
+        try
+        {
+            await using (var connection = new SqliteConnection($"Data Source={filePath}"))
+            {
+                await connection.OpenAsync();
+                var options = new DbContextOptionsBuilder<WarehouseDbContext>()
+                    .UseSqlite(connection)
+                    .Options;
+
+                await using var context = new WarehouseDbContext(options);
+                await context.Database.MigrateAsync();
+                context.Articles.AddRange(
+                    new ArticleEntity
+                    {
+                        Ean13 = "0123456789012",
+                        Type = "food",
+                        Name = "Article persistant",
+                        NameSearchKey = "ARTICLE PERSISTANT",
+                        PriceHtCents = 100,
+                        IsActive = true,
+                        Dlc = "2030-01-15",
+                        ConsumptionModes = "takeaway"
+                    },
+                    new ArticleEntity
+                    {
+                        Ean13 = "7351353713578",
+                        Type = "nonFood",
+                        Name = "Article sans position",
+                        NameSearchKey = "ARTICLE SANS POSITION",
+                        PriceHtCents = 100,
+                        IsActive = true,
+                        Packaging = "new"
+                    });
+                context.StockPositions.Add(new StockPositionEntity
+                {
+                    Ean13 = "0123456789012",
+                    PhysicalQuantity = 9
+                });
+                await context.SaveChangesAsync();
+            }
+
+            await using (var reopenedConnection = new SqliteConnection($"Data Source={filePath}"))
+            {
+                await reopenedConnection.OpenAsync();
+                var options = new DbContextOptionsBuilder<WarehouseDbContext>()
+                    .UseSqlite(reopenedConnection)
+                    .Options;
+
+                await using var context = new WarehouseDbContext(options);
+                Assert.Equal(
+                    9,
+                    await context.StockPositions
+                        .Where(position => position.Ean13 == "0123456789012")
+                        .Select(position => position.PhysicalQuantity)
+                        .SingleAsync());
+                Assert.Equal(
+                    0,
+                    await context.StockPositions
+                        .CountAsync(position => position.Ean13 == "7351353713578"));
+            }
+        }
+        finally
+        {
+            File.Delete(filePath);
+            File.Delete($"{filePath}-shm");
+            File.Delete($"{filePath}-wal");
+        }
+    }
+
+    [Fact]
     public async Task Stock_positions_reject_negative_quantities_and_duplicate_current_rows()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");

@@ -19,9 +19,9 @@ public sealed class SqliteStockPositionReader(IDbContextFactory<WarehouseDbConte
 
         foreach (var entity in entities)
         {
-            if (Ean13.TryCreate(entity.Ean13, out var ean13))
+            if (ToDomain(entity) is { } position)
             {
-                positions.Add(new StockPosition(ean13, entity.PhysicalQuantity));
+                positions.Add(position);
             }
         }
 
@@ -37,8 +37,11 @@ public sealed class SqliteStockPositionReader(IDbContextFactory<WarehouseDbConte
             .AsNoTracking()
             .SingleOrDefaultAsync(position => position.Ean13 == ean13.Value, cancellationToken);
 
-        return entity is null
-            ? null
-            : new StockPosition(ean13, entity.PhysicalQuantity);
+        return entity is null ? null : ToDomain(entity);
     }
+
+    internal static StockPosition? ToDomain(StockPositionEntity entity)
+        => Ean13.TryCreate(entity.Ean13, out var ean13)
+            ? new StockPosition(ean13, entity.PhysicalQuantity)
+            : null;
 }

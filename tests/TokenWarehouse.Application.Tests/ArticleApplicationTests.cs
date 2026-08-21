@@ -429,14 +429,17 @@ public sealed class ArticleApplicationTests
         var active = CreateArticle("0123456789012", "food", "Alimentaire double mode", ["takeaway", "onsite"]);
         var archived = CreateArticle("4006381333931", "nonFood", "Infrastructure archivée", null, isActive: false);
         var withoutPosition = CreateArticle("7351353713578", "nonFood", "Infrastructure sans position", null);
-        var articles = new InMemoryArticleSellabilityReader(
-            ArticleSellabilitySnapshot.From(withoutPosition),
-            ArticleSellabilitySnapshot.From(archived),
-            ArticleSellabilitySnapshot.From(active));
-        var positions = new InMemoryStockPositionReader(
-            new StockPosition(archived.Ean13, 4),
-            new StockPosition(active.Ean13, 5));
-        var application = new StockApplication(articles, positions, TestClock);
+        var stockReader = new InMemoryStockReadReader(
+            [
+                ArticleSellabilitySnapshot.From(withoutPosition),
+                ArticleSellabilitySnapshot.From(archived),
+                ArticleSellabilitySnapshot.From(active)
+            ],
+            [
+                new StockPosition(archived.Ean13, 4),
+                new StockPosition(active.Ean13, 5)
+            ]);
+        var application = new StockApplication(stockReader, TestClock);
 
         var result = await application.ListAsync();
 
@@ -459,8 +462,7 @@ public sealed class ArticleApplicationTests
              result.Positions[2].SellableQuantity,
              result.Positions[2].Availability,
              result.Positions[2].Reason));
-        Assert.Equal(1, positions.ListCalls);
-        Assert.Equal(0, positions.FindCalls);
+        Assert.Equal(1, stockReader.Calls);
     }
 
     private static Article CreateArticle(
@@ -497,42 +499,18 @@ public sealed class ArticleApplicationTests
         public DateTimeOffset UtcNow => now;
     }
 
-    private sealed class InMemoryArticleSellabilityReader(
-        params ArticleSellabilitySnapshot[] snapshots) : IArticleSellabilityReader
+    private sealed class InMemoryStockReadReader(
+        IReadOnlyList<ArticleSellabilitySnapshot> articles,
+        IReadOnlyList<StockPosition> positions) : IStockReadReader
     {
-        private readonly IReadOnlyList<ArticleSellabilitySnapshot> snapshots = snapshots;
+        public int Calls { get; private set; }
 
-        public ValueTask<IReadOnlyList<ArticleSellabilitySnapshot>> ListAsync(
-            CancellationToken cancellationToken = default)
-            => ValueTask.FromResult(snapshots);
-
-        public ValueTask<ArticleSellabilitySnapshot?> FindByEanAsync(
-            Ean13 ean13,
-            CancellationToken cancellationToken = default)
-            => ValueTask.FromResult(
-                snapshots.SingleOrDefault(snapshot => snapshot.Ean13 == ean13));
-    }
-
-    private sealed class InMemoryStockPositionReader(params StockPosition[] positions) : IStockPositionReader
-    {
-        private readonly IReadOnlyList<StockPosition> positions = positions;
-
-        public int ListCalls { get; private set; }
-
-        public int FindCalls { get; private set; }
-
-        public ValueTask<IReadOnlyList<StockPosition>> ListAsync(CancellationToken cancellationToken = default)
-        {
-            ListCalls++;
-            return ValueTask.FromResult(positions);
-        }
-
-        public ValueTask<StockPosition?> FindByEanAsync(
-            Ean13 ean13,
+        public ValueTask<StockReadSnapshot> ReadAsync(
+            Ean13? ean13 = null,
             CancellationToken cancellationToken = default)
         {
-            FindCalls++;
-            return ValueTask.FromResult(positions.SingleOrDefault(position => position.Ean13 == ean13));
+            Calls++;
+            return ValueTask.FromResult(new StockReadSnapshot(articles, positions));
         }
     }
 
