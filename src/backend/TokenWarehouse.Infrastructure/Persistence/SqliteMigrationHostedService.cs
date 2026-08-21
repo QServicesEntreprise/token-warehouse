@@ -18,6 +18,7 @@ public sealed class SqliteMigrationHostedService(
 
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
         await context.Database.MigrateAsync(cancellationToken);
+        await BackfillNameSearchKeysAsync(context, cancellationToken);
 
         if (environment.IsEnvironment("Testing")
             && string.Equals(
@@ -30,6 +31,27 @@ public sealed class SqliteMigrationHostedService(
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    private static async Task BackfillNameSearchKeysAsync(
+        WarehouseDbContext context,
+        CancellationToken cancellationToken)
+    {
+        var articles = await context.Articles
+            .Where(article => article.NameSearchKey == string.Empty)
+            .ToListAsync(cancellationToken);
+
+        if (articles.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var article in articles)
+        {
+            article.NameSearchKey = ArticleNameSearchKey.From(article.Name);
+        }
+
+        await context.SaveChangesAsync(cancellationToken);
+    }
 
     private static async Task SeedArchivedArticlesAsync(
         WarehouseDbContext context,
@@ -46,6 +68,7 @@ public sealed class SqliteMigrationHostedService(
                 Ean13 = "5901234123457",
                 Type = "food",
                 Name = "Biscuit historique",
+                NameSearchKey = ArticleNameSearchKey.From("Biscuit historique"),
                 PriceHtCents = 299,
                 IsActive = false,
                 Dlc = "2026-12-31",
@@ -56,6 +79,7 @@ public sealed class SqliteMigrationHostedService(
                 Ean13 = "5012345678900",
                 Type = "nonFood",
                 Name = "Lampe historique",
+                NameSearchKey = ArticleNameSearchKey.From("Lampe historique"),
                 PriceHtCents = 2900,
                 IsActive = false,
                 Packaging = "refurbished"

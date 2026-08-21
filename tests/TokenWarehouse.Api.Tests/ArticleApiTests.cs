@@ -375,7 +375,7 @@ public sealed class ArticleApiTests
         {
             ean13 = "5901234123457",
             type = "food",
-            name = "Café aux deux modes",
+            name = "CAFÉ aux deux modes",
             priceHtCents = 299,
             dlc = "2026-12-31",
             consumptionModes = new[] { "takeaway", "onsite" }
@@ -397,7 +397,7 @@ public sealed class ArticleApiTests
             packaging = "refurbished"
         });
 
-        using var nameSearch = await client.GetAsync("/api/articles?search=%20CAF%C3%89%20");
+        using var nameSearch = await client.GetAsync("/api/articles?search=%20caf%C3%A9%20");
         using var eanSearch = await client.GetAsync("/api/articles?search=0123456789012");
         using var emptySearch = await client.GetAsync("/api/articles?search=%20%20");
         using var takeaway = await client.GetAsync("/api/articles?mode=takeaway");
@@ -406,11 +406,11 @@ public sealed class ArticleApiTests
         using var incompatible = await client.GetAsync("/api/articles?type=food&packaging=new");
         using var opposite = await client.GetAsync("/api/articles?type=nonFood&mode=takeaway");
 
-        Assert.Equal(["Café aux deux modes"], await ReadNames(nameSearch));
+        Assert.Equal(["CAFÉ aux deux modes"], await ReadNames(nameSearch));
         Assert.Equal(["Biscuit à emporter"], await ReadNames(eanSearch));
         Assert.Equal(5, (await ReadNames(emptySearch)).Count);
-        Assert.Equal(["Biscuit à emporter", "Café aux deux modes"], await ReadNames(takeaway));
-        Assert.Equal(["Café aux deux modes", "Plat sur place"], await ReadNames(onsiteFood));
+        Assert.Equal(["Biscuit à emporter", "CAFÉ aux deux modes"], await ReadNames(takeaway));
+        Assert.Equal(["CAFÉ aux deux modes", "Plat sur place"], await ReadNames(onsiteFood));
         Assert.Equal(["Lampe neuve"], await ReadNames(newPackaging));
         Assert.Equal(HttpStatusCode.OK, incompatible.StatusCode);
         Assert.Equal(HttpStatusCode.OK, opposite.StatusCode);
@@ -479,6 +479,7 @@ public sealed class ArticleApiTests
                 Ean13 = "5901234123457",
                 Type = "food",
                 Name = "Biscuit historique",
+                NameSearchKey = "BISCUIT HISTORIQUE",
                 PriceHtCents = 299,
                 IsActive = false,
                 Dlc = "2026-12-31",
@@ -489,6 +490,7 @@ public sealed class ArticleApiTests
                 Ean13 = "5012345678900",
                 Type = "nonFood",
                 Name = "Lampe historique",
+                NameSearchKey = "LAMPE HISTORIQUE",
                 PriceHtCents = 2900,
                 IsActive = false,
                 Packaging = "refurbished"

@@ -10,8 +10,8 @@ et de consultation d’un Article.
 - SQLite local dans `src/backend/TokenWarehouse.Api/token-warehouse.db` pour le
   lancement manuel; les tests d'intégration utilisent un fichier temporaire et
   une connexion SQLite `:memory:` conservée ouverte.
-- Le test Playwright utilise `src/backend/TokenWarehouse.Api/token-warehouse.db`,
-  réinitialisé avant chaque exécution.
+- Le test Playwright utilise une base temporaire sous `artifacts/playwright/`,
+  créée et passée à l’API par un chemin absolu à chaque exécution.
 - Playwright `1.62.1` lance l'API et Angular lui-même sur `5100` et `4200`.
 
 Les dépendances vont de `Domain` vers `Application`, puis vers
@@ -56,7 +56,8 @@ npm run verify
 SQLite, les collisions EAN et la substitution du fake. `npm run test:web`
 exécute les tests publics du formulaire Angular. Le test Playwright crée puis
 relit des Articles alimentaires et non alimentaires dans l’interface réelle,
-avec erreurs et clavier; aucun mock réseau n’est utilisé.
+avec erreurs et clavier; le scénario de panne intercepte uniquement la requête
+publique du Catalogue pour rendre l’erreur et le retry déterministes.
 
 La commande `npm run verify` a été exécutée deux fois le 19 août 2026 : une
 fois après l'installation initiale, puis après `dotnet clean TokenWarehouse.slnx`

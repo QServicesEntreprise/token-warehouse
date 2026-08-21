@@ -48,10 +48,10 @@ public sealed class SqliteArticleStore(IDbContextFactory<WarehouseDbContext> con
 
         if (filter.Search is not null)
         {
-            var search = filter.Search.ToLowerInvariant();
+            var search = ArticleNameSearchKey.From(filter.Search);
             query = query.Where(article =>
                 article.Ean13 == filter.Search
-                || article.Name.ToLower().Contains(search));
+                || article.NameSearchKey.Contains(search));
         }
 
         if (filter.Mode is not null)
@@ -102,6 +102,7 @@ public sealed class SqliteArticleStore(IDbContextFactory<WarehouseDbContext> con
             Ean13 = article.Ean13.Value,
             Type = article.Type == ArticleType.Food ? "food" : "nonFood",
             Name = article.Name,
+            NameSearchKey = ArticleNameSearchKey.From(article.Name),
             PriceHtCents = article.PriceHt.Cents,
             IsActive = article.IsActive,
             Dlc = article.Dlc?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),

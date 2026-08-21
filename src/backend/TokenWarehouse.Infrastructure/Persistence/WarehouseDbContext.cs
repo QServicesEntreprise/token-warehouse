@@ -12,6 +12,7 @@ public sealed class WarehouseDbContext(DbContextOptions<WarehouseDbContext> opti
         article.HasKey(entity => entity.Ean13);
         article.Property(entity => entity.Type).IsRequired();
         article.Property(entity => entity.Name).IsRequired();
+        article.Property(entity => entity.NameSearchKey).IsRequired();
         article.Property(entity => entity.IsActive).IsRequired();
     }
 }

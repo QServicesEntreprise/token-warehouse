@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, Route, test } from '@playwright/test';
 
 test('searches and filters the catalogue, including an archived detail', async ({ page }) => {
   await page.goto('/');
@@ -99,4 +99,41 @@ test('searches and filters the catalogue, including an archived detail', async (
   await expect(page.locator('#ean13')).toBeFocused();
 
   await page.screenshot({ path: 'artifacts/playwright/catalogue.png', fullPage: true });
+});
+
+test('recovers a failed catalogue request and opens detail with the keyboard', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Créer et consulter un Article' })).toBeVisible();
+
+  await page.locator('#catalog-status').selectOption('archived');
+  await page.locator('#catalog-search').fill('Biscuit');
+  await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
+  await expect(page.getByRole('row', { name: /Biscuit historique/ })).toBeVisible();
+
+  const detailAction = page.getByRole('button', { name: 'Consulter Biscuit historique' });
+  await detailAction.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('heading', { name: 'Biscuit historique' })).toBeVisible();
+
+  let failCatalogueRequest = true;
+  const catalogueRoute = async (route: Route) => {
+    const requestUrl = new URL(route.request().url());
+    if (failCatalogueRequest && requestUrl.searchParams.get('search') === 'Biscuit') {
+      await route.abort();
+      return;
+    }
+    await route.continue();
+  };
+  await page.route(/\/api\/articles\?.*/, catalogueRoute);
+
+  await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Catalogue');
+  await expect(page.locator('#catalog-stale')).toContainText('recherche précédente');
+  await expect(page.getByRole('row', { name: /Biscuit historique/ })).toBeVisible();
+
+  failCatalogueRequest = false;
+  await page.getByRole('button', { name: 'Réessayer', exact: true }).click();
+  await expect(page.locator('#catalog-state')).toContainText('1 Article trouvé.');
+  await expect(page.locator('#catalog-stale')).toHaveCount(0);
+  await page.unroute(/\/api\/articles\?.*/, catalogueRoute);
 });
