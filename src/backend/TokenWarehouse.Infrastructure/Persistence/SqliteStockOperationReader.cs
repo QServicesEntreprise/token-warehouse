@@ -15,6 +15,7 @@ public sealed class SqliteStockOperationReader(
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
         var entity = await context.StockOperations
             .AsNoTracking()
+            .Include(operation => operation.Lines)
             .SingleOrDefaultAsync(operation => operation.Id == id, cancellationToken);
         if (entity is null)
         {
@@ -33,33 +34,61 @@ public sealed class SqliteStockOperationReader(
         StockOperationEntity entity,
         IReadOnlyList<StockOperationLineEntity> lineEntities)
     {
-        if (!DateTimeOffset.TryParse(
+        if (!Ean13.TryCreate(entity.Ean13, out var operationEan13)
+            || !DateTimeOffset.TryParse(
                 entity.TimestampUtc,
                 CultureInfo.InvariantCulture,
                 DateTimeStyles.RoundtripKind,
-                out var timestampUtc)
-            || !string.Equals(entity.Type, "INVENTORY", StringComparison.Ordinal))
+                out var timestampUtc))
+        {
+            throw new InvalidOperationException("Stored StockOperation data is invalid.");
+        }
+
+        if (string.Equals(entity.Type, "supply", StringComparison.OrdinalIgnoreCase))
+        {
+            if (entity.Lines.Count == 0)
+            {
+                if (!Quantity.TryCreatePositive(entity.Quantity, out var quantity))
+                {
+                    throw new InvalidOperationException("Stored Supply data is invalid.");
+                }
+
+                return StockOperation.CreateSupply(entity.Id, operationEan13, quantity, timestampUtc);
+            }
+
+            var supplyLines = entity.Lines
+                .OrderBy(line => line.LineNumber)
+                .Select(line =>
+                {
+                    if (!Ean13.TryCreate(line.Ean13, out var lineEan13)
+                        || !Quantity.TryCreatePositive(line.Quantity, out var quantity))
+                    {
+                        throw new InvalidOperationException("Stored Supply line data is invalid.");
+                    }
+
+                    return new StockOperationLine(line.LineNumber, lineEan13, quantity);
+                })
+                .ToArray();
+            return StockOperation.CreateBulkSupply(entity.Id, supplyLines, timestampUtc);
+        }
+
+        if (!string.Equals(entity.Type, "INVENTORY", StringComparison.Ordinal))
         {
             throw new InvalidOperationException("Stored StockOperation data is invalid.");
         }
 
         if (lineEntities.Count == 0)
         {
-            if (!Ean13.TryCreate(entity.Ean13, out var ean13))
-            {
-                throw new InvalidOperationException("Stored StockOperation data is invalid.");
-            }
-
             return StockOperation.CreateInventory(
                 entity.Id,
-                ean13,
+                operationEan13,
                 InventoryReconciliation.Reconcile(
                     entity.PreviousPhysicalStock,
                     entity.CountedQuantity),
                 timestampUtc);
         }
 
-        var lines = lineEntities
+        var inventoryLines = lineEntities
             .Select(line =>
             {
                 if (!Ean13.TryCreate(line.Ean13, out var ean13))
@@ -83,6 +112,6 @@ public sealed class SqliteStockOperationReader(
             })
             .ToArray();
 
-        return StockOperation.CreateInventory(entity.Id, lines, timestampUtc);
+        return StockOperation.CreateInventory(entity.Id, inventoryLines, timestampUtc);
     }
 }

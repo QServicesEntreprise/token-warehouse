@@ -128,6 +128,7 @@ public sealed class SqliteStockMutationCommitter(
             OperationId = operationId,
             LineNumber = line.LineNumber,
             Ean13 = line.Ean13.Value,
+            OperationType = "INVENTORY",
             PreviousPhysicalStock = line.PreviousPhysicalStock,
             CountedQuantity = line.CountedQuantity,
             InventoryDifference = line.InventoryDifference,

@@ -98,6 +98,13 @@ public interface IArticleSellabilityReader
     }
 }
 
+public interface IArticleSellabilityBatchReader
+{
+    ValueTask<IReadOnlyDictionary<Ean13, ArticleSellabilitySnapshot>> FindSellabilityByEansAsync(
+        IReadOnlyList<Ean13> eans,
+        CancellationToken cancellationToken = default);
+}
+
 public sealed record ArticleListItemView(
     Ean13 Ean13,
     ArticleType Type,

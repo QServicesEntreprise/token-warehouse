@@ -8,6 +8,10 @@ public sealed class StockOperationLineEntity
 
     public string Ean13 { get; set; } = string.Empty;
 
+    public string OperationType { get; set; } = "INVENTORY";
+
+    public int Quantity { get; set; }
+
     public int PreviousPhysicalStock { get; set; }
 
     public int CountedQuantity { get; set; }
@@ -15,4 +19,6 @@ public sealed class StockOperationLineEntity
     public int InventoryDifference { get; set; }
 
     public int ResultingPhysicalStock { get; set; }
+
+    public StockOperationEntity? Operation { get; set; }
 }

@@ -306,4 +306,122 @@ public sealed class SqliteMigrationTests
         await using var readContext = new WarehouseDbContext(options);
         Assert.Equal(1, await readContext.StockOperations.CountAsync());
     }
+
+    [Fact]
+    public async Task Supply_operation_lines_reject_zero_quantity_without_partial_rows()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<WarehouseDbContext>()
+            .UseSqlite(connection)
+            .Options;
+
+        await using (var context = new WarehouseDbContext(options))
+        {
+            await context.Database.MigrateAsync();
+            context.Articles.Add(new ArticleEntity
+            {
+                Ean13 = "0123456789012",
+                Type = "food",
+                Name = "Article approvisionné",
+                NameSearchKey = "ARTICLE APPROVISIONNE",
+                PriceHtCents = 100,
+                IsActive = true,
+                Dlc = "2030-01-15",
+                ConsumptionModes = "takeaway"
+            });
+            context.StockPositions.Add(new StockPositionEntity
+            {
+                Ean13 = "0123456789012",
+                PhysicalQuantity = 4
+            });
+            context.StockOperations.Add(new StockOperationEntity
+            {
+                Id = "operation-zero-line",
+                Type = "supply",
+                Ean13 = "0123456789012",
+                Quantity = 1,
+                OccurredAt = "2030-01-15T10:00:00.0000000+00:00"
+            });
+            context.StockOperationLines.Add(new StockOperationLineEntity
+            {
+                OperationId = "operation-zero-line",
+                LineNumber = 1,
+                Ean13 = "0123456789012",
+                OperationType = "supply",
+                Quantity = 0,
+                PreviousPhysicalStock = 0,
+                CountedQuantity = 0,
+                InventoryDifference = 0,
+                ResultingPhysicalStock = 0
+            });
+
+            await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+        }
+
+        await using var readContext = new WarehouseDbContext(options);
+        Assert.Equal(0, await readContext.StockPositions.CountAsync());
+        Assert.Equal(0, await readContext.StockOperations.CountAsync());
+        Assert.Equal(0, await readContext.StockOperationLines.CountAsync());
+    }
+
+    [Fact]
+    public async Task Inventory_operation_lines_keep_zero_quantity_and_reject_operation_type_changes()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<WarehouseDbContext>()
+            .UseSqlite(connection)
+            .Options;
+
+        await using (var context = new WarehouseDbContext(options))
+        {
+            await context.Database.MigrateAsync();
+            context.Articles.Add(new ArticleEntity
+            {
+                Ean13 = "0123456789012",
+                Type = "food",
+                Name = "Article inventorié",
+                NameSearchKey = "ARTICLE INVENTORIE",
+                PriceHtCents = 100,
+                IsActive = true,
+                Dlc = "2030-01-15",
+                ConsumptionModes = "takeaway"
+            });
+            var operation = new StockOperationEntity
+            {
+                Id = "operation-zero-inventory-line",
+                Type = "INVENTORY",
+                Ean13 = "0123456789012",
+                Quantity = 0,
+                OccurredAt = "2030-01-15T10:00:00.0000000+00:00"
+            };
+            context.StockOperations.Add(operation);
+            context.StockOperationLines.Add(new StockOperationLineEntity
+            {
+                OperationId = operation.Id,
+                LineNumber = 1,
+                Ean13 = "0123456789012",
+                OperationType = "INVENTORY",
+                Quantity = 0,
+                PreviousPhysicalStock = 0,
+                CountedQuantity = 0,
+                InventoryDifference = 0,
+                ResultingPhysicalStock = 0
+            });
+            await context.SaveChangesAsync();
+
+            operation.Type = "supply";
+            operation.Quantity = 1;
+            await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+        }
+
+        await using var readContext = new WarehouseDbContext(options);
+        var persistedLine = await readContext.StockOperationLines.SingleAsync();
+        Assert.Equal("INVENTORY", persistedLine.OperationType);
+        Assert.Equal(0, persistedLine.Quantity);
+        Assert.Equal("INVENTORY", await readContext.StockOperations
+            .Select(operation => operation.Type)
+            .SingleAsync());
+    }
 }
