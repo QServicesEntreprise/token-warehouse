@@ -1,0 +1,139 @@
+namespace TokenWarehouse.Domain;
+
+public enum SaleContext
+{
+    Takeaway,
+    OnSite
+}
+
+public readonly record struct TaxRate
+{
+    public TaxRate(string code, int numerator, int denominator)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            throw new ArgumentException("A TaxRate code is required.", nameof(code));
+        }
+
+        if (numerator <= 0 || denominator <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(numerator));
+        }
+
+        Code = code;
+        Numerator = numerator;
+        Denominator = denominator;
+    }
+
+    public string Code { get; }
+
+    public int Numerator { get; }
+
+    public int Denominator { get; }
+
+    public static TaxRate Takeaway => new("takeaway", 11, 200);
+
+    public static TaxRate OnSite => new("onsite", 1, 10);
+
+    public static TaxRate NonFood => new("nonFood", 1, 5);
+
+    public Money CalculateVat(Money priceHt)
+        => Money.FromCents(checked((int)RoundAwayFromZero((long)priceHt.Cents * Numerator, Denominator)));
+
+    private static long RoundAwayFromZero(long numerator, int denominator)
+    {
+        var sign = numerator < 0 ? -1 : 1;
+        var absolute = Math.Abs(numerator);
+        var quotient = absolute / denominator;
+        var remainder = absolute % denominator;
+        if (remainder * 2 >= denominator)
+        {
+            quotient++;
+        }
+
+        return sign * quotient;
+    }
+}
+
+public sealed record PricingValidationError(string Code, string Field, string Message);
+
+public sealed record PricingQuote(
+    SaleContext? SaleContext,
+    TaxRate TaxRate,
+    Money Vat,
+    Money PriceTtc);
+
+public sealed record PricingResult(
+    IReadOnlyList<PricingQuote> Quotes,
+    IReadOnlyList<PricingValidationError> Errors)
+{
+    public bool IsSuccess => Errors.Count == 0;
+}
+
+public static class PricingPolicy
+{
+    public static PricingResult Calculate(Article article)
+    {
+        ArgumentNullException.ThrowIfNull(article);
+
+        if (article.Type == ArticleType.NonFood)
+        {
+            return new([CreateQuote(article.PriceHt, null, TaxRate.NonFood)], []);
+        }
+
+        return new(
+            article.ConsumptionModes
+                .Select(mode => CreateQuote(article.PriceHt, ToSaleContext(mode), TaxRateFor(mode)))
+                .ToArray(),
+            []);
+    }
+
+    public static PricingResult Resolve(Article article, SaleContext? saleContext = null)
+    {
+        ArgumentNullException.ThrowIfNull(article);
+
+        var quotes = Calculate(article).Quotes;
+        if (saleContext is null)
+        {
+            if (quotes.Count == 1)
+            {
+                return new(quotes, []);
+            }
+
+            return MissingContext();
+        }
+
+        var quote = quotes.SingleOrDefault(candidate => candidate.SaleContext == saleContext);
+        return quote is null
+            ? UnsupportedContext()
+            : new([quote], []);
+    }
+
+    private static PricingQuote CreateQuote(Money priceHt, SaleContext? context, TaxRate taxRate)
+    {
+        var vat = taxRate.CalculateVat(priceHt);
+        return new(context, taxRate, vat, Money.FromCents(checked(priceHt.Cents + vat.Cents)));
+    }
+
+    private static SaleContext ToSaleContext(ConsumptionMode mode)
+        => mode == ConsumptionMode.Takeaway ? SaleContext.Takeaway : SaleContext.OnSite;
+
+    private static TaxRate TaxRateFor(ConsumptionMode mode)
+        => mode == ConsumptionMode.Takeaway ? TaxRate.Takeaway : TaxRate.OnSite;
+
+    private static PricingResult MissingContext()
+        => new(
+            [],
+            [new(
+                "pricing.saleContext.required",
+                "saleContext",
+                "Le Contexte de Vente est requis lorsque les deux modes sont disponibles.")]);
+
+    private static PricingResult UnsupportedContext()
+        => new(
+            [],
+            [new(
+                "pricing.saleContext.not_applicable",
+                "saleContext",
+                "Le Contexte de Vente ne s’applique pas à cet Article.")]);
+}

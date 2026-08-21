@@ -9,7 +9,7 @@ test('creates and consults food and non-food articles through the real UI', asyn
 
   await page.locator('#ean13').fill('0123456789012');
   await page.locator('#name').fill('Chocolat noir');
-  await page.locator('#priceHtCents').fill('199');
+  await page.locator('#priceHtCents').fill('1000');
   await page.locator('#dlc').fill('2026-12-31');
   await page.getByLabel('À emporter').check();
   await page.getByLabel('Sur place').check();
@@ -17,14 +17,24 @@ test('creates and consults food and non-food articles through the real UI', asyn
 
   await expect(page.getByRole('heading', { name: 'Chocolat noir' })).toBeVisible();
   await expect(page.getByText('0123456789012')).toBeVisible();
-  await expect(page.getByText('199 centimes')).toBeVisible();
+  await expect(page.getByText('1000 centimes')).toBeVisible();
   await expect(page.getByText('takeaway, onsite')).toBeVisible();
+  await expect(page.getByText('1055 centimes')).toBeVisible();
+  await expect(page.getByText('1100 centimes')).toBeVisible();
+  await expect(page.locator('#priceTtcCents')).toHaveCount(0);
+
+  await page.locator('#detailPriceHtCents').fill('199');
+  await page.getByRole('button', { name: 'Enregistrer le Prix HT' }).click();
+  await expect(page.getByText('210 centimes')).toBeVisible();
+  await expect(page.getByText('219 centimes')).toBeVisible();
 
   await page.reload();
   await page.locator('#lookupEan13').fill('0123456789012');
   await page.getByRole('button', { name: 'Consulter' }).click();
   await expect(page.getByRole('heading', { name: 'Chocolat noir' })).toBeVisible();
   await expect(page.getByText('2026-12-31')).toBeVisible();
+  await expect(page.getByText('210 centimes')).toBeVisible();
+  await expect(page.getByText('219 centimes')).toBeVisible();
 
   await page.locator('#type').selectOption('nonFood');
   await expect(page.locator('#dlc')).toHaveCount(0);
@@ -46,6 +56,8 @@ test('creates and consults food and non-food articles through the real UI', asyn
   await expect(page.getByRole('heading', { name: 'Batterie' })).toBeVisible();
   await expect(page.getByText('2500 centimes')).toBeVisible();
   await expect(page.getByText('refurbished')).toBeVisible();
+  await expect(page.getByText('3000 centimes')).toBeVisible();
+  await expect(page.locator('.price-quote')).toHaveCount(1);
 
   await page.locator('#type').selectOption('food');
   await page.locator('#ean13').fill('0123456789013');

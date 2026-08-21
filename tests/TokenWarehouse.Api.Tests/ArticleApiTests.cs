@@ -55,6 +55,169 @@ public sealed class ArticleApiTests
     }
 
     [Fact]
+    public async Task Gets_and_patches_food_quotes_in_cents_without_persisting_ttc()
+    {
+        using var factory = new ArticleHostFactory();
+        using var client = factory.CreateClient();
+        using var create = await client.PostAsJsonAsync("/api/articles", new
+        {
+            ean13 = "0123456789012",
+            type = "food",
+            name = "Chocolat noir",
+            priceHtCents = 1000,
+            dlc = "2026-12-31",
+            consumptionModes = new[] { "takeaway", "onsite" }
+        });
+
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+
+        using var patchRequest = new HttpRequestMessage(HttpMethod.Patch, "/api/articles/0123456789012")
+        {
+            Content = JsonContent.Create(new { priceHtCents = 199 })
+        };
+        using var patch = await client.SendAsync(patchRequest);
+        Assert.Equal(HttpStatusCode.OK, patch.StatusCode);
+        Assert.Equal("application/json", patch.Content.Headers.ContentType?.MediaType);
+        using var patched = JsonDocument.Parse(await patch.Content.ReadAsStringAsync());
+
+        Assert.Equal(199, patched.RootElement.GetProperty("priceHtCents").GetInt32());
+        Assert.Equal("0123456789012", patched.RootElement.GetProperty("ean13").GetString());
+        Assert.Equal("food", patched.RootElement.GetProperty("type").GetString());
+        Assert.Equal("2026-12-31", patched.RootElement.GetProperty("dlc").GetString());
+        Assert.Equal(
+            new[] { "takeaway", "onsite" },
+            patched.RootElement.GetProperty("consumptionModes").EnumerateArray().Select(value => value.GetString()).ToArray());
+        Assert.Equal(2, patched.RootElement.GetProperty("priceQuotes").GetArrayLength());
+        var patchedQuotes = patched.RootElement.GetProperty("priceQuotes").EnumerateArray().ToArray();
+        Assert.Equal("takeaway", patchedQuotes[0].GetProperty("saleContext").GetString());
+        Assert.Equal(11, patchedQuotes[0].GetProperty("vatCents").GetInt32());
+        Assert.Equal(210, patchedQuotes[0].GetProperty("priceTtcCents").GetInt32());
+        Assert.Equal("onsite", patchedQuotes[1].GetProperty("saleContext").GetString());
+        Assert.Equal(20, patchedQuotes[1].GetProperty("vatCents").GetInt32());
+        Assert.Equal(219, patchedQuotes[1].GetProperty("priceTtcCents").GetInt32());
+        Assert.Equal("11/200", patchedQuotes[0].GetProperty("taxRate").GetProperty("ratio").GetString());
+        Assert.Equal("1/10", patchedQuotes[1].GetProperty("taxRate").GetProperty("ratio").GetString());
+
+        using var secondClient = factory.CreateClient();
+        using var read = await secondClient.GetAsync("/api/articles/0123456789012");
+        Assert.Equal(HttpStatusCode.OK, read.StatusCode);
+        using var loaded = JsonDocument.Parse(await read.Content.ReadAsStringAsync());
+        Assert.Equal(patched.RootElement.GetRawText(), loaded.RootElement.GetRawText());
+        Assert.False(loaded.RootElement.TryGetProperty("priceTtcCents", out _));
+        Assert.False(loaded.RootElement.TryGetProperty("vatCents", out _));
+    }
+
+    [Fact]
+    public async Task Gets_non_food_quote_without_a_sale_context()
+    {
+        using var factory = new ArticleHostFactory();
+        using var client = factory.CreateClient();
+        using var create = await client.PostAsJsonAsync("/api/articles", new
+        {
+            ean13 = "7351353713578",
+            type = "nonFood",
+            name = "Batterie",
+            priceHtCents = 1000,
+            packaging = "new"
+        });
+
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+        using var body = JsonDocument.Parse(await create.Content.ReadAsStringAsync());
+        var quote = Assert.Single(body.RootElement.GetProperty("priceQuotes").EnumerateArray());
+
+        Assert.False(quote.TryGetProperty("saleContext", out _));
+        Assert.Equal("nonFood", quote.GetProperty("taxRate").GetProperty("code").GetString());
+        Assert.Equal("1/5", quote.GetProperty("taxRate").GetProperty("ratio").GetString());
+        Assert.Equal(200, quote.GetProperty("vatCents").GetInt32());
+        Assert.Equal(1200, quote.GetProperty("priceTtcCents").GetInt32());
+    }
+
+    [Fact]
+    public async Task Rejects_derived_price_input_and_keeps_the_old_price()
+    {
+        using var factory = new ArticleHostFactory();
+        using var client = factory.CreateClient();
+        using var create = await client.PostAsJsonAsync("/api/articles", new
+        {
+            ean13 = "7351353713578",
+            type = "nonFood",
+            name = "Batterie",
+            priceHtCents = 1000,
+            packaging = "new"
+        });
+
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+        using var patchRequest = new HttpRequestMessage(HttpMethod.Patch, "/api/articles/7351353713578")
+        {
+            Content = JsonContent.Create(new { priceTtcCents = 1200 })
+        };
+        using var patch = await client.SendAsync(patchRequest);
+
+        Assert.Equal(HttpStatusCode.BadRequest, patch.StatusCode);
+        Assert.Equal("application/problem+json", patch.Content.Headers.ContentType?.MediaType);
+        using var problem = JsonDocument.Parse(await patch.Content.ReadAsStringAsync());
+        Assert.Equal("article.validation", problem.RootElement.GetProperty("code").GetString());
+        Assert.True(problem.RootElement.GetProperty("errors").TryGetProperty("priceTtcCents", out _));
+
+        using var read = await client.GetAsync("/api/articles/7351353713578");
+        using var loaded = JsonDocument.Parse(await read.Content.ReadAsStringAsync());
+        Assert.Equal(1000, loaded.RootElement.GetProperty("priceHtCents").GetInt32());
+    }
+
+    [Theory]
+    [InlineData("{}", "priceHtCents")]
+    [InlineData("{\"priceHtCents\":null}", "priceHtCents")]
+    [InlineData("{\"priceHtCents\":\"199\"}", "priceHtCents")]
+    [InlineData("{\"priceHtCents\":199.0}", "priceHtCents")]
+    [InlineData("{\"priceTtcCents\":1200}", "priceTtcCents")]
+    public async Task Rejects_invalid_patch_shapes_without_mutating_the_article(string json, string field)
+    {
+        using var factory = new ArticleHostFactory();
+        using var client = factory.CreateClient();
+        using var create = await client.PostAsJsonAsync("/api/articles", new
+        {
+            ean13 = "7351353713578",
+            type = "nonFood",
+            name = "Batterie",
+            priceHtCents = 1000,
+            packaging = "new"
+        });
+
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+        using var patchRequest = new HttpRequestMessage(HttpMethod.Patch, "/api/articles/7351353713578")
+        {
+            Content = new StringContent(json, Encoding.UTF8, "application/json")
+        };
+        using var patch = await client.SendAsync(patchRequest);
+
+        Assert.Equal(HttpStatusCode.BadRequest, patch.StatusCode);
+        using var problem = JsonDocument.Parse(await patch.Content.ReadAsStringAsync());
+        Assert.True(problem.RootElement.GetProperty("errors").TryGetProperty(field, out _));
+
+        using var read = await client.GetAsync("/api/articles/7351353713578");
+        using var loaded = JsonDocument.Parse(await read.Content.ReadAsStringAsync());
+        Assert.Equal(1000, loaded.RootElement.GetProperty("priceHtCents").GetInt32());
+    }
+
+    [Fact]
+    public async Task Patching_an_unknown_article_returns_not_found_problem_details()
+    {
+        using var factory = new ArticleHostFactory();
+        using var client = factory.CreateClient();
+        using var patchRequest = new HttpRequestMessage(HttpMethod.Patch, "/api/articles/4006381333931")
+        {
+            Content = JsonContent.Create(new { priceHtCents = 199 })
+        };
+
+        using var response = await client.SendAsync(patchRequest);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("article.not_found", body.RootElement.GetProperty("code").GetString());
+    }
+
+    [Fact]
     public async Task Persists_dlc_as_iso_calendar_under_a_non_gregorian_culture()
     {
         var culture = new CultureInfo("ar-SA");
@@ -375,6 +538,12 @@ public sealed class ArticleApiTests
             => throw new InvalidOperationException("database internals");
 
         public ValueTask<ArticleStoreInsertStatus> InsertAsync(Article article, CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("database internals");
+
+        public ValueTask<ArticleStoreUpdateStatus> UpdatePriceHtAsync(
+            Ean13 ean13,
+            Money priceHt,
+            CancellationToken cancellationToken = default)
             => throw new InvalidOperationException("database internals");
     }
 }

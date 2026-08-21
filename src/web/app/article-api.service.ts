@@ -18,6 +18,23 @@ export interface ArticleCreatePayload {
 
 export interface ArticleResponse extends ArticleCreatePayload {
   isActive: boolean;
+  priceQuotes: PriceQuote[];
+}
+
+export interface PriceQuote {
+  saleContext?: ConsumptionMode;
+  taxRate: {
+    code: string;
+    ratio: string;
+    numerator: number;
+    denominator: number;
+  };
+  vatCents: number;
+  priceTtcCents: number;
+}
+
+export interface ArticlePriceUpdatePayload {
+  priceHtCents: number;
 }
 
 export interface ProblemDetails {
@@ -36,5 +53,9 @@ export class ArticleApiService {
 
   getByEan13(ean13: string): Observable<ArticleResponse> {
     return this.http.get<ArticleResponse>(`/api/articles/${encodeURIComponent(ean13)}`);
+  }
+
+  updatePriceHt(ean13: string, payload: ArticlePriceUpdatePayload): Observable<ArticleResponse> {
+    return this.http.patch<ArticleResponse>(`/api/articles/${encodeURIComponent(ean13)}`, payload);
   }
 }

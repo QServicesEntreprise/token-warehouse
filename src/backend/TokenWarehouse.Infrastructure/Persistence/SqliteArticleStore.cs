@@ -38,6 +38,37 @@ public sealed class SqliteArticleStore(IDbContextFactory<WarehouseDbContext> con
         }
     }
 
+    public async ValueTask<ArticleStoreUpdateStatus> UpdatePriceHtAsync(
+        Ean13 ean13,
+        Money priceHt,
+        CancellationToken cancellationToken = default)
+    {
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+        var entity = await context.Articles
+            .SingleOrDefaultAsync(article => article.Ean13 == ean13.Value, cancellationToken);
+
+        if (entity is null)
+        {
+            return ArticleStoreUpdateStatus.NotFound;
+        }
+
+        if (!entity.IsActive)
+        {
+            return ArticleStoreUpdateStatus.Conflict;
+        }
+
+        entity.PriceHtCents = priceHt.Cents;
+        try
+        {
+            await context.SaveChangesAsync(cancellationToken);
+            return ArticleStoreUpdateStatus.Updated;
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return ArticleStoreUpdateStatus.Conflict;
+        }
+    }
+
     private static ArticleEntity ToEntity(Article article)
         => new()
         {
