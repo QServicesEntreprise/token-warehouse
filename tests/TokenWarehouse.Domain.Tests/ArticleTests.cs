@@ -196,4 +196,116 @@ public sealed class ArticleTests
         Assert.Contains(alreadyArchived.Errors, error => error.Code == "article.lifecycle.already_archived");
         Assert.Equal(ArticleLifecycleStatus.Archived, article.LifecycleStatus);
     }
+
+    [Fact]
+    public void Updates_food_attributes_partially_without_changing_identity_or_price()
+    {
+        var article = Assert.IsType<Article>(Article.Create(new ArticleDraft
+        {
+            Ean13 = "0123456789012",
+            Type = "food",
+            Name = "Chocolat noir",
+            PriceHtCents = 199,
+            Dlc = "2026-12-31",
+            DlcProvided = true,
+            ConsumptionModes = ["takeaway"],
+            ConsumptionModesProvided = true
+        }).Value);
+
+        var result = article.UpdateAttributes(new ArticleAttributeChanges
+        {
+            Name = "Chocolat noir bio",
+            NameProvided = true,
+            ConsumptionModes = ["takeaway", "onsite"],
+            ConsumptionModesProvided = true
+        });
+
+        Assert.Equal(ArticleAttributeUpdateStatus.Updated, result.Status);
+        Assert.Equal("0123456789012", article.Ean13.Value);
+        Assert.Equal(ArticleType.Food, article.Type);
+        Assert.Equal(199, article.PriceHt.Cents);
+        Assert.Equal("Chocolat noir bio", article.Name);
+        Assert.Equal(new DateOnly(2026, 12, 31), article.Dlc);
+        Assert.Equal([ConsumptionMode.Takeaway, ConsumptionMode.OnSite], article.ConsumptionModes);
+        Assert.Equal(
+            ["name", "consumptionModes"],
+            result.Changes.Select(change => change.Field).ToArray());
+    }
+
+    [Fact]
+    public void Updates_non_food_packaging_and_rejects_food_fields()
+    {
+        var article = Assert.IsType<Article>(Article.Create(new ArticleDraft
+        {
+            Ean13 = "7351353713578",
+            Type = "nonFood",
+            Name = "Batterie",
+            PriceHtCents = 2500,
+            Packaging = "new",
+            PackagingProvided = true
+        }).Value);
+
+        var result = article.UpdateAttributes(new ArticleAttributeChanges
+        {
+            Packaging = "unsellable",
+            PackagingProvided = true,
+            Dlc = "2026-12-31",
+            DlcProvided = true
+        });
+
+        Assert.Equal(ArticleAttributeUpdateStatus.ValidationFailed, result.Status);
+        Assert.Contains(result.Errors, error => error.Code == "article.dlc.not_applicable");
+        Assert.Equal(PackagingCondition.New, article.Packaging);
+    }
+
+    [Fact]
+    public void Rejects_immutable_and_unsupported_fields_without_mutating_the_article()
+    {
+        var article = Assert.IsType<Article>(Article.Create(new ArticleDraft
+        {
+            Ean13 = "4006381333931",
+            Type = "nonFood",
+            Name = "Batterie",
+            PriceHtCents = 2500,
+            Packaging = "new",
+            PackagingProvided = true
+        }).Value);
+
+        var result = article.UpdateAttributes(new ArticleAttributeChanges
+        {
+            Name = "Nouvelle batterie",
+            NameProvided = true,
+            UnsupportedFields = ["ean13", "type", "priceHtCents", "status"]
+        });
+
+        Assert.Equal(ArticleAttributeUpdateStatus.ValidationFailed, result.Status);
+        Assert.All(result.Errors, error => Assert.Equal("article.field.unsupported", error.Code));
+        Assert.Equal("Batterie", article.Name);
+        Assert.Equal(2500, article.PriceHt.Cents);
+    }
+
+    [Fact]
+    public void Refuses_attribute_updates_for_an_archived_article()
+    {
+        var article = Assert.IsType<Article>(Article.Create(new ArticleDraft
+        {
+            Ean13 = "4006381333931",
+            Type = "nonFood",
+            Name = "Batterie",
+            PriceHtCents = 2500,
+            Packaging = "new",
+            PackagingProvided = true
+        }).Value);
+        article.Archive();
+
+        var result = article.UpdateAttributes(new ArticleAttributeChanges
+        {
+            Name = "Batterie archivée",
+            NameProvided = true
+        });
+
+        Assert.Equal(ArticleAttributeUpdateStatus.Conflict, result.Status);
+        Assert.Contains(result.Errors, error => error.Code == "article.update.archived");
+        Assert.Equal("Batterie", article.Name);
+    }
 }

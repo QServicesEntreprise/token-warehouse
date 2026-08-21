@@ -65,6 +65,10 @@ test('searches and filters the catalogue, including an archived detail', async (
   await expect(articleDetailText('210 centimes')).toBeVisible();
   await expect(articleDetailText('219 centimes')).toBeVisible();
 
+  await page.locator('#detailDlc').fill('2027-01-31');
+  await page.getByRole('button', { name: 'Enregistrer les attributs' }).click();
+  await expect(articleDetailText('2027-01-31')).toBeVisible();
+
   await page.locator('#catalog-search').fill('chocolat');
   await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
   await expect(articleRow(foodEan)).toBeVisible();
@@ -92,7 +96,7 @@ test('searches and filters the catalogue, including an archived detail', async (
   await expect(page.locator('section[aria-labelledby="lookup-title"]').getByText('Archivé', { exact: true })).toBeVisible();
   await expect(articleDetailText('Alimentaire')).toBeVisible();
   await expect(articleDetailText('199 centimes')).toBeVisible();
-  await expect(articleDetailText('2026-12-31')).toBeVisible();
+  await expect(articleDetailText('2027-01-31')).toBeVisible();
   await expect(articleDetailText('takeaway, onsite')).toBeVisible();
 
   await page.reload();
@@ -103,7 +107,7 @@ test('searches and filters the catalogue, including an archived detail', async (
   await expect(page.locator('section[aria-labelledby="lookup-title"]').getByText('Archivé', { exact: true })).toBeVisible();
   await expect(articleDetailText('Alimentaire')).toBeVisible();
   await expect(articleDetailText('199 centimes')).toBeVisible();
-  await expect(articleDetailText('2026-12-31')).toBeVisible();
+  await expect(articleDetailText('2027-01-31')).toBeVisible();
   await expect(articleDetailText('takeaway, onsite')).toBeVisible();
 
   await page.locator('#ean13').fill(foodEan);
@@ -157,6 +161,17 @@ test('searches and filters the catalogue, including an archived detail', async (
   await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
   await expect(articleRow(foodEan)).toBeVisible();
 
+  await page.getByRole('button', { name: 'Consulter Chocolat noir' }).click();
+  await expect(page.locator('section[aria-labelledby="lookup-title"]').getByText('Actif', { exact: true })).toBeVisible();
+  await page.locator('#detailDlc').fill('2027-02-28');
+  await page.getByRole('button', { name: 'Enregistrer les attributs' }).click();
+  await expect(articleDetailText('2027-02-28')).toBeVisible();
+
+  await page.reload();
+  await page.locator('#lookupEan13').fill(foodEan);
+  await page.getByRole('button', { name: 'Consulter', exact: true }).click();
+  await expect(articleDetailText('2027-02-28')).toBeVisible();
+
   await page.locator('#catalog-search').fill('aucune référence');
   await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
   await expect(page.getByText('Aucun Article ne correspond à ces critères.')).toBeVisible();
@@ -171,7 +186,7 @@ test('searches and filters the catalogue, including an archived detail', async (
   await page.locator('#lookupEan13').fill(foodEan);
   await page.getByRole('button', { name: 'Consulter', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Chocolat noir' })).toBeVisible();
-  await expect(page.getByText('2026-12-31')).toBeVisible();
+  await expect(page.getByText('2027-02-28')).toBeVisible();
   await expect(articleDetailText('210 centimes')).toBeVisible();
   await expect(articleDetailText('219 centimes')).toBeVisible();
 
@@ -229,11 +244,15 @@ test('searches and filters the catalogue, including an archived detail', async (
   await expect(articleDetailText('3000 centimes')).toBeVisible();
   await expect(page.locator('.price-quote')).toHaveCount(1);
 
+  await page.locator('#detailPackaging').selectOption('unsellable');
+  await page.getByRole('button', { name: 'Enregistrer les attributs' }).click();
+  await expect(page.getByText('unsellable')).toBeVisible();
+
   await page.locator('#detailPriceHtCents').fill('1999');
   await page.getByRole('button', { name: 'Enregistrer le Prix HT' }).click();
   await expect(articleDetailText('1999 centimes')).toBeVisible();
   await expect(articleDetailText('2399 centimes')).toBeVisible();
-  await expect(page.getByText('refurbished')).toBeVisible();
+  await expect(page.getByText('unsellable')).toBeVisible();
 
   await page.reload();
   await page.locator('#lookupEan13').fill(nonFoodEan);
@@ -242,6 +261,7 @@ test('searches and filters the catalogue, including an archived detail', async (
   await expect(articleDetailText('1999 centimes')).toBeVisible();
   await expect(articleDetailText('2399 centimes')).toBeVisible();
   await expect(articleDetailText('400 centimes')).toBeVisible();
+  await expect(page.getByText('unsellable')).toBeVisible();
   await expect(page.locator('.price-quote')).toHaveCount(1);
 
   await page.locator('#type').selectOption('food');

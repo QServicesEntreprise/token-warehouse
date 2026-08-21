@@ -170,6 +170,158 @@ public sealed class ArticleApiTests
     }
 
     [Fact]
+    public async Task Patches_food_attributes_persists_them_and_exposes_one_history_fact()
+    {
+        using var factory = new ArticleHostFactory();
+        using var client = factory.CreateClient();
+        using var create = await client.PostAsJsonAsync("/api/articles", new
+        {
+            ean13 = "0123456789012",
+            type = "food",
+            name = "Chocolat noir",
+            priceHtCents = 199,
+            dlc = "2026-12-31",
+            consumptionModes = new[] { "takeaway" }
+        });
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+
+        using var patch = await client.PatchAsJsonAsync("/api/articles/0123456789012", new
+        {
+            name = "Chocolat noir bio",
+            dlc = "2027-01-31",
+            consumptionModes = new[] { "takeaway", "onsite" }
+        });
+
+        Assert.Equal(HttpStatusCode.OK, patch.StatusCode);
+        using var patched = JsonDocument.Parse(await patch.Content.ReadAsStringAsync());
+        Assert.Equal("Chocolat noir bio", patched.RootElement.GetProperty("name").GetString());
+        Assert.Equal("2027-01-31", patched.RootElement.GetProperty("dlc").GetString());
+        Assert.Equal(
+            new[] { "takeaway", "onsite" },
+            patched.RootElement.GetProperty("consumptionModes").EnumerateArray().Select(value => value.GetString()).ToArray());
+        Assert.Equal(199, patched.RootElement.GetProperty("priceHtCents").GetInt32());
+
+        using var secondClient = factory.CreateClient();
+        using var read = await secondClient.GetAsync("/api/articles/0123456789012");
+        using var loaded = JsonDocument.Parse(await read.Content.ReadAsStringAsync());
+        Assert.Equal("Chocolat noir bio", loaded.RootElement.GetProperty("name").GetString());
+        Assert.Equal("2027-01-31", loaded.RootElement.GetProperty("dlc").GetString());
+
+        using var history = await secondClient.GetAsync("/api/history?ean13=0123456789012");
+        using var facts = JsonDocument.Parse(await history.Content.ReadAsStringAsync());
+        var fact = Assert.Single(facts.RootElement.EnumerateArray());
+        Assert.Equal("attributes", fact.GetProperty("kind").GetString());
+        Assert.Equal("name", fact.GetProperty("changes")[0].GetProperty("field").GetString());
+        Assert.Equal("Chocolat noir", fact.GetProperty("changes")[0].GetProperty("previousValue").GetString());
+        Assert.Equal("Chocolat noir bio", fact.GetProperty("changes")[0].GetProperty("nextValue").GetString());
+    }
+
+    [Fact]
+    public async Task Patches_non_food_packaging_and_rejects_cross_type_or_price_fields()
+    {
+        using var factory = new ArticleHostFactory();
+        using var client = factory.CreateClient();
+        using var create = await client.PostAsJsonAsync("/api/articles", new
+        {
+            ean13 = "7351353713578",
+            type = "nonFood",
+            name = "Batterie",
+            priceHtCents = 2500,
+            packaging = "new"
+        });
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+
+        using var patch = await client.PatchAsJsonAsync("/api/articles/7351353713578", new { packaging = "unsellable" });
+        Assert.Equal(HttpStatusCode.OK, patch.StatusCode);
+        using var patched = JsonDocument.Parse(await patch.Content.ReadAsStringAsync());
+        Assert.Equal("unsellable", patched.RootElement.GetProperty("packaging").GetString());
+
+        using var invalid = await client.PatchAsJsonAsync("/api/articles/7351353713578", new
+        {
+            dlc = "2027-01-31",
+            priceHtCents = 999
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        using var problem = JsonDocument.Parse(await invalid.Content.ReadAsStringAsync());
+        Assert.Equal("article.validation", problem.RootElement.GetProperty("code").GetString());
+        Assert.True(problem.RootElement.GetProperty("errors").TryGetProperty("dlc", out _));
+        Assert.True(problem.RootElement.GetProperty("errors").TryGetProperty("priceHtCents", out _));
+
+        using var read = await client.GetAsync("/api/articles/7351353713578");
+        using var loaded = JsonDocument.Parse(await read.Content.ReadAsStringAsync());
+        Assert.Equal("unsellable", loaded.RootElement.GetProperty("packaging").GetString());
+        Assert.Equal(2500, loaded.RootElement.GetProperty("priceHtCents").GetInt32());
+    }
+
+    [Fact]
+    public async Task Refuses_direct_attribute_patch_of_an_archived_article()
+    {
+        using var factory = new ArticleHostFactory();
+        using var client = factory.CreateClient();
+        using var create = await client.PostAsJsonAsync("/api/articles", new
+        {
+            ean13 = "4006381333931",
+            type = "nonFood",
+            name = "Batterie",
+            priceHtCents = 2500,
+            packaging = "new"
+        });
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+        using var archive = await client.PostAsync("/api/articles/4006381333931/archive", null);
+        Assert.Equal(HttpStatusCode.OK, archive.StatusCode);
+
+        using var patch = await client.PatchAsJsonAsync("/api/articles/4006381333931", new { name = "Batterie archivée" });
+        Assert.Equal(HttpStatusCode.Conflict, patch.StatusCode);
+        Assert.Equal("application/problem+json", patch.Content.Headers.ContentType?.MediaType);
+        using var problem = JsonDocument.Parse(await patch.Content.ReadAsStringAsync());
+        Assert.Equal("article.update.archived", problem.RootElement.GetProperty("code").GetString());
+        Assert.True(problem.RootElement.GetProperty("errors").TryGetProperty("status", out _));
+
+        using var read = await client.GetAsync("/api/articles/4006381333931");
+        using var loaded = JsonDocument.Parse(await read.Content.ReadAsStringAsync());
+        Assert.Equal("Batterie", loaded.RootElement.GetProperty("name").GetString());
+        Assert.Equal("archived", loaded.RootElement.GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task Concurrent_attribute_patches_produce_one_success_one_conflict_and_one_fact()
+    {
+        using var factory = new ArticleHostFactory();
+        using var setupClient = factory.CreateClient();
+        using var create = await setupClient.PostAsJsonAsync("/api/articles", new
+        {
+            ean13 = "0123456789012",
+            type = "food",
+            name = "Chocolat noir",
+            priceHtCents = 199,
+            dlc = "2026-12-31",
+            consumptionModes = new[] { "takeaway" }
+        });
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+
+        using var firstClient = factory.CreateClient();
+        using var secondClient = factory.CreateClient();
+        var responses = await Task.WhenAll(
+            firstClient.PatchAsJsonAsync("/api/articles/0123456789012", new { name = "Chocolat bio" }),
+            secondClient.PatchAsJsonAsync("/api/articles/0123456789012", new { name = "Chocolat noir intense" }));
+
+        Assert.Equal(1, responses.Count(response => response.StatusCode == HttpStatusCode.OK));
+        Assert.Equal(1, responses.Count(response => response.StatusCode == HttpStatusCode.Conflict));
+        foreach (var response in responses)
+        {
+            Assert.Equal(
+                response.StatusCode == HttpStatusCode.OK ? "application/json" : "application/problem+json",
+                response.Content.Headers.ContentType?.MediaType);
+            response.Dispose();
+        }
+
+        using var history = await setupClient.GetAsync("/api/history?ean13=0123456789012");
+        using var body = JsonDocument.Parse(await history.Content.ReadAsStringAsync());
+        Assert.Single(body.RootElement.EnumerateArray());
+        Assert.Equal("attributes", body.RootElement[0].GetProperty("kind").GetString());
+    }
+
+    [Fact]
     public async Task Rejects_derived_price_input_and_keeps_the_old_price()
     {
         using var factory = new ArticleHostFactory();
@@ -466,6 +618,34 @@ public sealed class ArticleApiTests
 
         Assert.Equal(ArticleStoreInsertStatus.Created, await store.InsertAsync(article));
         Assert.Equal(ArticleStoreInsertStatus.Conflict, await store.InsertAsync(article));
+    }
+
+    [Fact]
+    public async Task Real_store_maps_a_stale_price_version_to_a_conflict()
+    {
+        using var factory = new ArticleHostFactory();
+        using var scope = factory.Services.CreateScope();
+        var store = scope.ServiceProvider.GetRequiredService<IArticleStore>();
+        var article = Assert.IsType<Article>(Article.Create(new ArticleDraft
+        {
+            Ean13 = "7351353713578",
+            Type = "nonFood",
+            Name = "Batterie",
+            PriceHtCents = 2500,
+            Packaging = "new",
+            PackagingProvided = true
+        }).Value);
+
+        Assert.Equal(ArticleStoreInsertStatus.Created, await store.InsertAsync(article));
+        var firstRead = await store.FindByEanAsync(article.Ean13);
+        var staleRead = await store.FindByEanAsync(article.Ean13);
+        Assert.NotNull(firstRead);
+        Assert.NotNull(staleRead);
+        firstRead!.ChangePriceHt(Money.FromCents(2600));
+        staleRead!.ChangePriceHt(Money.FromCents(2700));
+
+        Assert.Equal(ArticleStoreUpdateStatus.Updated, await store.UpdatePriceHtAsync(firstRead));
+        Assert.Equal(ArticleStoreUpdateStatus.Conflict, await store.UpdatePriceHtAsync(staleRead));
     }
 
     [Fact]
@@ -1045,6 +1225,17 @@ public sealed class ArticleApiTests
             => throw new InvalidOperationException("database internals");
 
         public ValueTask<IReadOnlyList<ArticleLifecycleHistory>> ListLifecycleHistoryAsync(
+            Ean13? ean13 = null,
+            CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("database internals");
+
+        public ValueTask<ArticleStoreAttributeUpdateStatus> UpdateAttributesAsync(
+            Article article,
+            ArticleAttributeHistory history,
+            CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("database internals");
+
+        public ValueTask<IReadOnlyList<ArticleAttributeHistory>> ListAttributeHistoryAsync(
             Ean13? ean13 = null,
             CancellationToken cancellationToken = default)
             => throw new InvalidOperationException("database internals");

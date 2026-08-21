@@ -14,6 +14,8 @@ public sealed class ArticleEntity
 
     public bool IsActive { get; set; }
 
+    public int Version { get; set; }
+
     public string? Dlc { get; set; }
 
     public string? ConsumptionModes { get; set; }

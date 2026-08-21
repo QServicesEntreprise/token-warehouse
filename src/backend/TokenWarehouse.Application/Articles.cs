@@ -66,6 +66,13 @@ public sealed record ArticleStorePriceUpdateCandidate(
     ArticleStorePriceUpdateCandidateStatus Status,
     Article? Article);
 
+public enum ArticleStoreAttributeUpdateStatus
+{
+    Updated,
+    NotFound,
+    Conflict
+}
+
 public sealed record ArticleListQuery
 {
     public string? Status { get; init; }
@@ -123,6 +130,15 @@ public interface IArticleStore
 
     ValueTask<ArticleStoreUpdateStatus> UpdatePriceHtAsync(
         Article article,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ArticleStoreAttributeUpdateStatus> UpdateAttributesAsync(
+        Article article,
+        ArticleAttributeHistory history,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<IReadOnlyList<ArticleAttributeHistory>> ListAttributeHistoryAsync(
+        Ean13? ean13 = null,
         CancellationToken cancellationToken = default);
 }
 
@@ -199,6 +215,32 @@ public sealed record UpdateArticlePriceCommand
     public IReadOnlyList<string> UnsupportedFields { get; init; } = [];
 }
 
+public sealed record UpdateArticleAttributesCommand
+{
+    public string? Name { get; init; }
+    public bool NameProvided { get; init; }
+    public string? Dlc { get; init; }
+    public bool DlcProvided { get; init; }
+    public IReadOnlyList<string>? ConsumptionModes { get; init; }
+    public bool ConsumptionModesProvided { get; init; }
+    public string? Packaging { get; init; }
+    public bool PackagingProvided { get; init; }
+    public IReadOnlyList<string> UnsupportedFields { get; init; } = [];
+
+    public ArticleAttributeChanges ToChanges() => new()
+    {
+        Name = Name,
+        NameProvided = NameProvided || Name is not null,
+        Dlc = Dlc,
+        DlcProvided = DlcProvided || Dlc is not null,
+        ConsumptionModes = ConsumptionModes,
+        ConsumptionModesProvided = ConsumptionModesProvided || ConsumptionModes is not null,
+        Packaging = Packaging,
+        PackagingProvided = PackagingProvided || Packaging is not null,
+        UnsupportedFields = UnsupportedFields
+    };
+}
+
 public enum ArticleUpdateStatus
 {
     Updated,
@@ -220,11 +262,20 @@ public interface IUpdateArticlePriceUseCase
         CancellationToken cancellationToken = default);
 }
 
+public interface IUpdateArticleAttributesUseCase
+{
+    Task<ArticleUpdateResult> UpdateAttributesAsync(
+        string ean13,
+        UpdateArticleAttributesCommand command,
+        CancellationToken cancellationToken = default);
+}
+
 public sealed class ArticleApplication(IArticleStore store, IClock clock)
     : ICreateArticleUseCase,
       IGetArticleUseCase,
       IListArticlesUseCase,
       IUpdateArticlePriceUseCase,
+      IUpdateArticleAttributesUseCase,
       IChangeArticleLifecycleUseCase,
       IGetArticleHistoryUseCase
 {
@@ -370,10 +421,15 @@ public sealed class ArticleApplication(IArticleStore store, IClock clock)
             }
         }
 
-        var facts = await store.ListLifecycleHistoryAsync(parsedEan13, cancellationToken);
+        var lifecycleFacts = await store.ListLifecycleHistoryAsync(parsedEan13, cancellationToken);
+        var attributeFacts = await store.ListAttributeHistoryAsync(parsedEan13, cancellationToken);
         return new(
             ArticleHistoryReadStatus.Success,
-            facts.Select(ToHistoryView).ToArray(),
+            lifecycleFacts
+                .Select(ToHistoryView)
+                .Concat(attributeFacts.Select(ToHistoryView))
+                .OrderBy(fact => fact.OccurredAt)
+                .ToArray(),
             []);
     }
 
@@ -457,6 +513,59 @@ public sealed class ArticleApplication(IArticleStore store, IClock clock)
         }
 
         return new ArticleUpdateResult(ArticleUpdateStatus.Updated, ToView(article), []);
+    }
+
+    public async Task<ArticleUpdateResult> UpdateAttributesAsync(
+        string ean13,
+        UpdateArticleAttributesCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+
+        if (!Ean13.TryCreate(ean13, out var parsedEan13))
+        {
+            return new ArticleUpdateResult(
+                ArticleUpdateStatus.ValidationFailed,
+                null,
+                [new(
+                    "article.ean13.invalid",
+                    "ean13",
+                    "L’EAN-13 doit contenir 13 chiffres et un checksum valide.")]);
+        }
+
+        var article = await store.FindByEanAsync(parsedEan13, cancellationToken);
+        if (article is null)
+        {
+            return new ArticleUpdateResult(ArticleUpdateStatus.NotFound, null, []);
+        }
+
+        var update = article.UpdateAttributes(command.ToChanges());
+        if (update.Status == ArticleAttributeUpdateStatus.ValidationFailed)
+        {
+            return new ArticleUpdateResult(ArticleUpdateStatus.ValidationFailed, null, update.Errors);
+        }
+
+        if (update.Status == ArticleAttributeUpdateStatus.Conflict)
+        {
+            return new ArticleUpdateResult(ArticleUpdateStatus.Conflict, null, update.Errors);
+        }
+
+        var history = new ArticleAttributeHistory(parsedEan13, update.Changes, Clock.UtcNow);
+        var status = await store.UpdateAttributesAsync(article, history, cancellationToken);
+        return status switch
+        {
+            ArticleStoreAttributeUpdateStatus.Updated
+                => new ArticleUpdateResult(ArticleUpdateStatus.Updated, ToView(article), []),
+            ArticleStoreAttributeUpdateStatus.NotFound
+                => new ArticleUpdateResult(ArticleUpdateStatus.NotFound, null, []),
+            _ => new ArticleUpdateResult(
+                ArticleUpdateStatus.Conflict,
+                null,
+                [new(
+                    "article.update.conflict",
+                    "article",
+                    "L’Article a changé avant la validation de la modification.")])
+        };
     }
 
     private static ArticleCreateResult ConflictResult()
@@ -623,5 +732,14 @@ public sealed class ArticleApplication(IArticleStore store, IClock clock)
             history.Ean13,
             history.PreviousStatus,
             history.NextStatus,
-            history.OccurredAt);
+            history.OccurredAt,
+            []);
+
+    private static ArticleHistoryView ToHistoryView(ArticleAttributeHistory history)
+        => new(
+            history.Ean13,
+            null,
+            null,
+            history.OccurredAt,
+            history.Changes);
 }

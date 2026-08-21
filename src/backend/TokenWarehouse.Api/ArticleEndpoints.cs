@@ -136,7 +136,8 @@ public static class ArticleEndpoints
         app.MapPatch("/api/articles/{ean13}", async (
             string ean13,
             HttpRequest request,
-            IUpdateArticlePriceUseCase useCase,
+            IUpdateArticlePriceUseCase priceUseCase,
+            IUpdateArticleAttributesUseCase attributeUseCase,
             CancellationToken cancellationToken) =>
         {
             if (!IsJson(request.ContentType))
@@ -148,10 +149,10 @@ public static class ArticleEndpoints
                         "Le corps doit utiliser le Content-Type application/json.")]);
             }
 
-            UpdateArticlePriceRequest? payload;
+            UpdateArticleRequest? payload;
             try
             {
-                payload = await request.ReadFromJsonAsync<UpdateArticlePriceRequest>(cancellationToken);
+                payload = await request.ReadFromJsonAsync<UpdateArticleRequest>(cancellationToken);
             }
             catch (JsonException exception)
             {
@@ -171,15 +172,30 @@ public static class ArticleEndpoints
                         "Le corps JSON est requis.")]);
             }
 
-            var result = await useCase.UpdatePriceHtAsync(ean13, payload.ToCommand(), cancellationToken);
+            if (!payload.HasAttributeChanges)
+            {
+                var priceResult = await priceUseCase.UpdatePriceHtAsync(ean13, payload.ToPriceCommand(), cancellationToken);
+                return priceResult.Status switch
+                {
+                    ArticleUpdateStatus.Updated => Results.Ok(ArticleResponse.From(priceResult.Article!)),
+                    ArticleUpdateStatus.NotFound => NotFoundProblem(),
+                    ArticleUpdateStatus.Conflict => ConflictProblem(
+                        priceResult.Errors,
+                        "article.priceHt.conflict",
+                        "Le Prix HT ne peut pas être modifié."),
+                    _ => ValidationProblem(priceResult.Errors)
+                };
+            }
+
+            var result = await attributeUseCase.UpdateAttributesAsync(
+                ean13,
+                payload.ToAttributesCommand(),
+                cancellationToken);
             return result.Status switch
             {
                 ArticleUpdateStatus.Updated => Results.Ok(ArticleResponse.From(result.Article!)),
                 ArticleUpdateStatus.NotFound => NotFoundProblem(),
-                ArticleUpdateStatus.Conflict => ConflictProblem(
-                    result.Errors,
-                    "article.priceHt.conflict",
-                    "Le Prix HT ne peut pas être modifié."),
+                ArticleUpdateStatus.Conflict => AttributeConflictProblem(result),
                 _ => ValidationProblem(result.Errors)
             };
         });
@@ -235,6 +251,16 @@ public static class ArticleEndpoints
             StatusCodes.Status409Conflict,
             error?.Message ?? "La transition de cycle de vie est en conflit.",
             error?.Code ?? "article.lifecycle.conflict",
+            result.Errors);
+    }
+
+    private static IResult AttributeConflictProblem(ArticleUpdateResult result)
+    {
+        var error = result.Errors.FirstOrDefault();
+        return ArticleProblem(
+            StatusCodes.Status409Conflict,
+            error?.Message ?? "La modification de l’Article est en conflit.",
+            error?.Code ?? "article.update.conflict",
             result.Errors);
     }
 
@@ -346,19 +372,110 @@ public sealed class CreateArticleRequest
     private string? packaging;
 }
 
-public sealed class UpdateArticlePriceRequest
+public sealed class UpdateArticleRequest
 {
     [JsonPropertyName("priceHtCents")]
-    public int? PriceHtCents { get; set; }
+    public int? PriceHtCents
+    {
+        get => priceHtCents;
+        set
+        {
+            priceHtCents = value;
+            PriceHtProvided = true;
+        }
+    }
+
+    [JsonIgnore]
+    public bool PriceHtProvided { get; private set; }
+
+    [JsonPropertyName("name")]
+    public string? Name
+    {
+        get => name;
+        set
+        {
+            name = value;
+            NameProvided = true;
+        }
+    }
+
+    [JsonIgnore]
+    public bool NameProvided { get; private set; }
+
+    [JsonPropertyName("dlc")]
+    public string? Dlc
+    {
+        get => dlc;
+        set
+        {
+            dlc = value;
+            DlcProvided = true;
+        }
+    }
+
+    [JsonIgnore]
+    public bool DlcProvided { get; private set; }
+
+    [JsonPropertyName("consumptionModes")]
+    public List<string>? ConsumptionModes
+    {
+        get => consumptionModes;
+        set
+        {
+            consumptionModes = value;
+            ConsumptionModesProvided = true;
+        }
+    }
+
+    [JsonIgnore]
+    public bool ConsumptionModesProvided { get; private set; }
+
+    [JsonPropertyName("packaging")]
+    public string? Packaging
+    {
+        get => packaging;
+        set
+        {
+            packaging = value;
+            PackagingProvided = true;
+        }
+    }
+
+    [JsonIgnore]
+    public bool PackagingProvided { get; private set; }
 
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? AdditionalProperties { get; set; }
 
-    public UpdateArticlePriceCommand ToCommand() => new()
+    public bool HasAttributeChanges
+        => NameProvided || DlcProvided || ConsumptionModesProvided || PackagingProvided;
+
+    public UpdateArticlePriceCommand ToPriceCommand() => new()
     {
         PriceHtCents = PriceHtCents,
         UnsupportedFields = AdditionalProperties?.Keys.ToArray() ?? []
     };
+
+    public UpdateArticleAttributesCommand ToAttributesCommand() => new()
+    {
+        Name = Name,
+        NameProvided = NameProvided,
+        Dlc = Dlc,
+        DlcProvided = DlcProvided,
+        ConsumptionModes = ConsumptionModes,
+        ConsumptionModesProvided = ConsumptionModesProvided,
+        Packaging = Packaging,
+        PackagingProvided = PackagingProvided,
+        UnsupportedFields = (AdditionalProperties?.Keys ?? Enumerable.Empty<string>())
+            .Concat(PriceHtProvided ? new[] { "priceHtCents" } : Array.Empty<string>())
+            .ToArray()
+    };
+
+    private int? priceHtCents;
+    private string? name;
+    private string? dlc;
+    private List<string>? consumptionModes;
+    private string? packaging;
 }
 
 public sealed class ArticleListResponse
@@ -460,18 +577,31 @@ public sealed class ArticleHistoryResponse
 {
     public string Ean13 { get; init; } = string.Empty;
 
-    public string PreviousStatus { get; init; } = string.Empty;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? PreviousStatus { get; init; }
 
-    public string NextStatus { get; init; } = string.Empty;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? NextStatus { get; init; }
 
     public DateTimeOffset OccurredAt { get; init; }
+
+    public string Kind { get; init; } = string.Empty;
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<ArticleAttributeChange>? Changes { get; init; }
 
     public static ArticleHistoryResponse From(ArticleHistoryView fact) => new()
     {
         Ean13 = fact.Ean13.Value,
-        PreviousStatus = ArticleResponse.ToWireStatus(fact.PreviousStatus == ArticleLifecycleStatus.Active),
-        NextStatus = ArticleResponse.ToWireStatus(fact.NextStatus == ArticleLifecycleStatus.Active),
-        OccurredAt = fact.OccurredAt
+        PreviousStatus = fact.PreviousStatus is { } previous
+            ? ArticleResponse.ToWireStatus(previous == ArticleLifecycleStatus.Active)
+            : null,
+        NextStatus = fact.NextStatus is { } next
+            ? ArticleResponse.ToWireStatus(next == ArticleLifecycleStatus.Active)
+            : null,
+        OccurredAt = fact.OccurredAt,
+        Kind = fact.Changes.Count > 0 ? "attributes" : "lifecycle",
+        Changes = fact.Changes.Count > 0 ? fact.Changes : null
     };
 }
 

@@ -30,9 +30,10 @@ public interface IChangeArticleLifecycleUseCase
 
 public sealed record ArticleHistoryView(
     Ean13 Ean13,
-    ArticleLifecycleStatus PreviousStatus,
-    ArticleLifecycleStatus NextStatus,
-    DateTimeOffset OccurredAt);
+    ArticleLifecycleStatus? PreviousStatus,
+    ArticleLifecycleStatus? NextStatus,
+    DateTimeOffset OccurredAt,
+    IReadOnlyList<ArticleAttributeChange> Changes);
 
 public enum ArticleHistoryReadStatus
 {

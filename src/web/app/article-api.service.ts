@@ -42,6 +42,13 @@ export interface ArticlePriceUpdatePayload {
   priceHtCents: number;
 }
 
+export interface ArticleAttributesUpdatePayload {
+  name?: string;
+  dlc?: string;
+  consumptionModes?: ConsumptionMode[];
+  packaging?: Packaging;
+}
+
 export interface ArticleListQuery {
   status: ArticleListStatus;
   search?: string;
@@ -87,6 +94,10 @@ export class ArticleApiService {
   }
 
   updatePriceHt(ean13: string, payload: ArticlePriceUpdatePayload): Observable<ArticleResponse> {
+    return this.http.patch<ArticleResponse>(`/api/articles/${encodeURIComponent(ean13)}`, payload);
+  }
+
+  updateAttributes(ean13: string, payload: ArticleAttributesUpdatePayload): Observable<ArticleResponse> {
     return this.http.patch<ArticleResponse>(`/api/articles/${encodeURIComponent(ean13)}`, payload);
   }
 
