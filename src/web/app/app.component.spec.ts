@@ -229,7 +229,7 @@ describe('AppComponent', () => {
     http.verify();
   });
 
-  it('keeps the newest lifecycle response when transitions finish out of order', async () => {
+  it('actualise après un succès obsolète sans remplacer le message le plus récent', async () => {
     const fixture = TestBed.configureTestingModule({
       imports: [AppComponent],
       providers: [provideHttpClient(), provideHttpClientTesting()],
@@ -261,8 +261,8 @@ describe('AppComponent', () => {
     await fixture.whenStable();
 
     const component = fixture.componentInstance;
-    const first = component.onCatalogLifecycle(component.catalogArticles()[0]);
-    const second = component.onCatalogLifecycle(component.catalogArticles()[1]);
+    const olderTransition = component.onCatalogLifecycle(component.catalogArticles()[0]);
+    const newerTransition = component.onCatalogLifecycle(component.catalogArticles()[1]);
     const archives = http.match((request) => request.method === 'POST' && request.url.endsWith('/archive'));
     expect(archives).toHaveLength(2);
 
@@ -278,8 +278,19 @@ describe('AppComponent', () => {
     });
     await fixture.whenStable();
     const reload = http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles');
-    reload.flush([]);
-    await second;
+    reload.flush([
+      {
+        ean13: '0123456789012',
+        type: 'food',
+        name: 'Café du Comptoir',
+        priceHtCents: 199,
+        isActive: true,
+        status: 'active',
+        dlc: '2026-12-31',
+        consumptionModes: ['takeaway'],
+      },
+    ]);
+    await newerTransition;
 
     archives[0].flush({
       ean13: '0123456789012',
@@ -292,9 +303,16 @@ describe('AppComponent', () => {
       consumptionModes: ['takeaway'],
       priceQuotes: [],
     });
-    await first;
+    await fixture.whenStable();
+    const staleReload = http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles');
+    staleReload.flush([]);
+    await olderTransition;
+    await fixture.whenStable();
+    fixture.detectChanges();
 
     expect(component.lifecycleMessage()).toBe('Batterie atelier est archivé.');
+    expect(component.catalogArticles()).toEqual([]);
+    expect(component.catalogState()).toBe('empty');
     http.verify();
   });
 

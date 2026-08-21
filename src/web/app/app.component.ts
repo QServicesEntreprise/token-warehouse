@@ -511,6 +511,7 @@ export class AppComponent implements OnInit {
           : this.api.reactivate(ean13),
       );
       if (requestId !== this.lifecycleRequestId) {
+        await this.loadCatalog();
         return;
       }
 
