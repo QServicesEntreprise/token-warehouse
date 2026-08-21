@@ -117,6 +117,67 @@ test('reconciles the canonical stock from 8 to 5 with a negative difference', as
   });
 });
 
+test('reconciles several Articles through one bulk operation and keeps the result after reload', async ({ page }) => {
+  await openInventory(page);
+  await page.locator('#inventory-add-line').click();
+  await page.locator('#inventory-add-line').click();
+  await page.locator('#inventory-ean13').fill(canonicalEan);
+  await page.locator('#inventory-countedQuantity').fill('11');
+  await page.locator('#inventory-ean13-1').fill('7351353713578');
+  await page.locator('#inventory-countedQuantity-1').fill('5');
+  await page.locator('#inventory-ean13-2').fill('0360002914522');
+  await page.locator('#inventory-countedQuantity-2').fill('0');
+
+  const responsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'POST' && url.pathname === '/api/inventories/bulk';
+  });
+  await page.locator('#inventory-form button[type="submit"]').click();
+  const response = await responsePromise;
+  expect(response.status()).toBe(201);
+  await expect(page.locator('#inventory-result')).toBeVisible();
+  await expect(page.locator('#inventory-result .inventory-result-line')).toHaveCount(3);
+  await expect(page.locator('#inventory-result')).toContainText('+3');
+  await expect(page.locator('#inventory-result')).toContainText('-3');
+  await expect(page.locator('#inventory-result')).toContainText('Écart d’inventaire0');
+  await expect(page.locator('#stock-table').getByRole('row', { name: /DLC de démonstration/ })).toContainText('11 unités');
+
+  await page.reload();
+  await expect(page.locator('#inventory-result')).toBeVisible();
+  await expect(page.locator('#inventory-result .inventory-result-line')).toHaveCount(3);
+  await expect(page.locator('#inventory-result')).toContainText('+3');
+  await expect(page.locator('#inventory-result')).toContainText('-3');
+  await expect(page.locator('#inventory-result')).toContainText('Écart d’inventaire0');
+});
+
+test('rejects a duplicate bulk line without reconciling any Article', async ({ page }) => {
+  await openInventory(page);
+  await page.locator('#inventory-add-line').click();
+  await page.locator('#inventory-ean13').fill(canonicalEan);
+  await page.locator('#inventory-countedQuantity').fill('11');
+  await page.locator('#inventory-ean13-1').fill(canonicalEan);
+  await page.locator('#inventory-countedQuantity-1').fill('2');
+
+  const responsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'POST' && url.pathname === '/api/inventories/bulk';
+  });
+  await page.locator('#inventory-form button[type="submit"]').click();
+  const response = await responsePromise;
+  expect(response.status()).toBe(400);
+  await expect(page.locator('#inventory-error')).toContainText('invalide');
+  await expect(page.locator('#inventory-ean13')).toHaveValue(canonicalEan);
+  await expect(page.locator('#inventory-ean13-1')).toHaveValue(canonicalEan);
+  await expect(page.locator('#inventory-ean13-error')).toContainText('une seule fois');
+  await expect(page.locator('#inventory-ean13-1-error')).toContainText('une seule fois');
+  await expect(page.locator('#inventory-ean13')).toBeFocused();
+  await expect(result(page)).toHaveCount(0);
+
+  const stock = await page.request.get(`${apiBaseUrl}/api/stock/${canonicalEan}`);
+  expect(stock.status()).toBe(200);
+  await expect(stock.json()).resolves.toMatchObject({ physicalQuantity: 8 });
+});
+
 test('keeps an equal canonical count as a visible zero-difference fact', async ({ page }) => {
   await expectIndependentReceipt(page, {
     ean13: canonicalEan,

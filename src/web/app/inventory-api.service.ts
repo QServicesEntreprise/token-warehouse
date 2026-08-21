@@ -7,6 +7,10 @@ export interface InventoryRequest {
   countedQuantity: number;
 }
 
+export interface BulkInventoryRequest {
+  lines: InventoryRequest[];
+}
+
 export interface InventoryOperationResponse {
   id: string;
   type: 'INVENTORY';
@@ -16,6 +20,17 @@ export interface InventoryOperationResponse {
   inventoryDifference: number;
   resultingPhysicalStock: number;
   timestampUtc: string;
+  lines?: InventoryOperationLineResponse[];
+}
+
+export interface InventoryOperationLineResponse {
+  lineNumber: number;
+  ean13: string;
+  previousPhysicalStock: number;
+  countedQuantity: number;
+  inventoryDifference: number;
+  resultingPhysicalStock: number;
+  position?: InventoryPositionResponse;
 }
 
 export interface InventoryPositionResponse {
@@ -31,12 +46,32 @@ export interface InventoryResponse {
   position: InventoryPositionResponse;
 }
 
+export interface BulkInventoryOperationResponse {
+  id: string;
+  type: 'INVENTORY';
+  timestampUtc: string;
+  lines: (InventoryOperationLineResponse & { position: InventoryPositionResponse })[];
+  ean13?: string;
+  previousPhysicalStock?: number;
+  countedQuantity?: number;
+  inventoryDifference?: number;
+  resultingPhysicalStock?: number;
+}
+
+export interface BulkInventoryResponse {
+  operation: BulkInventoryOperationResponse;
+}
+
 @Injectable({ providedIn: 'root' })
 export class InventoryApiService {
   private readonly http = inject(HttpClient);
 
   register(payload: InventoryRequest): Observable<InventoryResponse> {
     return this.http.post<InventoryResponse>('/api/inventories', payload);
+  }
+
+  registerBulk(payload: BulkInventoryRequest): Observable<BulkInventoryResponse> {
+    return this.http.post<BulkInventoryResponse>('/api/inventories/bulk', payload);
   }
 
   getById(id: string): Observable<InventoryOperationResponse> {

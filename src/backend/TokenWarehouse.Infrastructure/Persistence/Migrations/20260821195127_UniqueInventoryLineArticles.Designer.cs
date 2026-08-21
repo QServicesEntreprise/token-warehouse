@@ -10,8 +10,8 @@ using TokenWarehouse.Infrastructure.Persistence;
 namespace TokenWarehouse.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(WarehouseDbContext))]
-    [Migration("20260821205733_BulkSupplyOperationLines")]
-    partial class BulkSupplyOperationLines
+    [Migration("20260821195127_UniqueInventoryLineArticles")]
+    partial class UniqueInventoryLineArticles
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -112,14 +112,7 @@ namespace TokenWarehouse.Infrastructure.Persistence.Migrations
                     b.Property<int>("InventoryDifference")
                         .HasColumnType("INTEGER");
 
-                    b.Property<string>("OccurredAt")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
                     b.Property<int>("PreviousPhysicalStock")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("Quantity")
                         .HasColumnType("INTEGER");
 
                     b.Property<int>("ResultingPhysicalStock")
@@ -144,8 +137,6 @@ namespace TokenWarehouse.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("CK_StockOperations_InventoryDifference_Formula", "InventoryDifference = CountedQuantity - PreviousPhysicalStock");
 
                             t.HasCheckConstraint("CK_StockOperations_PreviousPhysicalStock_NonNegative", "PreviousPhysicalStock >= 0");
-
-                            t.HasCheckConstraint("CK_StockOperations_Quantity_Positive", "Type <> 'supply' OR Quantity > 0");
 
                             t.HasCheckConstraint("CK_StockOperations_ResultingPhysicalStock_Formula", "ResultingPhysicalStock = CountedQuantity");
 
@@ -174,9 +165,6 @@ namespace TokenWarehouse.Infrastructure.Persistence.Migrations
                     b.Property<int>("PreviousPhysicalStock")
                         .HasColumnType("INTEGER");
 
-                    b.Property<int>("Quantity")
-                        .HasColumnType("INTEGER");
-
                     b.Property<int>("ResultingPhysicalStock")
                         .HasColumnType("INTEGER");
 
@@ -189,13 +177,11 @@ namespace TokenWarehouse.Infrastructure.Persistence.Migrations
 
                     b.ToTable("StockOperationLines", null, t =>
                         {
-                            t.HasCheckConstraint("CK_StockOperationLines_LineNumber_Positive", "LineNumber >= 1");
-
-                            t.HasCheckConstraint("CK_StockOperationLines_Quantity_NonNegative", "Quantity >= 0");
-
                             t.HasCheckConstraint("CK_StockOperationLines_CountedQuantity_NonNegative", "CountedQuantity >= 0");
 
                             t.HasCheckConstraint("CK_StockOperationLines_InventoryDifference_Formula", "InventoryDifference = CountedQuantity - PreviousPhysicalStock");
+
+                            t.HasCheckConstraint("CK_StockOperationLines_LineNumber_Positive", "LineNumber >= 1");
 
                             t.HasCheckConstraint("CK_StockOperationLines_PreviousPhysicalStock_NonNegative", "PreviousPhysicalStock >= 0");
 
@@ -251,13 +237,11 @@ namespace TokenWarehouse.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("TokenWarehouse.Infrastructure.Persistence.StockOperationEntity", "Operation")
+                    b.HasOne("TokenWarehouse.Infrastructure.Persistence.StockOperationEntity", null)
                         .WithMany("Lines")
                         .HasForeignKey("OperationId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("Operation");
                 });
 
             modelBuilder.Entity("TokenWarehouse.Infrastructure.Persistence.StockPositionEntity", b =>

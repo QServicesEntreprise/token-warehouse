@@ -26,12 +26,18 @@ public sealed class SqliteArticleSellabilityReader(
     public async ValueTask<IReadOnlyDictionary<Ean13, ArticleSellabilitySnapshot>> FindSellabilityByEansAsync(
         IReadOnlyList<Ean13> eans,
         CancellationToken cancellationToken = default)
+        => (await FindManyAsync(eans, cancellationToken))
+            .ToDictionary(article => article.Ean13);
+
+    public async ValueTask<IReadOnlyList<ArticleSellabilitySnapshot>> FindManyAsync(
+        IReadOnlyList<Ean13> eans,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(eans);
         var values = eans.Select(ean13 => ean13.Value).Distinct(StringComparer.Ordinal).ToArray();
         if (values.Length == 0)
         {
-            return new Dictionary<Ean13, ArticleSellabilitySnapshot>();
+            return [];
         }
 
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
@@ -39,9 +45,7 @@ public sealed class SqliteArticleSellabilityReader(
             .AsNoTracking()
             .Where(article => values.Contains(article.Ean13))
             .ToListAsync(cancellationToken);
-        return entities
-            .Select(ToSnapshot)
-            .ToDictionary(article => article.Ean13);
+        return entities.Select(ToSnapshot).ToArray();
     }
 
     internal static ArticleSellabilitySnapshot ToSnapshot(ArticleEntity entity)

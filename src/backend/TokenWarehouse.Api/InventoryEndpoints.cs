@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using TokenWarehouse.Application;
 using TokenWarehouse.Domain;
 
@@ -50,6 +51,59 @@ public static class InventoryEndpoints
                     "La position Stock a changé pendant le comptage.",
                     "POSITION_CONFLICT"),
                 InventoryRegistrationStatus.PersistenceFailed => Problem(
+                    StatusCodes.Status500InternalServerError,
+                    "La réconciliation n’a pas pu être enregistrée.",
+                    "PERSISTENCE_FAILURE"),
+                _ => InvalidInputProblem(result.Errors)
+            };
+        });
+
+        app.MapPost("/api/inventories/bulk", async (
+            HttpRequest request,
+            IRegisterBulkInventoryUseCase useCase,
+            CancellationToken cancellationToken) =>
+        {
+            if (!IsJson(request.ContentType))
+            {
+                return InvalidInputProblem();
+            }
+
+            RegisterBulkInventoryCommand? command;
+            try
+            {
+                command = await ReadBulkCommandAsync(request, cancellationToken);
+            }
+            catch (JsonException)
+            {
+                return InvalidInputProblem();
+            }
+
+            if (command is null)
+            {
+                return InvalidInputProblem(
+                    [new(
+                        "inventory.lines.invalid",
+                        "lines",
+                        "La propriété lines doit contenir une collection de lignes.")]);
+            }
+
+            var result = await useCase.RegisterBulkAsync(command, cancellationToken);
+            return result.Status switch
+            {
+                BulkInventoryRegistrationStatus.Committed
+                    => Results.Created(
+                        $"/api/inventories/{result.Receipt!.Operation.Id}",
+                        BulkInventoryResponse.From(result.Receipt)),
+                BulkInventoryRegistrationStatus.ArticleNotFound => Problem(
+                    StatusCodes.Status404NotFound,
+                    "Article introuvable.",
+                    "ARTICLE_NOT_FOUND",
+                    result.Errors),
+                BulkInventoryRegistrationStatus.Conflict => Problem(
+                    StatusCodes.Status409Conflict,
+                    "Une position Stock a changé pendant le comptage.",
+                    "POSITION_CONFLICT"),
+                BulkInventoryRegistrationStatus.PersistenceFailed => Problem(
                     StatusCodes.Status500InternalServerError,
                     "La réconciliation n’a pas pu être enregistrée.",
                     "PERSISTENCE_FAILURE"),
@@ -112,6 +166,68 @@ public static class InventoryEndpoints
         };
     }
 
+    private static async Task<RegisterBulkInventoryCommand?> ReadBulkCommandAsync(
+        HttpRequest request,
+        CancellationToken cancellationToken)
+    {
+        using var document = await JsonDocument.ParseAsync(request.Body, cancellationToken: cancellationToken);
+        if (document.RootElement.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        var properties = document.RootElement.EnumerateObject().ToArray();
+        if (properties.Length != 1 || properties[0].Name != "lines")
+        {
+            return null;
+        }
+
+        var linesElement = properties[0].Value;
+        if (linesElement.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        var lines = new List<RegisterBulkInventoryLineCommand>();
+        var lineNumber = 0;
+        foreach (var lineElement in linesElement.EnumerateArray())
+        {
+            lineNumber++;
+            if (lineElement.ValueKind != JsonValueKind.Object)
+            {
+                lines.Add(new() { LineNumber = lineNumber });
+                continue;
+            }
+
+            var lineProperties = lineElement.EnumerateObject().ToArray();
+            if (lineProperties.Length != 2
+                || lineProperties.Count(property => property.Name == "ean13") != 1
+                || lineProperties.Count(property => property.Name == "countedQuantity") != 1)
+            {
+                lines.Add(new() { LineNumber = lineNumber });
+                continue;
+            }
+
+            var ean13 = lineElement.GetProperty("ean13");
+            var countedQuantity = lineElement.GetProperty("countedQuantity");
+            lines.Add(new RegisterBulkInventoryLineCommand
+            {
+                LineNumber = lineNumber,
+                Ean13 = ean13.ValueKind == JsonValueKind.String ? ean13.GetString() : null,
+                CountedQuantity = countedQuantity.ValueKind == JsonValueKind.Number
+                    && int.TryParse(
+                        countedQuantity.GetRawText(),
+                        NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,
+                        out var parsedQuantity)
+                    ? parsedQuantity
+                    : null
+            });
+        }
+
+        return new RegisterBulkInventoryCommand { Lines = lines };
+    }
+
     private static bool IsJson(string? contentType)
     {
         var mediaType = contentType?.Split(';', 2)[0].Trim();
@@ -154,9 +270,44 @@ public sealed record InventoryResponse(
 {
     public static InventoryResponse From(InventoryReceipt receipt)
         => new(
-            StockOperationResponse.From(receipt.Operation),
+            StockOperationResponse.From(receipt.Operation, includeLines: false),
             InventoryPositionResponse.From(receipt.Position));
 }
+
+public sealed record BulkInventoryResponse(
+    BulkInventoryOperationResponse Operation)
+{
+    public static BulkInventoryResponse From(BulkInventoryReceipt receipt)
+        => new BulkInventoryResponse(new BulkInventoryOperationResponse(
+            receipt.Operation.Id,
+            "INVENTORY",
+            receipt.Operation.TimestampUtc,
+            receipt.Lines
+                .Select(line => new BulkInventoryLineResponse(
+                    line.Operation.LineNumber,
+                    line.Operation.Ean13.Value,
+                    line.Operation.PreviousPhysicalStock,
+                    line.Operation.CountedQuantity,
+                    line.Operation.InventoryDifference,
+                    line.Operation.ResultingPhysicalStock,
+                    InventoryPositionResponse.From(line.Position)))
+                .ToArray()));
+}
+
+public sealed record BulkInventoryOperationResponse(
+    string Id,
+    string Type,
+    DateTimeOffset TimestampUtc,
+    IReadOnlyList<BulkInventoryLineResponse> Lines);
+
+public sealed record BulkInventoryLineResponse(
+    int LineNumber,
+    string Ean13,
+    int PreviousPhysicalStock,
+    int CountedQuantity,
+    int InventoryDifference,
+    int ResultingPhysicalStock,
+    InventoryPositionResponse Position);
 
 public sealed record StockOperationResponse(
     string Id,
@@ -166,9 +317,11 @@ public sealed record StockOperationResponse(
     int CountedQuantity,
     int InventoryDifference,
     int ResultingPhysicalStock,
-    DateTimeOffset TimestampUtc)
+    DateTimeOffset TimestampUtc,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<StockOperationLineResponse>? Lines = null)
 {
-    public static StockOperationResponse From(StockOperation operation)
+    public static StockOperationResponse From(StockOperation operation, bool includeLines = true)
         => new(
             operation.Id,
             operation.Type == StockOperationType.Inventory ? "INVENTORY" : operation.Type.ToString().ToUpperInvariant(),
@@ -177,7 +330,28 @@ public sealed record StockOperationResponse(
             operation.CountedQuantity,
             operation.InventoryDifference,
             operation.ResultingPhysicalStock,
-            operation.TimestampUtc);
+            operation.TimestampUtc,
+            includeLines
+                ? operation.Lines.Select(StockOperationLineResponse.From).ToArray()
+                : null);
+}
+
+public sealed record StockOperationLineResponse(
+    int LineNumber,
+    string Ean13,
+    int PreviousPhysicalStock,
+    int CountedQuantity,
+    int InventoryDifference,
+    int ResultingPhysicalStock)
+{
+    public static StockOperationLineResponse From(StockOperationLine line)
+        => new(
+            line.LineNumber,
+            line.Ean13.Value,
+            line.PreviousPhysicalStock,
+            line.CountedQuantity,
+            line.InventoryDifference,
+            line.ResultingPhysicalStock);
 }
 
 public sealed record InventoryPositionResponse(

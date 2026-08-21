@@ -158,11 +158,22 @@ namespace TokenWarehouse.Infrastructure.Persistence.Migrations
                     b.Property<int>("LineNumber")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("CountedQuantity")
+                        .HasColumnType("INTEGER");
                     b.Property<string>("Ean13")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("InventoryDifference")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("PreviousPhysicalStock")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("Quantity")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ResultingPhysicalStock")
                         .HasColumnType("INTEGER");
 
                     b.HasKey("OperationId", "LineNumber");
@@ -174,9 +185,19 @@ namespace TokenWarehouse.Infrastructure.Persistence.Migrations
 
                     b.ToTable("StockOperationLines", null, t =>
                         {
-                            t.HasCheckConstraint("CK_StockOperationLines_LineNumber_Positive", "LineNumber > 0");
+                            t.HasCheckConstraint("CK_StockOperationLines_LineNumber_Positive", "LineNumber >= 1");
 
-                            t.HasCheckConstraint("CK_StockOperationLines_Quantity_Positive", "Quantity > 0");
+                            t.HasCheckConstraint("CK_StockOperationLines_Quantity_NonNegative", "Quantity >= 0");
+
+                            t.HasCheckConstraint("CK_StockOperationLines_CountedQuantity_NonNegative", "CountedQuantity >= 0");
+
+                            t.HasCheckConstraint("CK_StockOperationLines_InventoryDifference_Formula", "InventoryDifference = CountedQuantity - PreviousPhysicalStock");
+
+                            t.HasCheckConstraint("CK_StockOperationLines_PreviousPhysicalStock_NonNegative", "PreviousPhysicalStock >= 0");
+
+                            t.HasCheckConstraint("CK_StockOperationLines_ResultingPhysicalStock_Formula", "ResultingPhysicalStock = CountedQuantity");
+
+                            t.HasCheckConstraint("CK_StockOperationLines_ResultingPhysicalStock_NonNegative", "ResultingPhysicalStock >= 0");
                         });
                 });
 
@@ -231,7 +252,6 @@ namespace TokenWarehouse.Infrastructure.Persistence.Migrations
                         .HasForeignKey("OperationId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
                     b.Navigation("Operation");
                 });
 
