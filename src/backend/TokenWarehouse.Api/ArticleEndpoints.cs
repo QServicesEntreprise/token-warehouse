@@ -79,7 +79,7 @@ public static class ArticleEndpoints
 
             return result.Status == ArticleListStatus.ValidationFailed
                 ? ValidationProblem(result.Errors)
-                : Results.Ok(result.Articles.Select(ArticleResponse.From).ToArray());
+                : Results.Ok(result.Articles.Select(ArticleListResponse.From).ToArray());
         });
 
         app.MapPatch("/api/articles/{ean13}", async (
@@ -300,6 +300,42 @@ public sealed class UpdateArticlePriceRequest
     };
 }
 
+public sealed class ArticleListResponse
+{
+    public string Ean13 { get; init; } = string.Empty;
+    public string Type { get; init; } = string.Empty;
+    public string Name { get; init; } = string.Empty;
+    public int PriceHtCents { get; init; }
+    public bool IsActive { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Dlc { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<string>? ConsumptionModes { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Packaging { get; init; }
+
+    public static ArticleListResponse From(ArticleListItemView article) => new()
+    {
+        Ean13 = article.Ean13.Value,
+        Type = article.Type == ArticleType.Food ? "food" : "nonFood",
+        Name = article.Name,
+        PriceHtCents = article.PriceHt.Cents,
+        IsActive = article.IsActive,
+        Dlc = article.Type == ArticleType.Food
+            ? article.Dlc?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+            : null,
+        ConsumptionModes = article.Type == ArticleType.Food
+            ? article.ConsumptionModes.Select(ArticleResponse.ToWireMode).ToArray()
+            : null,
+        Packaging = article.Type == ArticleType.NonFood && article.Packaging is not null
+            ? ArticleResponse.ToWirePackaging(article.Packaging.Value)
+            : null
+    };
+}
+
 public sealed class ArticleResponse
 {
     public string Ean13 { get; init; } = string.Empty;
@@ -338,10 +374,10 @@ public sealed class ArticleResponse
             : null
     };
 
-    private static string ToWireMode(ConsumptionMode mode)
+    internal static string ToWireMode(ConsumptionMode mode)
         => mode == ConsumptionMode.Takeaway ? "takeaway" : "onsite";
 
-    private static string ToWirePackaging(PackagingCondition packaging)
+    internal static string ToWirePackaging(PackagingCondition packaging)
         => packaging switch
         {
             PackagingCondition.New => "new",

@@ -22,6 +22,8 @@ export interface ArticleResponse extends ArticleCreatePayload {
   priceQuotes: PriceQuote[];
 }
 
+export type ArticleListResponse = Omit<ArticleResponse, 'priceQuotes'>;
+
 export interface PriceQuote {
   saleContext?: ConsumptionMode;
   taxRate: {
@@ -64,7 +66,7 @@ export class ArticleApiService {
     return this.http.get<ArticleResponse>(`/api/articles/${encodeURIComponent(ean13)}`);
   }
 
-  list(query: ArticleListQuery): Observable<ArticleResponse[]> {
+  list(query: ArticleListQuery): Observable<ArticleListResponse[]> {
     let params = new HttpParams().set('status', query.status);
     const search = query.search?.trim();
     if (search) {

@@ -14,6 +14,7 @@ import { firstValueFrom } from 'rxjs';
 import {
   ArticleApiService,
   ArticleCreatePayload,
+  ArticleListResponse,
   ArticleListQuery,
   ArticleListStatus,
   ArticleResponse,
@@ -379,7 +380,7 @@ export class AppComponent implements OnInit {
   readonly lookupEan = signal('');
   readonly submitting = signal(false);
   readonly lookingUp = signal(false);
-  readonly catalogArticles = signal<ArticleResponse[]>([]);
+  readonly catalogArticles = signal<ArticleListResponse[]>([]);
   readonly catalogState = signal<CatalogState>('loading');
   readonly catalogError = signal('');
   readonly catalogStale = signal(false);
@@ -469,7 +470,7 @@ export class AppComponent implements OnInit {
     void this.loadCatalog();
   }
 
-  openCatalogArticle(article: ArticleResponse): void {
+  openCatalogArticle(article: ArticleListResponse): void {
     this.lookupEan.set(article.ean13);
     void this.loadDetail(article.ean13);
   }

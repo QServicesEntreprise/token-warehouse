@@ -574,6 +574,14 @@ public sealed class ArticleApiTests
             ["Batterie neuve", "Biscuit historique", "Café du Comptoir", "Lampe historique"],
             await ReadNames(all));
 
+        using var activeBody = JsonDocument.Parse(await active.Content.ReadAsStringAsync());
+        foreach (var article in activeBody.RootElement.EnumerateArray())
+        {
+            Assert.False(article.TryGetProperty("priceQuotes", out _));
+            Assert.False(article.TryGetProperty("priceTtcCents", out _));
+            Assert.False(article.TryGetProperty("vatCents", out _));
+        }
+
         using var archivedDetail = await client.GetAsync("/api/articles/5901234123457");
         Assert.Equal(HttpStatusCode.OK, archivedDetail.StatusCode);
         using var archivedBody = JsonDocument.Parse(await archivedDetail.Content.ReadAsStringAsync());

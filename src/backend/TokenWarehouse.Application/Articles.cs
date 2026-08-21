@@ -45,6 +45,16 @@ public sealed record ArticleView(
     public IReadOnlyList<PricingQuote> PriceQuotes { get; init; } = [];
 }
 
+public sealed record ArticleListItemView(
+    Ean13 Ean13,
+    ArticleType Type,
+    string Name,
+    Money PriceHt,
+    bool IsActive,
+    DateOnly? Dlc,
+    IReadOnlyList<ConsumptionMode> ConsumptionModes,
+    PackagingCondition? Packaging);
+
 public enum ArticleStorePriceUpdateCandidateStatus
 {
     Active,
@@ -154,7 +164,7 @@ public enum ArticleListStatus
 
 public sealed record ArticleListResult(
     ArticleListStatus Status,
-    IReadOnlyList<ArticleView> Articles,
+    IReadOnlyList<ArticleListItemView> Articles,
     IReadOnlyList<ArticleValidationError> Errors);
 
 public interface IListArticlesUseCase
@@ -252,7 +262,7 @@ public sealed class ArticleApplication(IArticleStore store)
         var articles = await store.ListAsync(filter, cancellationToken);
         return new ArticleListResult(
             ArticleListStatus.Success,
-            articles.Select(ToView).ToArray(),
+            articles.Select(ToListItemView).ToArray(),
             []);
     }
 
@@ -442,6 +452,17 @@ public sealed class ArticleApplication(IArticleStore store)
                 "article.priceHt.conflict",
                 "priceHtCents",
                 "Le Prix HT de cet Article ne peut pas être modifié dans son état courant.")]);
+
+    private static ArticleListItemView ToListItemView(Article article)
+        => new(
+            article.Ean13,
+            article.Type,
+            article.Name,
+            article.PriceHt,
+            article.IsActive,
+            article.Dlc,
+            article.ConsumptionModes,
+            article.Packaging);
 
     private static ArticleView ToView(Article article)
         => new(
