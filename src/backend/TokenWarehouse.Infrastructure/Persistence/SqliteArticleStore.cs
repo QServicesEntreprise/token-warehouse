@@ -86,30 +86,38 @@ public sealed class SqliteArticleStore(IDbContextFactory<WarehouseDbContext> con
         CancellationToken cancellationToken = default)
     {
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
-        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
-        var entity = await context.Articles
-            .SingleOrDefaultAsync(
-                article => article.Ean13 == ean13.Value && article.IsActive == ToIsActive(expectedStatus),
-                cancellationToken);
-
-        if (entity is null)
-        {
-            var exists = await context.Articles.AnyAsync(article => article.Ean13 == ean13.Value, cancellationToken);
-            return exists
-                ? ArticleStoreLifecycleTransitionStatus.Conflict
-                : ArticleStoreLifecycleTransitionStatus.NotFound;
-        }
-
-        entity.IsActive = ToIsActive(targetStatus);
-        context.ArticleLifecycleHistory.Add(ToEntity(history));
-
         try
         {
+            await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+            var entity = await context.Articles
+                .SingleOrDefaultAsync(
+                    article => article.Ean13 == ean13.Value && article.IsActive == ToIsActive(expectedStatus),
+                    cancellationToken);
+
+            if (entity is null)
+            {
+                var exists = await context.Articles.AnyAsync(article => article.Ean13 == ean13.Value, cancellationToken);
+                return exists
+                    ? ArticleStoreLifecycleTransitionStatus.Conflict
+                    : ArticleStoreLifecycleTransitionStatus.NotFound;
+            }
+
+            entity.IsActive = ToIsActive(targetStatus);
+            context.ArticleLifecycleHistory.Add(ToEntity(history));
+
             await context.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return ArticleStoreLifecycleTransitionStatus.Updated;
         }
         catch (DbUpdateConcurrencyException)
+        {
+            return ArticleStoreLifecycleTransitionStatus.Conflict;
+        }
+        catch (DbUpdateException exception) when (IsSqliteLock(exception))
+        {
+            return ArticleStoreLifecycleTransitionStatus.Conflict;
+        }
+        catch (SqliteException exception) when (exception.SqliteErrorCode is 5 or 6)
         {
             return ArticleStoreLifecycleTransitionStatus.Conflict;
         }
@@ -277,6 +285,9 @@ public sealed class SqliteArticleStore(IDbContextFactory<WarehouseDbContext> con
 
     private static bool IsUniqueConstraintViolation(DbUpdateException exception)
         => exception.InnerException is SqliteException { SqliteErrorCode: 19 };
+
+    private static bool IsSqliteLock(DbUpdateException exception)
+        => exception.InnerException is SqliteException { SqliteErrorCode: 5 or 6 };
 
     private static string ToWireMode(ConsumptionMode mode)
         => mode == ConsumptionMode.Takeaway ? "takeaway" : "onsite";
