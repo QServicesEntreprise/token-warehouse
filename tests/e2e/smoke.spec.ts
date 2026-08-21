@@ -36,6 +36,29 @@ test('creates and consults food and non-food articles through the real UI', asyn
   await expect(page.getByText('210 centimes')).toBeVisible();
   await expect(page.getByText('219 centimes')).toBeVisible();
 
+  await page.locator('#ean13').fill('0123456789029');
+  await page.locator('#name').fill('Café à emporter');
+  await page.locator('#priceHtCents').fill('1000');
+  await page.locator('#dlc').fill('2026-12-31');
+  await page.getByLabel('À emporter').check();
+  await page.getByRole('button', { name: 'Créer l’Article' }).click();
+  await expect(page.getByRole('heading', { name: 'Café à emporter' })).toBeVisible();
+  await expect(page.locator('.price-quote')).toHaveCount(1);
+  const singleFoodQuote = page.locator('.price-quote');
+  await expect(singleFoodQuote).toContainText('À emporter');
+  await expect(singleFoodQuote).toContainText('11/200');
+  await expect(singleFoodQuote).toContainText('1055 centimes');
+  await expect(singleFoodQuote).not.toContainText('Sur place');
+
+  await page.reload();
+  await page.locator('#lookupEan13').fill('0123456789029');
+  await page.getByRole('button', { name: 'Consulter' }).click();
+  await expect(page.getByRole('heading', { name: 'Café à emporter' })).toBeVisible();
+  await expect(page.locator('.price-quote')).toHaveCount(1);
+  await expect(page.locator('.price-quote')).toContainText('À emporter');
+  await expect(page.locator('.price-quote')).toContainText('11/200');
+  await expect(page.locator('.price-quote')).toContainText('1055 centimes');
+
   await page.locator('#type').selectOption('nonFood');
   await expect(page.locator('#dlc')).toHaveCount(0);
   await expect(page.locator('#consumptionModes')).toHaveCount(0);

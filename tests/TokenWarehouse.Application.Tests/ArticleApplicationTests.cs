@@ -104,6 +104,7 @@ public sealed class ArticleApplicationTests
             new[] { 210, 219 },
             result.Article?.PriceQuotes.Select(quote => quote.PriceTtc.Cents).ToArray());
         Assert.Equal(1, store.UpdateCalls);
+        Assert.Equal(199, store.UpdatedArticle?.PriceHt.Cents);
     }
 
     [Fact]
@@ -169,6 +170,10 @@ public sealed class ArticleApplicationTests
 
         public ArticleStoreUpdateStatus UpdateStatus { get; set; } = ArticleStoreUpdateStatus.Updated;
 
+        public ArticleStoreUpdateCandidateStatus UpdateCandidateStatus { get; set; } = ArticleStoreUpdateCandidateStatus.Active;
+
+        public Article? UpdatedArticle { get; private set; }
+
         public ValueTask<Article?> FindByEanAsync(Ean13 ean13, CancellationToken cancellationToken = default)
             => ValueTask.FromResult(articles.SingleOrDefault(article => article.Ean13 == ean13));
 
@@ -184,14 +189,32 @@ public sealed class ArticleApplicationTests
             return ValueTask.FromResult(ArticleStoreInsertStatus.Created);
         }
 
-        public ValueTask<ArticleStoreUpdateStatus> UpdatePriceHtAsync(
+        public ValueTask<ArticleStoreUpdateCandidate> FindForUpdateAsync(
             Ean13 ean13,
-            Money priceHt,
+            CancellationToken cancellationToken = default)
+        {
+            var article = articles.SingleOrDefault(existing => existing.Ean13 == ean13);
+            return UpdateCandidateStatus switch
+            {
+                ArticleStoreUpdateCandidateStatus.NotFound => ValueTask.FromResult(
+                    new ArticleStoreUpdateCandidate(ArticleStoreUpdateCandidateStatus.NotFound, null)),
+                ArticleStoreUpdateCandidateStatus.Inactive => ValueTask.FromResult(
+                    new ArticleStoreUpdateCandidate(ArticleStoreUpdateCandidateStatus.Inactive, null)),
+                _ when article is null => ValueTask.FromResult(
+                    new ArticleStoreUpdateCandidate(ArticleStoreUpdateCandidateStatus.NotFound, null)),
+                _ => ValueTask.FromResult(
+                    new ArticleStoreUpdateCandidate(ArticleStoreUpdateCandidateStatus.Active, Clone(article)))
+            };
+        }
+
+        public ValueTask<ArticleStoreUpdateStatus> UpdateAsync(
+            Article article,
             CancellationToken cancellationToken = default)
         {
             UpdateCalls++;
-            var article = articles.SingleOrDefault(existing => existing.Ean13 == ean13);
-            if (article is null)
+            UpdatedArticle = article;
+            var existing = articles.SingleOrDefault(current => current.Ean13 == article.Ean13);
+            if (existing is null)
             {
                 return ValueTask.FromResult(ArticleStoreUpdateStatus.NotFound);
             }
@@ -201,8 +224,31 @@ public sealed class ArticleApplicationTests
                 return ValueTask.FromResult(UpdateStatus);
             }
 
-            article.ChangePriceHt(priceHt);
+            existing.ChangePriceHt(article.PriceHt);
             return ValueTask.FromResult(ArticleStoreUpdateStatus.Updated);
         }
+
+        private static Article Clone(Article article)
+            => Assert.IsType<Article>(Article.Create(new ArticleDraft
+            {
+                Ean13 = article.Ean13.Value,
+                Type = article.Type == ArticleType.Food ? "food" : "nonFood",
+                Name = article.Name,
+                PriceHtCents = article.PriceHt.Cents,
+                Dlc = article.Dlc?.ToString("yyyy-MM-dd"),
+                DlcProvided = article.Dlc is not null,
+                ConsumptionModes = article.Type == ArticleType.Food
+                    ? article.ConsumptionModes.Select(mode => mode == ConsumptionMode.Takeaway ? "takeaway" : "onsite").ToArray()
+                    : null,
+                ConsumptionModesProvided = article.Type == ArticleType.Food,
+                Packaging = article.Packaging switch
+                {
+                    PackagingCondition.New => "new",
+                    PackagingCondition.Refurbished => "refurbished",
+                    PackagingCondition.Unsellable => "unsellable",
+                    _ => null
+                },
+                PackagingProvided = article.Packaging is not null
+            }).Value);
     }
 }

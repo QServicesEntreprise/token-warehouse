@@ -45,6 +45,17 @@ public sealed record ArticleView(
     public IReadOnlyList<PricingQuote> PriceQuotes { get; init; } = [];
 }
 
+public enum ArticleStoreUpdateCandidateStatus
+{
+    Active,
+    NotFound,
+    Inactive
+}
+
+public sealed record ArticleStoreUpdateCandidate(
+    ArticleStoreUpdateCandidateStatus Status,
+    Article? Article);
+
 public enum ArticleStoreInsertStatus
 {
     Created,
@@ -57,9 +68,12 @@ public interface IArticleStore
 
     ValueTask<ArticleStoreInsertStatus> InsertAsync(Article article, CancellationToken cancellationToken = default);
 
-    ValueTask<ArticleStoreUpdateStatus> UpdatePriceHtAsync(
+    ValueTask<ArticleStoreUpdateCandidate> FindForUpdateAsync(
         Ean13 ean13,
-        Money priceHt,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ArticleStoreUpdateStatus> UpdateAsync(
+        Article article,
         CancellationToken cancellationToken = default);
 }
 
@@ -214,16 +228,21 @@ public sealed class ArticleApplication(IArticleStore store)
             return new ArticleUpdateResult(ArticleUpdateStatus.ValidationFailed, null, errors);
         }
 
-        var article = await store.FindByEanAsync(parsedEan13, cancellationToken);
-        if (article is null)
+        var candidate = await store.FindForUpdateAsync(parsedEan13, cancellationToken);
+        if (candidate.Status == ArticleStoreUpdateCandidateStatus.NotFound)
         {
             return new ArticleUpdateResult(ArticleUpdateStatus.NotFound, null, []);
         }
 
-        var updateStatus = await store.UpdatePriceHtAsync(
-            parsedEan13,
-            Money.FromCents(command.PriceHtCents!.Value),
-            cancellationToken);
+        if (candidate.Status == ArticleStoreUpdateCandidateStatus.Inactive)
+        {
+            return UpdateConflictResult();
+        }
+
+        var article = candidate.Article!;
+        article.ChangePriceHt(Money.FromCents(command.PriceHtCents!.Value));
+
+        var updateStatus = await store.UpdateAsync(article, cancellationToken);
         if (updateStatus == ArticleStoreUpdateStatus.NotFound)
         {
             return new ArticleUpdateResult(ArticleUpdateStatus.NotFound, null, []);
@@ -231,16 +250,9 @@ public sealed class ArticleApplication(IArticleStore store)
 
         if (updateStatus == ArticleStoreUpdateStatus.Conflict)
         {
-            return new ArticleUpdateResult(
-                ArticleUpdateStatus.Conflict,
-                null,
-                [new(
-                    "article.priceHt.conflict",
-                    "priceHtCents",
-                    "Le Prix HT de cet Article ne peut pas être modifié dans son état courant.")]);
+            return UpdateConflictResult();
         }
 
-        article.ChangePriceHt(Money.FromCents(command.PriceHtCents.Value));
         return new ArticleUpdateResult(ArticleUpdateStatus.Updated, ToView(article), []);
     }
 
@@ -252,6 +264,15 @@ public sealed class ArticleApplication(IArticleStore store)
                 "article.ean13.conflict",
                 "ean13",
                 "Un Article utilise déjà cet EAN-13.")]);
+
+    private static ArticleUpdateResult UpdateConflictResult()
+        => new(
+            ArticleUpdateStatus.Conflict,
+            null,
+            [new(
+                "article.priceHt.conflict",
+                "priceHtCents",
+                "Le Prix HT de cet Article ne peut pas être modifié dans son état courant.")]);
 
     private static ArticleView ToView(Article article)
         => new(

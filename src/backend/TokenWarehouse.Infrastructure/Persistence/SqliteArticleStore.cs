@@ -38,14 +38,37 @@ public sealed class SqliteArticleStore(IDbContextFactory<WarehouseDbContext> con
         }
     }
 
-    public async ValueTask<ArticleStoreUpdateStatus> UpdatePriceHtAsync(
+    public async ValueTask<ArticleStoreUpdateCandidate> FindForUpdateAsync(
         Ean13 ean13,
-        Money priceHt,
         CancellationToken cancellationToken = default)
     {
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
         var entity = await context.Articles
+            .AsNoTracking()
             .SingleOrDefaultAsync(article => article.Ean13 == ean13.Value, cancellationToken);
+
+        if (entity is null)
+        {
+            return new(ArticleStoreUpdateCandidateStatus.NotFound, null);
+        }
+
+        if (!entity.IsActive)
+        {
+            return new(ArticleStoreUpdateCandidateStatus.Inactive, null);
+        }
+
+        return new(ArticleStoreUpdateCandidateStatus.Active, ToDomain(entity));
+    }
+
+    public async ValueTask<ArticleStoreUpdateStatus> UpdateAsync(
+        Article article,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(article);
+
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+        var entity = await context.Articles
+            .SingleOrDefaultAsync(current => current.Ean13 == article.Ean13.Value, cancellationToken);
 
         if (entity is null)
         {
@@ -57,7 +80,7 @@ public sealed class SqliteArticleStore(IDbContextFactory<WarehouseDbContext> con
             return ArticleStoreUpdateStatus.Conflict;
         }
 
-        entity.PriceHtCents = priceHt.Cents;
+        entity.PriceHtCents = article.PriceHt.Cents;
         try
         {
             await context.SaveChangesAsync(cancellationToken);
