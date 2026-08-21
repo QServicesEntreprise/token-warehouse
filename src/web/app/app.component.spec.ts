@@ -1210,6 +1210,110 @@ describe('AppComponent', () => {
     flushUnusedStockRequest(http);
     http.verify();
   });
+
+  it('loads correctable sources only on request and keeps their opaque ids', async () => {
+    const fixture = TestBed.configureTestingModule({
+      imports: [AppComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    }).createComponent(AppComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
+    http.expectOne('/api/stock').flush([]);
+    await fixture.whenStable();
+
+    const component = fixture.componentInstance;
+    expect(http.match('/api/stock/counter-movements/sources')).toHaveLength(0);
+    const loading = component.loadCounterMovementSources();
+    const request = http.expectOne('/api/stock/counter-movements/sources');
+    request.flush([{
+      id: 'server-source-01',
+      type: 'SUPPLY',
+      timestampUtc: '2030-01-15T09:00:00+00:00',
+      ean13: '0123456789012',
+      lines: [{ lineNumber: 1, ean13: '0123456789012', stockEffect: 8 }],
+    }]);
+    await loading;
+    fixture.detectChanges();
+
+    expect(component.counterMovementSources()[0].id).toBe('server-source-01');
+    expect(fixture.nativeElement.querySelector('#counter-movement-source option[value="server-source-01"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('#counter-movement-source-title')).toBeNull();
+    http.verify();
+  });
+
+  it('renders only the committed counter-movement receipt and preserves zero effects', async () => {
+    const fixture = TestBed.configureTestingModule({
+      imports: [AppComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    }).createComponent(AppComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
+    http.expectOne('/api/stock').flush([]);
+    await fixture.whenStable();
+
+    const component = fixture.componentInstance;
+    component.counterMovementSources.set([{
+      id: 'server-source-01',
+      type: 'SUPPLY',
+      timestampUtc: '2030-01-15T09:00:00+00:00',
+      ean13: '0123456789012',
+      lines: [{ lineNumber: 1, ean13: '0123456789012', stockEffect: 0 }],
+    }]);
+    component.counterMovementSourcesState.set('ready');
+    component.counterMovementModel.set({
+      sourceOperationId: 'server-source-01',
+      justification: 'Correction vérifiée',
+    });
+
+    const submission = component.onCounterMovementSubmit(new Event('submit'));
+    const request = http.expectOne('/api/stock/counter-movements');
+    expect(request.request.body).toEqual({
+      sourceOperationId: 'server-source-01',
+      justification: 'Correction vérifiée',
+    });
+    expect(component.counterMovementReceipt()).toBeNull();
+    request.flush({
+      counterMovement: {
+        id: 'server-counter-01',
+        type: 'COUNTER_MOVEMENT',
+        timestampUtc: '2030-01-15T10:00:00+00:00',
+        sourceOperationId: 'server-source-01',
+        sourceOperationType: 'SUPPLY',
+        justification: 'Correction vérifiée',
+        lines: [{ lineNumber: 1, ean13: '0123456789012', sourceEffect: 0, inverseEffect: 0 }],
+      },
+      source: {
+        id: 'server-source-01',
+        type: 'SUPPLY',
+        timestampUtc: '2030-01-15T09:00:00+00:00',
+        ean13: '0123456789012',
+        lines: [{ lineNumber: 1, ean13: '0123456789012', stockEffect: 0 }],
+      },
+      positions: [{
+        ean13: '0123456789012',
+        physicalStock: 10,
+        sellableStock: 10,
+        availability: 'AVAILABLE',
+        reason: null,
+      }],
+    });
+    await Promise.resolve();
+    http.expectOne('/api/stock').flush([]);
+    await submission;
+    fixture.detectChanges();
+
+    const result = fixture.nativeElement.querySelector('#counter-movement-result').textContent;
+    expect(component.counterMovementReceipt()?.counterMovement.id).toBe('server-counter-01');
+    expect(result).toContain('server-source-01');
+    expect(result).toContain('server-counter-01');
+    expect(result).toContain('Correction vérifiée');
+    expect(result).toContain('Effet inverse0');
+    expect(result).toContain('10 unités');
+    expect(component.counterMovementSourceId()).toBe('');
+    http.verify();
+  });
 });
 
 function foodArticle(

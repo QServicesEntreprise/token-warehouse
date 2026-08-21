@@ -21,6 +21,11 @@ builder.Services.AddScoped<IRecordBulkSupplyUseCase>(services => services.GetReq
 builder.Services.AddScoped<IRegisterInventoryUseCase>(services => services.GetRequiredService<InventoryApplication>());
 builder.Services.AddScoped<IRegisterBulkInventoryUseCase>(services => services.GetRequiredService<InventoryApplication>());
 builder.Services.AddScoped<IReadInventoryUseCase>(services => services.GetRequiredService<InventoryApplication>());
+builder.Services.AddScoped<CounterMovementApplication>();
+builder.Services.AddScoped<IRegisterCounterMovementUseCase>(services =>
+    services.GetRequiredService<CounterMovementApplication>());
+builder.Services.AddScoped<IReadCorrectableStockOperationsUseCase>(services =>
+    services.GetRequiredService<CounterMovementApplication>());
 builder.Services.AddScoped<ICreateArticleUseCase>(services => services.GetRequiredService<ArticleApplication>());
 builder.Services.AddScoped<IGetArticleUseCase>(services => services.GetRequiredService<ArticleApplication>());
 builder.Services.AddScoped<IListArticlesUseCase>(services => services.GetRequiredService<ArticleApplication>());
@@ -64,6 +69,7 @@ app.MapArticleEndpoints();
 app.MapStockEndpoints();
 app.MapSupplyEndpoints();
 app.MapInventoryEndpoints();
+app.MapCounterMovementEndpoints();
 
 app.Run();
 

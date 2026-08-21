@@ -58,7 +58,9 @@ public readonly record struct Quantity
 public enum StockOperationType
 {
     Supply,
-    Inventory
+    Inventory,
+    Sale,
+    CounterMovement
 }
 
 public sealed record StockOperationLine
@@ -74,6 +76,8 @@ public sealed record StockOperationLine
         CountedQuantity = 0;
         InventoryDifference = 0;
         ResultingPhysicalStock = 0;
+        StockEffect = quantity.Value;
+        InverseEffect = 0;
     }
 
     private StockOperationLine(
@@ -82,7 +86,9 @@ public sealed record StockOperationLine
         int previousPhysicalStock,
         int countedQuantity,
         int inventoryDifference,
-        int resultingPhysicalStock)
+        int resultingPhysicalStock,
+        int stockEffect,
+        int inverseEffect)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(lineNumber, 1);
         LineNumber = lineNumber;
@@ -92,6 +98,8 @@ public sealed record StockOperationLine
         CountedQuantity = countedQuantity;
         InventoryDifference = inventoryDifference;
         ResultingPhysicalStock = resultingPhysicalStock;
+        StockEffect = stockEffect;
+        InverseEffect = inverseEffect;
     }
 
     public int LineNumber { get; }
@@ -107,6 +115,10 @@ public sealed record StockOperationLine
     public int InventoryDifference { get; }
 
     public int ResultingPhysicalStock { get; }
+
+    public int StockEffect { get; }
+
+    public int InverseEffect { get; }
 
     public static StockOperationLine CreateInventoryLine(
         int lineNumber,
@@ -128,7 +140,30 @@ public sealed record StockOperationLine
             reconciliation.PreviousPhysicalStock,
             reconciliation.CountedQuantity,
             reconciliation.InventoryDifference,
-            reconciliation.ResultingPhysicalStock);
+            reconciliation.ResultingPhysicalStock,
+            reconciliation.InventoryDifference,
+            0);
+    }
+
+    public static StockOperationLine CreateSaleLine(int lineNumber, Ean13 ean13, Quantity quantity)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(lineNumber, 1);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(quantity.Value);
+        return new(lineNumber, ean13, 0, 0, 0, 0, -quantity.Value, 0);
+    }
+
+    public static StockOperationLine CreateCounterMovementLine(
+        int lineNumber,
+        Ean13 ean13,
+        int sourceEffect)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(lineNumber, 1);
+        if (sourceEffect == int.MinValue)
+        {
+            throw new OverflowException("The counter-movement effect does not fit in an Int32.");
+        }
+
+        return new(lineNumber, ean13, 0, 0, 0, 0, sourceEffect, -sourceEffect);
     }
 }
 
@@ -147,15 +182,29 @@ public sealed record StockOperation
         }
 
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(quantity.Value);
+        if (type is not (StockOperationType.Supply or StockOperationType.Sale))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(type),
+                type,
+                "Only supply and sale operations use this constructor.");
+        }
+
         Id = id;
         Type = type;
         Ean13 = ean13;
         Quantity = quantity;
         OccurredAt = occurredAt.ToUniversalTime();
         TimestampUtc = OccurredAt;
-        Lines = type == StockOperationType.Supply
-            ? [new StockOperationLine(1, ean13, quantity)]
-            : [];
+        Lines = type switch
+        {
+            StockOperationType.Supply => [new StockOperationLine(1, ean13, quantity)],
+            StockOperationType.Sale => [StockOperationLine.CreateSaleLine(1, ean13, quantity)],
+            _ => []
+        };
+        SourceOperationId = null;
+        SourceOperationType = null;
+        Justification = null;
     }
 
     private StockOperation(
@@ -174,6 +223,9 @@ public sealed record StockOperation
         ResultingPhysicalStock = lines[0].ResultingPhysicalStock;
         TimestampUtc = OccurredAt;
         Lines = Array.AsReadOnly(lines.ToArray());
+        SourceOperationId = null;
+        SourceOperationType = null;
+        Justification = null;
     }
 
     private StockOperation(
@@ -185,6 +237,50 @@ public sealed record StockOperation
         : this(id, StockOperationType.Supply, ean13, quantity, occurredAt)
     {
         Lines = CopyLines(lines);
+        SourceOperationId = null;
+        SourceOperationType = null;
+        Justification = null;
+    }
+
+    private StockOperation(
+        string id,
+        string sourceOperationId,
+        StockOperationType sourceOperationType,
+        string justification,
+        IReadOnlyList<StockOperationLine> lines,
+        DateTimeOffset timestampUtc)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            throw new ArgumentException("An operation identifier is required.", nameof(id));
+        }
+
+        if (string.IsNullOrWhiteSpace(sourceOperationId))
+        {
+            throw new ArgumentException("A source operation identifier is required.", nameof(sourceOperationId));
+        }
+
+        if (string.IsNullOrWhiteSpace(justification))
+        {
+            throw new ArgumentException("A justification is required.", nameof(justification));
+        }
+
+        ArgumentNullException.ThrowIfNull(lines);
+        if (lines.Count == 0)
+        {
+            throw new ArgumentException("A counter-movement must contain at least one line.", nameof(lines));
+        }
+
+        Id = id;
+        Type = StockOperationType.CounterMovement;
+        Ean13 = lines[0].Ean13;
+        Quantity = new(0);
+        OccurredAt = timestampUtc.ToUniversalTime();
+        TimestampUtc = OccurredAt;
+        Lines = Array.AsReadOnly(lines.ToArray());
+        SourceOperationId = sourceOperationId;
+        SourceOperationType = sourceOperationType;
+        Justification = justification.Trim();
     }
 
     public string Id { get; }
@@ -209,12 +305,25 @@ public sealed record StockOperation
 
     public IReadOnlyList<StockOperationLine> Lines { get; }
 
+    public string? SourceOperationId { get; }
+
+    public StockOperationType? SourceOperationType { get; }
+
+    public string? Justification { get; }
+
     public static StockOperation CreateSupply(
         string id,
         Ean13 ean13,
         Quantity quantity,
         DateTimeOffset occurredAt)
         => new(id, StockOperationType.Supply, ean13, quantity, occurredAt);
+
+    public static StockOperation CreateSale(
+        string id,
+        Ean13 ean13,
+        Quantity quantity,
+        DateTimeOffset occurredAt)
+        => new(id, StockOperationType.Sale, ean13, quantity, occurredAt);
 
     public static StockOperation CreateBulkSupply(
         string id,
@@ -295,6 +404,63 @@ public sealed record StockOperation
         }
 
         return new(id, lines, timestampUtc);
+    }
+
+    public static StockOperation CreateCounterMovement(
+        string id,
+        string sourceOperationId,
+        StockOperationType sourceOperationType,
+        string justification,
+        IReadOnlyList<CounterMovementLinePlan> lines,
+        DateTimeOffset timestampUtc)
+    {
+        ArgumentNullException.ThrowIfNull(lines);
+        if (lines.Count == 0)
+        {
+            throw new ArgumentException("A counter-movement must contain at least one line.", nameof(lines));
+        }
+
+        if (sourceOperationType is not (StockOperationType.Supply
+            or StockOperationType.Inventory
+            or StockOperationType.Sale))
+        {
+            throw new CounterMovementUnsupportedSourceException(sourceOperationType);
+        }
+
+        if (!global::TokenWarehouse.Domain.Justification.TryCreate(justification, out var normalizedJustification))
+        {
+            throw new ArgumentException("A justification is required.", nameof(justification));
+        }
+
+        var eans = new HashSet<Ean13>();
+        var operationLines = lines
+            .Select((line, index) =>
+            {
+                ArgumentNullException.ThrowIfNull(line);
+                if (!eans.Add(line.Ean13))
+                {
+                    throw new ArgumentException("A counter-movement cannot contain duplicate Articles.", nameof(lines));
+                }
+
+                if (line.SourceEffect == int.MinValue
+                    || line.InverseEffect != -line.SourceEffect)
+                {
+                    throw new ArgumentException("A counter-movement line must negate its source effect.", nameof(lines));
+                }
+
+                return StockOperationLine.CreateCounterMovementLine(
+                    index + 1,
+                    line.Ean13,
+                    line.SourceEffect);
+            })
+            .ToArray();
+        return new(
+            id,
+            sourceOperationId,
+            sourceOperationType,
+            normalizedJustification.Value,
+            operationLines,
+            timestampUtc);
     }
 
     private static IReadOnlyList<StockOperationLine> CopyLines(
