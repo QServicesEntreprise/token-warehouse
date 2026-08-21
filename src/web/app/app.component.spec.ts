@@ -229,6 +229,75 @@ describe('AppComponent', () => {
     http.verify();
   });
 
+  it('keeps the newest lifecycle response when transitions finish out of order', async () => {
+    const fixture = TestBed.configureTestingModule({
+      imports: [AppComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    }).createComponent(AppComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    const initial = http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles');
+    initial.flush([
+      {
+        ean13: '0123456789012',
+        type: 'food',
+        name: 'Café du Comptoir',
+        priceHtCents: 199,
+        isActive: true,
+        status: 'active',
+        dlc: '2026-12-31',
+        consumptionModes: ['takeaway'],
+      },
+      {
+        ean13: '7351353713578',
+        type: 'nonFood',
+        name: 'Batterie atelier',
+        priceHtCents: 2500,
+        isActive: true,
+        status: 'active',
+        packaging: 'new',
+      },
+    ]);
+    await fixture.whenStable();
+
+    const component = fixture.componentInstance;
+    const first = component.onCatalogLifecycle(component.catalogArticles()[0]);
+    const second = component.onCatalogLifecycle(component.catalogArticles()[1]);
+    const archives = http.match((request) => request.method === 'POST' && request.url.endsWith('/archive'));
+    expect(archives).toHaveLength(2);
+
+    archives[1].flush({
+      ean13: '7351353713578',
+      type: 'nonFood',
+      name: 'Batterie atelier',
+      priceHtCents: 2500,
+      isActive: false,
+      status: 'archived',
+      packaging: 'new',
+      priceQuotes: [],
+    });
+    await fixture.whenStable();
+    const reload = http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles');
+    reload.flush([]);
+    await second;
+
+    archives[0].flush({
+      ean13: '0123456789012',
+      type: 'food',
+      name: 'Café du Comptoir',
+      priceHtCents: 199,
+      isActive: false,
+      status: 'archived',
+      dlc: '2026-12-31',
+      consumptionModes: ['takeaway'],
+      priceQuotes: [],
+    });
+    await first;
+
+    expect(component.lifecycleMessage()).toBe('Batterie atelier est archivé.');
+    http.verify();
+  });
+
   it('shows two server quotes and submits only the editable HT price', async () => {
     const fixture = TestBed.configureTestingModule({
       imports: [AppComponent],

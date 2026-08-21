@@ -410,6 +410,7 @@ export class AppComponent implements OnInit {
   readonly lifecycleMessage = signal('');
 
   private catalogRequestId = 0;
+  private lifecycleRequestId = 0;
 
   ngOnInit(): void {
     void this.loadCatalog();
@@ -499,6 +500,7 @@ export class AppComponent implements OnInit {
   }
 
   async onCatalogLifecycle(article: ArticleListResponse | ArticleResponse): Promise<void> {
+    const requestId = ++this.lifecycleRequestId;
     const ean13 = article.ean13;
     this.lifecycleMessage.set('');
     this.transitioningEan.set(ean13);
@@ -508,6 +510,10 @@ export class AppComponent implements OnInit {
           ? this.api.archive(ean13)
           : this.api.reactivate(ean13),
       );
+      if (requestId !== this.lifecycleRequestId) {
+        return;
+      }
+
       if (this.detail()?.ean13 === ean13) {
         this.showDetail(updated);
       }
@@ -516,11 +522,15 @@ export class AppComponent implements OnInit {
       );
       await this.loadCatalog();
     } catch (error) {
+      if (requestId !== this.lifecycleRequestId) {
+        return;
+      }
+
       this.lifecycleMessage.set(
         this.problemMessage(error, 'La transition du cycle de vie a échoué.'),
       );
     } finally {
-      if (this.transitioningEan() === ean13) {
+      if (requestId === this.lifecycleRequestId && this.transitioningEan() === ean13) {
         this.transitioningEan.set('');
       }
     }

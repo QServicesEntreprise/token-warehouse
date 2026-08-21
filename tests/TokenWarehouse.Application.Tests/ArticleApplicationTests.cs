@@ -6,11 +6,14 @@ namespace TokenWarehouse.Application.Tests;
 
 public sealed class ArticleApplicationTests
 {
+    private static readonly IClock TestClock = new FixedClock(
+        new DateTimeOffset(2026, 8, 21, 10, 30, 0, TimeSpan.Zero));
+
     [Fact]
     public async Task Creates_and_reads_an_article_through_the_store_seam()
     {
         var store = new InMemoryArticleStore();
-        var application = new ArticleApplication(store);
+        var application = CreateApplication(store);
         var command = new CreateArticleCommand
         {
             Ean13 = "0123456789012",
@@ -39,7 +42,7 @@ public sealed class ArticleApplicationTests
     public async Task Archives_an_article_and_records_one_immutable_lifecycle_fact()
     {
         var store = new InMemoryArticleStore();
-        var application = new ArticleApplication(store, new FixedClock(new DateTimeOffset(2026, 8, 21, 10, 30, 0, TimeSpan.Zero)));
+        var application = CreateApplication(store);
         const string ean13 = "0123456789012";
 
         await application.CreateAsync(new CreateArticleCommand
@@ -73,7 +76,7 @@ public sealed class ArticleApplicationTests
         {
             TransitionError = new InvalidOperationException("history write failed")
         };
-        var application = new ArticleApplication(store);
+        var application = CreateApplication(store);
         const string ean13 = "7351353713578";
 
         await application.CreateAsync(new CreateArticleCommand
@@ -98,7 +101,7 @@ public sealed class ArticleApplicationTests
     public async Task Invalid_creation_is_reported_without_writing()
     {
         var store = new InMemoryArticleStore();
-        var application = new ArticleApplication(store);
+        var application = CreateApplication(store);
 
         var result = await application.CreateAsync(new CreateArticleCommand
         {
@@ -119,7 +122,7 @@ public sealed class ArticleApplicationTests
     public async Task Repeated_ean_returns_a_stable_conflict()
     {
         var store = new InMemoryArticleStore();
-        var application = new ArticleApplication(store);
+        var application = CreateApplication(store);
         var command = new CreateArticleCommand
         {
             Ean13 = "4006381333931",
@@ -147,7 +150,7 @@ public sealed class ArticleApplicationTests
                 CreateArticle("0123456789012", "food", "Café de la Place", ["takeaway"])
             ]
         };
-        var application = new ArticleApplication(store);
+        var application = CreateApplication(store);
 
         var result = await application.ListAsync(new ArticleListQuery
         {
@@ -180,7 +183,7 @@ public sealed class ArticleApplicationTests
                 CreateArticle("7351353713578", "nonFood", "Batterie active", null)
             ]
         };
-        var application = new ArticleApplication(store);
+        var application = CreateApplication(store);
 
         var archived = await application.ListAsync(new ArticleListQuery { Status = "archived" });
         var all = await application.ListAsync(new ArticleListQuery { Status = "all" });
@@ -197,7 +200,7 @@ public sealed class ArticleApplicationTests
     public async Task Keeps_a_valid_empty_catalogue_as_a_successful_read()
     {
         var store = new InMemoryArticleStore();
-        var application = new ArticleApplication(store);
+        var application = CreateApplication(store);
 
         var result = await application.ListAsync(new ArticleListQuery { Search = "aucun résultat" });
 
@@ -215,7 +218,7 @@ public sealed class ArticleApplicationTests
     public async Task Invalid_list_filters_are_reported_without_calling_the_store(string field, string value)
     {
         var store = new InMemoryArticleStore();
-        var application = new ArticleApplication(store);
+        var application = CreateApplication(store);
         var query = field switch
         {
             "status" => new ArticleListQuery { Status = value },
@@ -235,7 +238,7 @@ public sealed class ArticleApplicationTests
     public async Task Updates_ht_and_returns_recalculated_quotes_through_the_store_seam()
     {
         var store = new InMemoryArticleStore();
-        var application = new ArticleApplication(store);
+        var application = CreateApplication(store);
         var command = new CreateArticleCommand
         {
             Ean13 = "0123456789012",
@@ -264,7 +267,7 @@ public sealed class ArticleApplicationTests
     public async Task Rejects_invalid_price_updates_without_writing()
     {
         var store = new InMemoryArticleStore();
-        var application = new ArticleApplication(store);
+        var application = CreateApplication(store);
         var command = new CreateArticleCommand
         {
             Ean13 = "7351353713578",
@@ -294,7 +297,7 @@ public sealed class ArticleApplicationTests
     public async Task Maps_a_store_update_conflict_without_changing_the_loaded_article()
     {
         var store = new InMemoryArticleStore { UpdateStatus = ArticleStoreUpdateStatus.Conflict };
-        var application = new ArticleApplication(store);
+        var application = CreateApplication(store);
         var command = new CreateArticleCommand
         {
             Ean13 = "7351353713578",
@@ -338,6 +341,9 @@ public sealed class ArticleApplicationTests
 
         return Assert.IsType<Article>(result.Value);
     }
+
+    private static ArticleApplication CreateApplication(InMemoryArticleStore store) =>
+        new(store, TestClock);
 
     private sealed class FixedClock(DateTimeOffset now) : IClock
     {

@@ -129,7 +129,10 @@ public sealed class SqliteArticleStore(IDbContextFactory<WarehouseDbContext> con
         var entities = await query
             .OrderBy(history => history.Id)
             .ToListAsync(cancellationToken);
-        return entities.Select(ToDomain).ToArray();
+        return entities
+            .Select(ToDomain)
+            .OrderBy(history => history.OccurredAt)
+            .ToArray();
     }
 
     public async ValueTask<ArticleStoreInsertStatus> InsertAsync(

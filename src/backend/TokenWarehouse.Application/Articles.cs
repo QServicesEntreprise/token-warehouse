@@ -220,7 +220,7 @@ public interface IUpdateArticlePriceUseCase
         CancellationToken cancellationToken = default);
 }
 
-public sealed class ArticleApplication(IArticleStore store, IClock? clock = null)
+public sealed class ArticleApplication(IArticleStore store, IClock clock)
     : ICreateArticleUseCase,
       IGetArticleUseCase,
       IListArticlesUseCase,
@@ -228,7 +228,7 @@ public sealed class ArticleApplication(IArticleStore store, IClock? clock = null
       IChangeArticleLifecycleUseCase,
       IGetArticleHistoryUseCase
 {
-    private IClock Clock { get; } = clock ?? new SystemClock();
+    private IClock Clock { get; } = clock;
 
     public async Task<ArticleCreateResult> CreateAsync(
         CreateArticleCommand command,
