@@ -13,7 +13,28 @@ public sealed record StockPositionView(
     int PhysicalQuantity,
     int SellableQuantity,
     StockAvailability Availability,
-    SellabilityReason? Reason);
+    SellabilityReason? Reason)
+{
+    public static StockPositionView From(
+        ArticleSellabilitySnapshot article,
+        int physicalQuantity,
+        DateOnly warehouseDate)
+    {
+        var decision = SellabilityPolicy.Decide(article, physicalQuantity, warehouseDate);
+        return new(
+            article.Ean13,
+            article.Name,
+            article.Type,
+            article.IsActive,
+            article.Dlc,
+            article.ConsumptionModes,
+            article.Packaging,
+            physicalQuantity,
+            decision.SellableQuantity,
+            decision.Availability,
+            decision.Reason);
+    }
+}
 
 public enum StockReadStatus
 {
@@ -97,24 +118,8 @@ public sealed class StockApplication(
     }
 
     private StockPositionView ToView(ArticleSellabilitySnapshot article, StockPosition? position)
-    {
-        var physicalQuantity = position?.PhysicalQuantity ?? 0;
-        var decision = SellabilityPolicy.Decide(
+        => StockPositionView.From(
             article,
-            physicalQuantity,
+            position?.PhysicalQuantity ?? 0,
             clock.WarehouseDate);
-
-        return new(
-            article.Ean13,
-            article.Name,
-            article.Type,
-            article.IsActive,
-            article.Dlc,
-            article.ConsumptionModes,
-            article.Packaging,
-            physicalQuantity,
-            decision.SellableQuantity,
-            decision.Availability,
-            decision.Reason);
-    }
 }

@@ -332,6 +332,67 @@ test('recomputes sellable stock after food DLC and non-food packaging updates', 
   await expect(detailStock(0)).toHaveCount(1);
 });
 
+test('records a unit supply and shows the committed stocks after reload', async ({ page }) => {
+  const ean13 = '9876543210982';
+  const supplyPanel = page.locator('#supply-panel');
+  const stockRow = () => page.locator('#stock-table').getByRole('row', { name: new RegExp(ean13) });
+
+  await page.goto('/');
+  await expect(supplyPanel.getByRole('heading', { name: 'Enregistrer un Approvisionnement' })).toBeVisible();
+  await expect(stockRow()).toContainText('8 unités');
+
+  await supplyPanel.locator('#supplyEan13').fill(ean13);
+  await supplyPanel.locator('#supplyQuantity').fill('5');
+  const responsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'POST' && url.pathname === '/api/supplies';
+  });
+  await supplyPanel.getByRole('button', { name: 'Enregistrer l’Approvisionnement' }).click();
+  const response = await responsePromise;
+
+  expect(response.status()).toBe(201);
+  await expect(supplyPanel.locator('#supply-status')).toContainText('Approvisionnement');
+  await expect(stockRow()).toContainText('13 unités');
+  await expect(stockRow()).toContainText('Disponible');
+
+  await page.reload();
+  await expect(stockRow()).toContainText('13 unités');
+  await expect(stockRow()).toContainText('Disponible');
+
+  await supplyPanel.locator('#supplyQuantity').fill('0');
+  const invalidResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'POST' && url.pathname === '/api/supplies';
+  });
+  await supplyPanel.getByRole('button', { name: 'Enregistrer l’Approvisionnement' }).click();
+  expect((await invalidResponsePromise).status()).toBe(400);
+  await expect(supplyPanel.locator('#supply-quantity-error')).toContainText('strictement positif');
+  await expect(supplyPanel.locator('#supplyQuantity')).toHaveValue('0');
+  await expect(stockRow()).toContainText('13 unités');
+
+  await supplyPanel.locator('#supplyEan13').fill('7351353713578');
+  await supplyPanel.locator('#supplyQuantity').fill('2');
+  const unknownResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'POST' && url.pathname === '/api/supplies';
+  });
+  await supplyPanel.getByRole('button', { name: 'Enregistrer l’Approvisionnement' }).click();
+  expect((await unknownResponsePromise).status()).toBe(404);
+  await expect(supplyPanel.locator('#supply-status')).toContainText('introuvable');
+  await expect(supplyPanel.locator('#supplyEan13')).toHaveValue('7351353713578');
+
+  await supplyPanel.locator('#supplyEan13').fill('5901234123457');
+  const archivedResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'POST' && url.pathname === '/api/supplies';
+  });
+  await supplyPanel.getByRole('button', { name: 'Enregistrer l’Approvisionnement' }).click();
+  expect((await archivedResponsePromise).status()).toBe(409);
+  await expect(supplyPanel.locator('#supply-status')).toContainText('archivé');
+
+  await page.screenshot({ path: 'artifacts/playwright/supply.png', fullPage: true });
+});
+
 test('consults Stock positions, distinguishes blocked quantities and opens detail by keyboard', async ({ page }) => {
   const stockPanel = page.locator('#stock-panel');
 

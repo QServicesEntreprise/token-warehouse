@@ -13,6 +13,7 @@ public static class SqlitePersistenceRegistration
         services.AddScoped<IArticleStore, SqliteArticleStore>();
         services.AddScoped<IStockReadReader, SqliteStockReadReader>();
         services.AddScoped<IStockPositionReader, SqliteStockPositionReader>();
+        services.AddScoped<ISupplyCommitter, SqliteSupplyCommitter>();
         services.AddHostedService<SqliteMigrationHostedService>();
         return services;
     }

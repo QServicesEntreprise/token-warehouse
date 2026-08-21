@@ -77,6 +77,13 @@ h1 {
   grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
 }
 
+.supply-form {
+  align-items: end;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+}
+
 .catalog-filters button {
   margin-top: 0;
 }

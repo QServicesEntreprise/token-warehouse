@@ -16,6 +16,81 @@ public sealed record StockPosition
     public Ean13 Ean13 { get; }
 
     public int PhysicalQuantity { get; }
+
+    public StockPosition Add(Quantity quantity)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(quantity.Value);
+        return new(Ean13, checked(PhysicalQuantity + quantity.Value));
+    }
+}
+
+public readonly record struct Quantity
+{
+    private Quantity(int value) => Value = value;
+
+    public int Value { get; }
+
+    public static bool TryCreatePositive(int? value, out Quantity quantity)
+    {
+        if (value is not > 0)
+        {
+            quantity = default;
+            return false;
+        }
+
+        quantity = new Quantity(value.Value);
+        return true;
+    }
+
+    public static Quantity CreatePositive(int value)
+        => TryCreatePositive(value, out var quantity)
+            ? quantity
+            : throw new ArgumentOutOfRangeException(nameof(value));
+}
+
+public enum StockOperationType
+{
+    Supply
+}
+
+public sealed record StockOperation
+{
+    public StockOperation(
+        string id,
+        StockOperationType type,
+        Ean13 ean13,
+        Quantity quantity,
+        DateTimeOffset occurredAt)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            throw new ArgumentException("An operation identifier is required.", nameof(id));
+        }
+
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(quantity.Value);
+        Id = id;
+        Type = type;
+        Ean13 = ean13;
+        Quantity = quantity;
+        OccurredAt = occurredAt.ToUniversalTime();
+    }
+
+    public string Id { get; }
+
+    public StockOperationType Type { get; }
+
+    public Ean13 Ean13 { get; }
+
+    public Quantity Quantity { get; }
+
+    public DateTimeOffset OccurredAt { get; }
+
+    public static StockOperation CreateSupply(
+        string id,
+        Ean13 ean13,
+        Quantity quantity,
+        DateTimeOffset occurredAt)
+        => new(id, StockOperationType.Supply, ean13, quantity, occurredAt);
 }
 
 public enum StockAvailability

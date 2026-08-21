@@ -74,7 +74,14 @@ npm run start:web
 L’API expose `GET /health`, `GET /api/articles`, `POST /api/articles`,
 `GET /api/articles/{ean13}`, `PATCH /api/articles/{ean13}`,
 `POST /api/articles/{ean13}/archive`, `POST /api/articles/{ean13}/reactivate`
-et `GET /api/history?ean13={ean13}`. Le PATCH accepte `priceHtCents` pour le
+et `GET /api/history?ean13={ean13}`. Elle expose aussi
+`POST /api/supplies` pour enregistrer une réception unitaire. Le payload
+conserve `ean13` comme chaîne et exige une `quantity` entière strictement
+positive; le succès `201` retourne l’`operation` immuable (`id`, `type`,
+`ean13`, `quantity`, `occurredAt`) et la `position` engagée. Les erreurs sont
+des Problem Details: `400` pour la structure ou la quantité, `404` pour un
+Article inconnu et `409` avec `code: article_archived` pour un Article archivé.
+Le PATCH accepte `priceHtCents` pour le
 parcours de prix existant, ou les attributs évolutifs `name`, `dlc` et
 `consumptionModes` pour un Article alimentaire, et `name` et `packaging` pour
 un Article non alimentaire. Un PATCH qui mélange prix et attributs est refusé;

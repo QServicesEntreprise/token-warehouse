@@ -242,4 +242,68 @@ public sealed class SqliteMigrationTests
                 .Select(position => position.PhysicalQuantity)
                 .SingleAsync());
     }
+
+    [Fact]
+    public async Task Stock_operations_enforce_positive_quantities_and_article_relations()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<WarehouseDbContext>()
+            .UseSqlite(connection)
+            .Options;
+
+        await using (var context = new WarehouseDbContext(options))
+        {
+            await context.Database.MigrateAsync();
+            context.Articles.Add(new ArticleEntity
+            {
+                Ean13 = "0123456789012",
+                Type = "food",
+                Name = "Article approvisionné",
+                NameSearchKey = "ARTICLE APPROVISIONNE",
+                PriceHtCents = 100,
+                IsActive = true,
+                Dlc = "2030-01-15",
+                ConsumptionModes = "takeaway"
+            });
+            context.StockOperations.Add(new StockOperationEntity
+            {
+                Id = "operation-1",
+                Type = "supply",
+                Ean13 = "0123456789012",
+                Quantity = 1,
+                OccurredAt = "2030-01-15T10:00:00.0000000+00:00"
+            });
+            await context.SaveChangesAsync();
+        }
+
+        await using (var invalidQuantityContext = new WarehouseDbContext(options))
+        {
+            invalidQuantityContext.StockOperations.Add(new StockOperationEntity
+            {
+                Id = "operation-zero",
+                Type = "supply",
+                Ean13 = "0123456789012",
+                Quantity = 0,
+                OccurredAt = "2030-01-15T10:00:00.0000000+00:00"
+            });
+            await Assert.ThrowsAsync<DbUpdateException>(() => invalidQuantityContext.SaveChangesAsync());
+        }
+
+        await using (var orphanContext = new WarehouseDbContext(options))
+        {
+            orphanContext.StockOperations.Add(new StockOperationEntity
+            {
+                Id = "operation-orphan",
+                Type = "supply",
+                Ean13 = "7351353713578",
+                Quantity = 1,
+                OccurredAt = "2030-01-15T10:00:00.0000000+00:00"
+            });
+            await Assert.ThrowsAsync<DbUpdateException>(() => orphanContext.SaveChangesAsync());
+        }
+
+        await using var readContext = new WarehouseDbContext(options);
+        Assert.Equal(1, await readContext.StockOperations.CountAsync());
+    }
 }

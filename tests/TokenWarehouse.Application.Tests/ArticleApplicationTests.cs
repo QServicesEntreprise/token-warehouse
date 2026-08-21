@@ -465,6 +465,124 @@ public sealed class ArticleApplicationTests
         Assert.Equal(1, stockReader.Calls);
     }
 
+    [Fact]
+    public async Task Records_a_supply_and_returns_the_committed_position_and_sellability()
+    {
+        var store = new InMemoryArticleStore();
+        var articleApplication = CreateApplication(store);
+        await articleApplication.CreateAsync(new CreateArticleCommand
+        {
+            Ean13 = "0123456789012",
+            Type = "food",
+            Name = "Alimentaire DLC du jour",
+            PriceHtCents = 100,
+            Dlc = "2026-08-21",
+            ConsumptionModes = ["takeaway"]
+        });
+
+        var positions = new List<StockPosition> { new(CreateEan("0123456789012"), 8) };
+        var operations = new List<StockOperation>();
+        var supply = new SupplyApplication(
+            store,
+            new InMemoryStockPositionReader(positions),
+            new InMemorySupplyCommitter(positions, operations),
+            TestClock);
+
+        var result = await supply.RecordAsync(new SupplyCommand
+        {
+            Ean13 = "0123456789012",
+            Quantity = 3
+        });
+
+        Assert.Equal(SupplyStatus.Committed, result.Status);
+        Assert.Equal(11, result.Receipt?.Position.PhysicalQuantity);
+        Assert.Equal(11, result.Receipt?.Position.SellableQuantity);
+        Assert.Equal(3, result.Receipt?.Operation.Quantity.Value);
+        Assert.Equal(new DateTimeOffset(2026, 8, 21, 10, 30, 0, TimeSpan.Zero), result.Receipt?.Operation.OccurredAt);
+        Assert.Single(operations);
+    }
+
+    [Fact]
+    public async Task Rejects_invalid_or_archived_supplies_before_the_commit_seam()
+    {
+        var store = new InMemoryArticleStore();
+        var articleApplication = CreateApplication(store);
+        await articleApplication.CreateAsync(new CreateArticleCommand
+        {
+            Ean13 = "7351353713578",
+            Type = "nonFood",
+            Name = "Batterie",
+            PriceHtCents = 100,
+            Packaging = "new"
+        });
+        await articleApplication.ChangeLifecycleAsync("7351353713578", ArticleLifecycleStatus.Archived);
+
+        var positions = new List<StockPosition>();
+        var committer = new InMemorySupplyCommitter(positions, []);
+        var supply = new SupplyApplication(
+            store,
+            new InMemoryStockPositionReader(positions),
+            committer,
+            TestClock);
+
+        var invalid = await supply.RecordAsync(new SupplyCommand
+        {
+            Ean13 = "7351353713578",
+            Quantity = 0
+        });
+        var archived = await supply.RecordAsync(new SupplyCommand
+        {
+            Ean13 = "7351353713578",
+            Quantity = 2
+        });
+        var unknown = await supply.RecordAsync(new SupplyCommand
+        {
+            Ean13 = "4006381333931",
+            Quantity = 2
+        });
+
+        Assert.Equal(SupplyStatus.ValidationFailed, invalid.Status);
+        Assert.Equal(SupplyStatus.Conflict, archived.Status);
+        Assert.Equal(SupplyStatus.NotFound, unknown.Status);
+        Assert.Empty(positions);
+        Assert.Equal(0, committer.Calls);
+    }
+
+    [Fact]
+    public async Task Keeps_previous_operations_immutable_across_successive_supplies()
+    {
+        var store = new InMemoryArticleStore();
+        var articleApplication = CreateApplication(store);
+        await articleApplication.CreateAsync(new CreateArticleCommand
+        {
+            Ean13 = "0123456789012",
+            Type = "food",
+            Name = "Chocolat",
+            PriceHtCents = 100,
+            Dlc = "2026-12-31",
+            ConsumptionModes = ["takeaway"]
+        });
+
+        var positions = new List<StockPosition>();
+        var operations = new List<StockOperation>();
+        var supply = new SupplyApplication(
+            store,
+            new InMemoryStockPositionReader(positions),
+            new InMemorySupplyCommitter(positions, operations),
+            TestClock);
+
+        var first = await supply.RecordAsync(new SupplyCommand { Ean13 = "0123456789012", Quantity = 2 });
+        var firstSnapshot = first.Receipt!.Operation;
+        var second = await supply.RecordAsync(new SupplyCommand { Ean13 = "0123456789012", Quantity = 3 });
+
+        Assert.Equal(5, second.Receipt?.Position.PhysicalQuantity);
+        Assert.Equal(2, firstSnapshot.Quantity.Value);
+        Assert.Equal(2, operations[0].Quantity.Value);
+        Assert.Equal(3, operations[1].Quantity.Value);
+        Assert.NotEqual(operations[0].Id, operations[1].Id);
+        Assert.Single(positions);
+    }
+
     private static Article CreateArticle(
         string ean13,
         string type,
@@ -491,6 +609,12 @@ public sealed class ArticleApplicationTests
         return Assert.IsType<Article>(result.Value);
     }
 
+    private static Ean13 CreateEan(string value)
+    {
+        Assert.True(Ean13.TryCreate(value, out var ean13));
+        return ean13;
+    }
+
     private static ArticleApplication CreateApplication(InMemoryArticleStore store) =>
         new(store, TestClock);
 
@@ -511,6 +635,45 @@ public sealed class ArticleApplicationTests
         {
             Calls++;
             return ValueTask.FromResult(new StockReadSnapshot(articles, positions));
+        }
+    }
+
+    private sealed class InMemoryStockPositionReader(IList<StockPosition> positions) : IStockPositionReader
+    {
+        public ValueTask<IReadOnlyList<StockPosition>> ListAsync(CancellationToken cancellationToken = default)
+            => ValueTask.FromResult<IReadOnlyList<StockPosition>>(positions.ToArray());
+
+        public ValueTask<StockPosition?> FindByEanAsync(
+            Ean13 ean13,
+            CancellationToken cancellationToken = default)
+            => ValueTask.FromResult(positions.SingleOrDefault(position => position.Ean13 == ean13));
+    }
+
+    private sealed class InMemorySupplyCommitter(
+        IList<StockPosition> positions,
+        IList<StockOperation> operations) : ISupplyCommitter
+    {
+        public int Calls { get; private set; }
+
+        public ValueTask<SupplyCommitResult> CommitAsync(
+            SupplyCommitRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            if (request.CurrentPosition is { } current)
+            {
+                positions[positions.IndexOf(current)] = request.Position;
+            }
+            else
+            {
+                positions.Add(request.Position);
+            }
+
+            operations.Add(request.Operation);
+            return ValueTask.FromResult(new SupplyCommitResult(
+                SupplyCommitStatus.Committed,
+                request.Position,
+                request.Operation));
         }
     }
 

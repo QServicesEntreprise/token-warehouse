@@ -144,6 +144,68 @@ describe('AppComponent', () => {
     http.verify();
   });
 
+  it('engages the supply response without optimistic stock and keeps drafts on error', async () => {
+    const fixture = TestBed.configureTestingModule({
+      imports: [AppComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    }).createComponent(AppComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
+    http.expectOne('/api/stock').flush([]);
+    await fixture.whenStable();
+
+    const component = fixture.componentInstance;
+    component.supplyEan.set('0123456789012');
+    component.supplyQuantity.set('3');
+    const submission = component.onSupplySubmit(new Event('submit'));
+    const request = http.expectOne('/api/supplies');
+    expect(request.request.method).toBe('POST');
+    expect(request.request.body).toEqual({ ean13: '0123456789012', quantity: 3 });
+    expect(component.stockPositions()).toEqual([]);
+    request.flush({
+      operation: {
+        id: 'server-operation-1',
+        type: 'supply',
+        ean13: '0123456789012',
+        quantity: 3,
+        occurredAt: '2030-01-15T10:00:00Z',
+      },
+      position: {
+        ean13: '0123456789012',
+        name: 'Article reçu',
+        type: 'food',
+        isActive: true,
+        status: 'active',
+        physicalQuantity: 3,
+        sellableQuantity: 3,
+        availability: 'AVAILABLE',
+        reason: null,
+      },
+    });
+    await submission;
+    fixture.detectChanges();
+
+    expect(component.stockPositions()[0]?.physicalQuantity).toBe(3);
+    expect(fixture.nativeElement.querySelector('#supply-status').textContent).toContain('server-operation-1');
+
+    component.supplyQuantity.set('0');
+    const failedSubmission = component.onSupplySubmit(new Event('submit'));
+    const failedRequest = http.expectOne('/api/supplies');
+    failedRequest.flush(
+      { code: 'supply.validation', title: 'La quantité est invalide.', errors: { quantity: ['Quantité invalide.'] } },
+      { status: 400, statusText: 'Bad Request' },
+    );
+    await failedSubmission;
+    fixture.detectChanges();
+
+    expect(component.supplyEan()).toBe('0123456789012');
+    expect(component.supplyQuantity()).toBe('0');
+    expect(fixture.nativeElement.querySelector('#supply-quantity-error').textContent).toContain('invalide');
+    expect(fixture.nativeElement.querySelector('#supplyQuantity')).toBe(document.activeElement);
+    http.verify();
+  });
+
   it('shows only the fields applicable to the selected classification', async () => {
     const fixture = TestBed.configureTestingModule({
       imports: [AppComponent],

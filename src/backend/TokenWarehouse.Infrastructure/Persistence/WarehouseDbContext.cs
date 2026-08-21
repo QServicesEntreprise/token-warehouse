@@ -10,6 +10,8 @@ public sealed class WarehouseDbContext(DbContextOptions<WarehouseDbContext> opti
 
     public DbSet<StockPositionEntity> StockPositions => Set<StockPositionEntity>();
 
+    public DbSet<StockOperationEntity> StockOperations => Set<StockOperationEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         var article = modelBuilder.Entity<ArticleEntity>();
@@ -41,6 +43,20 @@ public sealed class WarehouseDbContext(DbContextOptions<WarehouseDbContext> opti
             "CK_StockPositions_PhysicalQuantity_NonNegative",
             "PhysicalQuantity >= 0"));
         stock.HasOne<ArticleEntity>()
+            .WithMany()
+            .HasForeignKey(entity => entity.Ean13)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        var operation = modelBuilder.Entity<StockOperationEntity>();
+        operation.HasKey(entity => entity.Id);
+        operation.Property(entity => entity.Type).IsRequired();
+        operation.Property(entity => entity.Ean13).IsRequired();
+        operation.Property(entity => entity.Quantity).IsRequired();
+        operation.Property(entity => entity.OccurredAt).IsRequired();
+        operation.ToTable("StockOperations", table => table.HasCheckConstraint(
+            "CK_StockOperations_Quantity_Positive",
+            "Quantity > 0"));
+        operation.HasOne<ArticleEntity>()
             .WithMany()
             .HasForeignKey(entity => entity.Ean13)
             .OnDelete(DeleteBehavior.Restrict);
