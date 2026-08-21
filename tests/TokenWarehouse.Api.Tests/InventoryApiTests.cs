@@ -70,8 +70,28 @@ public sealed class InventoryApiTests
         using var reread = await client.GetAsync($"/api/inventories/{operationId}");
         Assert.Equal(HttpStatusCode.OK, reread.StatusCode);
         using var rereadBody = JsonDocument.Parse(await reread.Content.ReadAsStringAsync());
+        Assert.Equal(operationId, rereadBody.RootElement.GetProperty("id").GetString());
+        Assert.Equal("INVENTORY", rereadBody.RootElement.GetProperty("type").GetString());
+        Assert.Equal("0123456789012", rereadBody.RootElement.GetProperty("ean13").GetString());
+        Assert.Equal(8, rereadBody.RootElement.GetProperty("previousPhysicalStock").GetInt32());
+        Assert.Equal(8, rereadBody.RootElement.GetProperty("countedQuantity").GetInt32());
         Assert.Equal(0, rereadBody.RootElement.GetProperty("inventoryDifference").GetInt32());
-        Assert.Equal(0, await factory.ReadInventoryDifferenceAsync(operationId!));
+        Assert.Equal(8, rereadBody.RootElement.GetProperty("resultingPhysicalStock").GetInt32());
+        Assert.Equal(
+            new DateTimeOffset(2030, 1, 15, 10, 0, 0, TimeSpan.Zero),
+            DateTimeOffset.Parse(rereadBody.RootElement.GetProperty("timestampUtc").GetString()!));
+
+        var persisted = await factory.ReadInventoryAsync(operationId!);
+        Assert.Equal(operationId, persisted.Id);
+        Assert.Equal("INVENTORY", persisted.Type);
+        Assert.Equal("0123456789012", persisted.Ean13);
+        Assert.Equal(8, persisted.PreviousPhysicalStock);
+        Assert.Equal(8, persisted.CountedQuantity);
+        Assert.Equal(0, persisted.InventoryDifference);
+        Assert.Equal(8, persisted.ResultingPhysicalStock);
+        Assert.Equal(
+            new DateTimeOffset(2030, 1, 15, 10, 0, 0, TimeSpan.Zero),
+            DateTimeOffset.Parse(persisted.TimestampUtc));
     }
 
     [Fact]
@@ -339,15 +359,32 @@ public sealed class InventoryApiTests
             return await context.StockOperations.CountAsync();
         }
 
-        public async Task<int> ReadInventoryDifferenceAsync(string operationId)
+        public async Task<(
+            string Id,
+            string Type,
+            string Ean13,
+            int PreviousPhysicalStock,
+            int CountedQuantity,
+            int InventoryDifference,
+            int ResultingPhysicalStock,
+            string TimestampUtc)> ReadInventoryAsync(string operationId)
         {
             using var scope = Services.CreateScope();
             var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>();
             await using var context = await contextFactory.CreateDbContextAsync();
-            return await context.StockOperations
+            var operation = await context.StockOperations
+                .AsNoTracking()
                 .Where(operation => operation.Id == operationId)
-                .Select(operation => operation.InventoryDifference)
                 .SingleAsync();
+            return (
+                operation.Id,
+                operation.Type,
+                operation.Ean13,
+                operation.PreviousPhysicalStock,
+                operation.CountedQuantity,
+                operation.InventoryDifference,
+                operation.ResultingPhysicalStock,
+                operation.TimestampUtc);
         }
 
         protected override void Dispose(bool disposing)

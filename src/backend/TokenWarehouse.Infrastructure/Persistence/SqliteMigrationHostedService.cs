@@ -249,7 +249,7 @@ public sealed class SqliteMigrationHostedService(
             context.StockPositions.Add(new StockPositionEntity
             {
                 Ean13 = foodEan,
-                PhysicalQuantity = 12
+                PhysicalQuantity = 8
             });
         }
 
