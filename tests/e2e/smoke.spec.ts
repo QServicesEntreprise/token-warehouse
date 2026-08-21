@@ -388,7 +388,17 @@ test('records a unit supply and shows the committed stocks after reload', async 
   const response = await responsePromise;
 
   expect(response.status()).toBe(201);
-  await expect(supplyPanel.locator('#supply-status')).toContainText('Approvisionnement');
+  const supplyBody = await response.json() as {
+    operation: {
+      id: string;
+      occurredAt: string;
+    };
+  };
+  expect(supplyBody.operation.id).toMatch(/\S+/);
+  expect(supplyBody.operation.occurredAt).toBe('2030-01-15T10:00:00+00:00');
+  await expect(supplyPanel.locator('#supply-status')).toContainText(
+    `Approvisionnement ${supplyBody.operation.id} enregistré le ${supplyBody.operation.occurredAt}.`,
+  );
   await expect(supplyPanel.locator('#supply-status')).toBeFocused();
   await expect(stockRow(ean13)).toContainText('13 unités');
   await expect(stockRow(ean13)).toContainText('Disponible');
