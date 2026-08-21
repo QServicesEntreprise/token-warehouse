@@ -21,6 +21,177 @@ public sealed class SupplyApiTests
         new(2030, 1, 15, 10, 0, 0, TimeSpan.Zero);
 
     [Fact]
+    public async Task Records_a_bulk_supply_as_one_operation_with_ordered_lines_and_positions()
+    {
+        using var factory = new SupplyHostFactory(SupplyTime);
+        using var client = factory.CreateClient();
+        await CreateFoodAsync(client, "0123456789012", "Premier Article");
+        await CreateFoodAsync(client, "5901234123457", "Second Article");
+
+        using var response = await client.PostAsJsonAsync(
+            "/api/supplies/bulk",
+            new
+            {
+                lines = new[]
+                {
+                    new { ean13 = "0123456789012", quantity = 3 },
+                    new { ean13 = "5901234123457", quantity = 2 }
+                }
+            });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var operation = body.RootElement.GetProperty("operation");
+        Assert.Equal("supply", operation.GetProperty("type").GetString());
+        Assert.Equal(SupplyTime, DateTimeOffset.Parse(operation.GetProperty("occurredAt").GetString()!));
+        Assert.False(string.IsNullOrWhiteSpace(operation.GetProperty("id").GetString()));
+        var lines = operation.GetProperty("lines");
+        Assert.Equal(2, lines.GetArrayLength());
+        Assert.Equal("0123456789012", lines[0].GetProperty("ean13").GetString());
+        Assert.Equal(3, lines[0].GetProperty("quantity").GetInt32());
+        Assert.Equal(1, lines[0].GetProperty("lineNumber").GetInt32());
+        Assert.Equal("5901234123457", lines[1].GetProperty("ean13").GetString());
+        Assert.Equal(2, lines[1].GetProperty("quantity").GetInt32());
+        Assert.Equal(2, lines[1].GetProperty("lineNumber").GetInt32());
+
+        var positions = body.RootElement.GetProperty("positions");
+        Assert.Equal(2, positions.GetArrayLength());
+        Assert.Equal("0123456789012", positions[0].GetProperty("ean13").GetString());
+        Assert.Equal(3, positions[0].GetProperty("physicalQuantity").GetInt32());
+        Assert.Equal(3, positions[0].GetProperty("sellableQuantity").GetInt32());
+        Assert.Equal("5901234123457", positions[1].GetProperty("ean13").GetString());
+        Assert.Equal(2, positions[1].GetProperty("physicalQuantity").GetInt32());
+        Assert.Equal(2, positions[1].GetProperty("sellableQuantity").GetInt32());
+
+        Assert.Equal(1, await ReadAsync(factory, context => context.StockOperations.CountAsync()));
+        Assert.Equal(2, await ReadAsync(factory, context => context.StockOperationLines.CountAsync()));
+        Assert.Equal(
+            3,
+            await ReadAsync(factory, context => context.StockPositions
+                .Where(position => position.Ean13 == "0123456789012")
+                .Select(position => position.PhysicalQuantity)
+                .SingleAsync()));
+        Assert.Equal(
+            2,
+            await ReadAsync(factory, context => context.StockPositions
+                .Where(position => position.Ean13 == "5901234123457")
+                .Select(position => position.PhysicalQuantity)
+                .SingleAsync()));
+    }
+
+    [Fact]
+    public async Task Rejects_bulk_validation_and_lifecycle_errors_without_partial_writes()
+    {
+        using var factory = new SupplyHostFactory(SupplyTime);
+        using var client = factory.CreateClient();
+        await CreateFoodAsync(client, "0123456789012", "Article actif");
+        await CreateNonFoodAsync(client, "7351353713578", "Article archivé");
+        using var archive = await client.PostAsync("/api/articles/7351353713578/archive", null);
+        Assert.Equal(HttpStatusCode.OK, archive.StatusCode);
+        var historyBefore = await ReadAsync(factory, context => context.ArticleLifecycleHistory.CountAsync());
+
+        using var invalid = await client.PostAsJsonAsync(
+            "/api/supplies/bulk",
+            new
+            {
+                lines = new[]
+                {
+                    new { ean13 = "0123456789012", quantity = 3 },
+                    new { ean13 = "0123456789012", quantity = 2 }
+                }
+            });
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        using var invalidBody = JsonDocument.Parse(await invalid.Content.ReadAsStringAsync());
+        var invalidErrors = invalidBody.RootElement.GetProperty("errors");
+        Assert.True(invalidErrors.TryGetProperty("lines[0].ean13", out _));
+        Assert.True(invalidErrors.TryGetProperty("lines[1].ean13", out _));
+
+        using var mixed = await client.PostAsJsonAsync(
+            "/api/supplies/bulk",
+            new
+            {
+                lines = new[]
+                {
+                    new { ean13 = "0123456789012", quantity = 3 },
+                    new { ean13 = "1234567890128", quantity = 2 }
+                }
+            });
+        Assert.Equal(HttpStatusCode.NotFound, mixed.StatusCode);
+        using var mixedBody = JsonDocument.Parse(await mixed.Content.ReadAsStringAsync());
+        Assert.True(mixedBody.RootElement.GetProperty("errors").TryGetProperty("lines[1].ean13", out _));
+
+        using var archived = await client.PostAsJsonAsync(
+            "/api/supplies/bulk",
+            new
+            {
+                lines = new[]
+                {
+                    new { ean13 = "0123456789012", quantity = 3 },
+                    new { ean13 = "7351353713578", quantity = 2 }
+                }
+            });
+        Assert.Equal(HttpStatusCode.Conflict, archived.StatusCode);
+        using var archivedBody = JsonDocument.Parse(await archived.Content.ReadAsStringAsync());
+        Assert.True(archivedBody.RootElement.GetProperty("errors").TryGetProperty("lines[1].ean13", out _));
+
+        Assert.Equal(0, await ReadAsync(factory, context => context.StockPositions.CountAsync()));
+        Assert.Equal(0, await ReadAsync(factory, context => context.StockOperations.CountAsync()));
+        Assert.Equal(0, await ReadAsync(factory, context => context.StockOperationLines.CountAsync()));
+        Assert.Equal(historyBefore, await ReadAsync(factory, context => context.ArticleLifecycleHistory.CountAsync()));
+    }
+
+    [Fact]
+    public async Task Rejects_decimal_bulk_quantities_without_coercion()
+    {
+        using var factory = new SupplyHostFactory(SupplyTime);
+        using var client = factory.CreateClient();
+        await CreateFoodAsync(client, "0123456789012", "Quantité stricte");
+
+        using var response = await client.PostAsync(
+            "/api/supplies/bulk",
+            new StringContent(
+                "{\"lines\":[{\"ean13\":\"0123456789012\",\"quantity\":3.0}]}",
+                Encoding.UTF8,
+                "application/json"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.True(body.RootElement.GetProperty("errors").TryGetProperty("lines[0].quantity", out _));
+        Assert.Equal(0, await ReadAsync(factory, context => context.StockOperations.CountAsync()));
+    }
+
+    [Fact]
+    public async Task Rolls_back_all_bulk_positions_when_operation_line_persistence_fails()
+    {
+        using var factory = new SupplyHostFactory(SupplyTime);
+        using var client = factory.CreateClient();
+        await CreateFoodAsync(client, "0123456789012", "Premier Article");
+        await CreateFoodAsync(client, "5901234123457", "Second Article");
+        await factory.FailBulkOperationLineInsertsAsync();
+
+        using var response = await client.PostAsJsonAsync(
+            "/api/supplies/bulk",
+            new
+            {
+                lines = new[]
+                {
+                    new { ean13 = "0123456789012", quantity = 3 },
+                    new { ean13 = "5901234123457", quantity = 2 }
+                }
+            });
+
+        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("bulk_supply.persistence_failed", body.RootElement.GetProperty("code").GetString());
+        Assert.Equal(0, await ReadAsync(factory, context => context.StockPositions.CountAsync()));
+        Assert.Equal(0, await ReadAsync(factory, context => context.StockOperations.CountAsync()));
+        Assert.Equal(0, await ReadAsync(factory, context => context.StockOperationLines.CountAsync()));
+    }
+
+    [Fact]
     public async Task Records_a_supply_and_keeps_the_result_after_a_new_request()
     {
         using var factory = new SupplyHostFactory(SupplyTime);
@@ -382,6 +553,21 @@ public sealed class SupplyApiTests
                 : $"Data Source={databasePath}";
             keeperConnection = new SqliteConnection(connectionString);
             keeperConnection.Open();
+        }
+
+        public async Task FailBulkOperationLineInsertsAsync()
+        {
+            using var scope = Services.CreateScope();
+            var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>();
+            await using var context = await contextFactory.CreateDbContextAsync();
+            await context.Database.ExecuteSqlRawAsync(
+                """
+                CREATE TRIGGER FailBulkOperationLineInsert
+                BEFORE INSERT ON StockOperationLines
+                BEGIN
+                    SELECT RAISE(ABORT, 'controlled bulk failure');
+                END;
+                """);
         }
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)

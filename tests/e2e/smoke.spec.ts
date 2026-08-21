@@ -587,6 +587,74 @@ test('records a unit supply and shows the committed stocks after reload', async 
   await page.screenshot({ path: 'artifacts/playwright/supply.png', fullPage: true });
 });
 
+test('records a multi-Article supply atomically and keeps all drafts after rejection', async ({ page }) => {
+  const firstEan13 = '9876543210982';
+  const secondEan13 = '0360002914522';
+  const unknownEan13 = '4006381333931';
+  const supplyPanel = page.locator('#supply-panel');
+  const firstStockRow = page.locator('#stock-table').getByRole('row', { name: new RegExp(firstEan13) });
+
+  await page.goto('/');
+  await expect(firstStockRow).toContainText('8 unités');
+  await supplyPanel.locator('#supplyEan13').fill(firstEan13);
+  await supplyPanel.locator('#supplyQuantity').fill('3');
+  await supplyPanel.getByRole('button', { name: 'Ajouter une ligne' }).click();
+  await supplyPanel.locator('#supplyEan13-1').fill(secondEan13);
+  await supplyPanel.locator('#supplyQuantity-1').fill('5');
+
+  const successResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'POST' && url.pathname === '/api/supplies/bulk';
+  });
+  await supplyPanel.getByRole('button', { name: 'Enregistrer l’Approvisionnement' }).click();
+  const successResponse = await successResponsePromise;
+  expect(successResponse.status()).toBe(201);
+  expect(successResponse.headers()['content-type']).toContain('application/json');
+  await expect(firstStockRow).toContainText('11 unités');
+  await expect(page.locator('#stock-table').getByRole('row', { name: new RegExp(secondEan13) })).toContainText('5 unités');
+
+  const successBody = await successResponse.json() as {
+    operation: {
+      id: string;
+      lines: { ean13: string; quantity: number }[];
+    };
+    positions: { ean13: string; physicalQuantity: number; sellableQuantity: number }[];
+  };
+  expect(successBody.operation.lines).toEqual([
+    { lineNumber: 1, ean13: firstEan13, quantity: 3 },
+    { lineNumber: 2, ean13: secondEan13, quantity: 5 },
+  ]);
+  expect(successBody.positions).toEqual(expect.arrayContaining([
+    expect.objectContaining({ ean13: firstEan13, physicalQuantity: 11, sellableQuantity: 11 }),
+    expect.objectContaining({ ean13: secondEan13, physicalQuantity: 5, sellableQuantity: 5 }),
+  ]));
+
+  await page.reload();
+  await expect(page.locator('#stock-table').getByRole('row', { name: new RegExp(firstEan13) })).toContainText('11 unités');
+  await expect(page.locator('#stock-table').getByRole('row', { name: new RegExp(secondEan13) })).toContainText('5 unités');
+
+  await supplyPanel.locator('#supplyEan13').fill(firstEan13);
+  await supplyPanel.locator('#supplyQuantity').fill('3');
+  await supplyPanel.getByRole('button', { name: 'Ajouter une ligne' }).click();
+  await supplyPanel.locator('#supplyEan13-1').fill(unknownEan13);
+  await supplyPanel.locator('#supplyQuantity-1').fill('5');
+  const rejectedResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'POST' && url.pathname === '/api/supplies/bulk';
+  });
+  await supplyPanel.locator('#supplyQuantity-1').press('Enter');
+  const rejectedResponse = await rejectedResponsePromise;
+  expect(rejectedResponse.status()).toBe(404);
+  expect(rejectedResponse.headers()['content-type']).toContain('application/problem+json');
+  await expect(firstStockRow).toContainText('11 unités');
+  await expect(supplyPanel.locator('#supplyEan13')).toHaveValue(firstEan13);
+  await expect(supplyPanel.locator('#supplyQuantity')).toHaveValue('3');
+  await expect(supplyPanel.locator('#supplyEan13-1')).toHaveValue(unknownEan13);
+  await expect(supplyPanel.locator('#supplyQuantity-1')).toHaveValue('5');
+  await expect(supplyPanel.locator('#supply-status')).toContainText('introuvable');
+  await page.screenshot({ path: 'artifacts/playwright/bulk-supply.png', fullPage: true });
+});
+
 test('announces Stock loading, empty and error states', async ({ page }) => {
   const stockPanel = page.locator('#stock-panel');
   let releaseLoading: () => void = () => {};

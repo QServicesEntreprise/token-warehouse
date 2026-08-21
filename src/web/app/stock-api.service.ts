@@ -25,6 +25,10 @@ export interface SupplyPayload {
   quantity: number | string | null;
 }
 
+export interface BulkSupplyPayload {
+  lines: SupplyPayload[];
+}
+
 export interface SupplyOperationResponse {
   id: string;
   type: 'supply';
@@ -36,6 +40,22 @@ export interface SupplyOperationResponse {
 export interface SupplyResponse {
   operation: SupplyOperationResponse;
   position: StockPositionResponse;
+}
+
+export interface BulkSupplyLineResponse {
+  lineNumber: number;
+  ean13: string;
+  quantity: number;
+}
+
+export interface BulkSupplyResponse {
+  operation: {
+    id: string;
+    type: 'supply';
+    occurredAt: string;
+    lines: BulkSupplyLineResponse[];
+  };
+  positions: StockPositionResponse[];
 }
 
 @Injectable({ providedIn: 'root' })
@@ -52,5 +72,9 @@ export class StockApiService {
 
   recordSupply(payload: SupplyPayload): Observable<SupplyResponse> {
     return this.http.post<SupplyResponse>('/api/supplies', payload);
+  }
+
+  recordBulkSupply(payload: BulkSupplyPayload): Observable<BulkSupplyResponse> {
+    return this.http.post<BulkSupplyResponse>('/api/supplies/bulk', payload);
   }
 }

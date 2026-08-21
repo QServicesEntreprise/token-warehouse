@@ -29,6 +29,7 @@ import {
   StockAvailability,
   StockPositionResponse,
   StockReason,
+  BulkSupplyPayload,
   SupplyPayload,
 } from './stock-api.service';
 import {
@@ -47,6 +48,11 @@ interface ArticleFormModel {
 }
 
 interface SupplyFormModel {
+  ean13: string;
+  quantity: string;
+}
+
+interface SupplyLineFormModel {
   ean13: string;
   quantity: string;
 }
@@ -191,33 +197,53 @@ const lastInventoryIdStorageKey = 'token-warehouse.last-inventory-id';
         <p>La position visible est remplacée par le résultat engagé par le serveur après la réception.</p>
 
         <form id="supply-form" class="supply-form" novalidate (submit)="onSupplySubmit($event)">
-          <label>
-            Référence EAN-13
-            <input
-              id="supplyEan13"
-              autocomplete="off"
-              inputmode="numeric"
-              [formField]="supplyForm.ean13"
-              [attr.aria-invalid]="supplyFieldError('ean13') ? 'true' : null"
-              aria-describedby="supply-ean13-error"
-              />
-            <span id="supply-ean13-error" class="field-error">{{ supplyFieldError('ean13') }}</span>
-          </label>
+          @for (line of supplyLines(); track $index; let lineIndex = $index) {
+            <fieldset class="supply-line" [attr.aria-labelledby]="supplyLineTitleId(lineIndex)">
+              <legend [id]="supplyLineTitleId(lineIndex)">Ligne {{ lineIndex + 1 }}</legend>
+              <label [attr.for]="supplyInputId('ean13', lineIndex)">
+                Référence EAN-13
+                <input
+                  [id]="supplyInputId('ean13', lineIndex)"
+                  autocomplete="off"
+                  inputmode="numeric"
+                  pattern="[0-9]{13}"
+                  [value]="line.ean13"
+                  [attr.aria-invalid]="supplyLineFieldError(lineIndex, 'ean13') ? 'true' : null"
+                  [attr.aria-describedby]="supplyErrorId('ean13', lineIndex)"
+                  (input)="setSupplyLineField(lineIndex, 'ean13', $event)"
+                  />
+                <span [id]="supplyErrorId('ean13', lineIndex)" class="field-error">{{ supplyLineFieldError(lineIndex, 'ean13') }}</span>
+              </label>
 
-          <label>
-            Quantité entière positive
-            <input
-              id="supplyQuantity"
-              type="number"
-              step="1"
-              inputmode="numeric"
-              [formField]="supplyForm.quantity"
-              [attr.aria-invalid]="supplyFieldError('quantity') ? 'true' : null"
-              aria-describedby="supply-quantity-error"
-              />
-            <span id="supply-quantity-error" class="field-error">{{ supplyFieldError('quantity') }}</span>
-          </label>
+              <label [attr.for]="supplyInputId('quantity', lineIndex)">
+                Quantité entière positive
+                <input
+                  [id]="supplyInputId('quantity', lineIndex)"
+                  type="number"
+                  min="1"
+                  step="1"
+                  inputmode="numeric"
+                  [value]="line.quantity"
+                  [attr.aria-invalid]="supplyLineFieldError(lineIndex, 'quantity') ? 'true' : null"
+                  [attr.aria-describedby]="supplyErrorId('quantity', lineIndex)"
+                  (input)="setSupplyLineField(lineIndex, 'quantity', $event)"
+                  />
+                <span [id]="supplyErrorId('quantity', lineIndex)" class="field-error">{{ supplyLineFieldError(lineIndex, 'quantity') }}</span>
+              </label>
 
+              @if (supplyLines().length > 1) {
+                <button
+                  type="button"
+                  class="secondary-button"
+                  [attr.aria-label]="'Retirer la ligne ' + (lineIndex + 1)"
+                  (click)="removeSupplyLine(lineIndex)">
+                  Retirer
+                </button>
+              }
+            </fieldset>
+          }
+
+          <button type="button" class="secondary-button" (click)="addSupplyLine()">Ajouter une ligne</button>
           <button type="submit" [disabled]="supplySubmitting()">
             {{ supplySubmitting() ? 'Réception…' : 'Enregistrer l’Approvisionnement' }}
           </button>
@@ -690,12 +716,7 @@ export class AppComponent implements OnInit {
 
   readonly model = signal<ArticleFormModel>({ ...initialModel, consumptionModes: [] });
   readonly supplyModel = signal<SupplyFormModel>({ ean13: '', quantity: '' });
-  readonly supplyForm = form(this.supplyModel, (schemaPath) => {
-    required(schemaPath.ean13, { message: 'L’EAN-13 est requis.' });
-    pattern(schemaPath.ean13, /^\d{13}$/, { message: 'L’EAN-13 doit contenir 13 chiffres.' });
-    required(schemaPath.quantity, { message: 'La quantité est requise.' });
-    pattern(schemaPath.quantity, /^[1-9]\d*$/, { message: 'La quantité doit être un entier strictement positif.' });
-  });
+  readonly supplyLines = signal<SupplyLineFormModel[]>([{ ean13: '', quantity: '' }]);
   readonly articleForm = form(this.model, (schemaPath) => {
     required(schemaPath.ean13, { message: 'L’EAN-13 est requis.' });
     pattern(schemaPath.ean13, /^\d{13}$/, { message: 'L’EAN-13 doit contenir 13 chiffres.' });
@@ -909,15 +930,74 @@ export class AppComponent implements OnInit {
   }
 
   supplyFieldError(field: string): string {
-    const serverError = this.supplyFieldErrors()[field];
-    if (serverError) {
-      return serverError;
+    return field === 'ean13' || field === 'quantity'
+      ? this.supplyLineFieldError(0, field)
+      : this.supplyFieldErrors()[field] ?? '';
+  }
+
+  supplyLineFieldError(index: number, field: 'ean13' | 'quantity'): string {
+    const errors = this.supplyFieldErrors();
+    return errors[`lines[${index}].${field}`]
+      ?? errors[`lines[${index}]`]
+      ?? (index === 0 ? errors[field] : '')
+      ?? '';
+  }
+
+  supplyInputId(field: 'ean13' | 'quantity', index: number): string {
+    const base = field === 'ean13' ? 'supplyEan13' : 'supplyQuantity';
+    return index === 0 ? base : `${base}-${index}`;
+  }
+
+  supplyErrorId(field: 'ean13' | 'quantity', index: number): string {
+    const base = field === 'ean13' ? 'supply-ean13-error' : 'supply-quantity-error';
+    return index === 0 ? base : `supply-${field}-${index}-error`;
+  }
+
+  supplyLineTitleId(index: number): string {
+    return `supply-line-${index}-title`;
+  }
+
+  setSupplyLineField(index: number, field: 'ean13' | 'quantity', event: Event): void {
+    const value = (event.target as HTMLInputElement).value;
+    this.supplyLines.update((lines) => lines.map((line, lineIndex) =>
+      lineIndex === index ? { ...line, [field]: value } : line));
+    if (index === 0) {
+      this.supplyModel.update((line) => ({ ...line, [field]: value }));
+    }
+  }
+
+  addSupplyLine(): void {
+    this.supplyLines.update((lines) => [...lines, { ean13: '', quantity: '' }]);
+  }
+
+  removeSupplyLine(index: number): void {
+    const lines = this.supplyLines();
+    if (lines.length <= 1 || !lines[index]) {
+      return;
     }
 
-    const errors = field === 'ean13'
-      ? this.supplyForm.ean13().errors()
-      : this.supplyForm.quantity().errors();
-    return errors[0]?.message ?? '';
+    const remaining = lines.filter((_, lineIndex) => lineIndex !== index);
+    this.supplyLines.set(remaining);
+    this.supplyModel.set({ ...remaining[0] });
+    this.supplyFieldErrors.update((errors) => Object.entries(errors).reduce<Record<string, string>>(
+      (rebased, [field, message]) => {
+        const match = field.match(/^lines\[(\d+)\](.*)$/);
+        if (!match) {
+          rebased[field] = message;
+          return rebased;
+        }
+
+        const lineIndex = Number(match[1]);
+        if (lineIndex === index) {
+          return rebased;
+        }
+
+        const nextIndex = lineIndex > index ? lineIndex - 1 : lineIndex;
+        rebased[`lines[${nextIndex}]${match[2]}`] = message;
+        return rebased;
+      },
+      {},
+    ));
   }
 
   async onSupplySubmit(event: Event): Promise<void> {
@@ -927,20 +1007,32 @@ export class AppComponent implements OnInit {
     this.supplyMessage.set('');
     this.supplySubmitting.set(true);
 
-    const payload: SupplyPayload = {
-      ean13: this.supplyModel().ean13.trim(),
-      quantity: this.toSupplyQuantity(this.supplyModel().quantity),
-    };
+    const draftLines = this.supplyLinesForSubmit();
+    const payloadLines: SupplyPayload[] = draftLines.map((line) => ({
+      ean13: line.ean13.trim(),
+      quantity: this.toSupplyQuantity(line.quantity),
+    }));
 
     try {
-      const response = await firstValueFrom(this.stockApi.recordSupply(payload));
+      let operation: { id: string; occurredAt: string };
+      let positions: StockPositionResponse[];
+      if (payloadLines.length === 1) {
+        const response = await firstValueFrom(this.stockApi.recordSupply(payloadLines[0]));
+        operation = response.operation;
+        positions = [response.position];
+      } else {
+        const payload: BulkSupplyPayload = { lines: payloadLines };
+        const response = await firstValueFrom(this.stockApi.recordBulkSupply(payload));
+        operation = response.operation;
+        positions = response.positions;
+      }
       if (requestId !== this.supplyRequestId) {
         return;
       }
 
-      this.replaceStockPosition(response.position);
+      this.replaceStockPositions(positions);
       this.supplyMessage.set(
-        `Approvisionnement ${response.operation.id} enregistré le ${response.operation.occurredAt}.`,
+        `Approvisionnement ${operation.id} enregistré le ${operation.occurredAt}.`,
       );
       setTimeout(() => document.getElementById('supply-status')?.focus());
     } catch (error) {
@@ -1350,6 +1442,21 @@ export class AppComponent implements OnInit {
       : article);
   }
 
+  private replaceStockPositions(positions: readonly StockPositionResponse[]): void {
+    positions.forEach((position) => this.replaceStockPosition(position));
+  }
+
+  private supplyLinesForSubmit(): SupplyLineFormModel[] {
+    const lines = this.supplyLines().map((line) => ({ ...line }));
+    const legacyLine = this.supplyModel();
+    if (!lines[0]
+      || lines[0].ean13 !== legacyLine.ean13
+      || lines[0].quantity !== legacyLine.quantity) {
+      lines[0] = { ...legacyLine };
+    }
+    return lines;
+  }
+
   private toSupplyQuantity(value: string): number | string | null {
     const trimmed = value.trim();
     if (trimmed === '') {
@@ -1522,11 +1629,15 @@ export class AppComponent implements OnInit {
   }
 
   private focusSupplyError(): void {
-    const field = Object.keys(this.supplyFieldErrors())[0];
-    const target = field === 'ean13'
-      ? document.getElementById('supplyEan13')
-      : field === 'quantity'
-        ? document.getElementById('supplyQuantity')
+    const field = Object.keys(this.supplyFieldErrors())[0] ?? '';
+    const lineField = field.match(/^lines\[(\d+)\]\.(ean13|quantity)$/);
+    const lineError = field.match(/^lines\[(\d+)\]$/);
+    const line = lineField ? Number(lineField[1]) : lineError ? Number(lineError[1]) : 0;
+    const fieldName = lineField?.[2] ?? (lineError ? 'ean13' : field);
+    const target = fieldName === 'ean13'
+      ? document.getElementById(this.supplyInputId('ean13', line))
+      : fieldName === 'quantity'
+        ? document.getElementById(this.supplyInputId('quantity', line))
         : document.getElementById('supply-status');
     target?.focus();
   }

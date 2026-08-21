@@ -82,6 +82,13 @@ positive; le succès `201` retourne l’`operation` immuable (`id`, `type`,
 `ean13`, `quantity`, `occurredAt`) et la `position` engagée. Les erreurs sont
 des Problem Details: `400` pour la structure ou la quantité, `404` pour un
 Article inconnu et `409` avec `code: article_archived` pour un Article archivé.
+`POST /api/supplies/bulk` reçoit `lines`, une collection non vide de lignes
+`{ ean13, quantity }`. Toutes les lignes sont validées avant une transaction
+unique; le succès `201` retourne une seule `operation` avec ses lignes
+ordonnées et les `positions` engagées dans le même ordre. Une erreur de ligne
+rejette toute la livraison et conserve les erreurs sous des clés comme
+`lines[1].quantity`; les erreurs mélangées suivent la priorité `400`, `409`,
+puis `404`.
 `POST /api/inventories` et `GET /api/inventories/{id}` enregistrent ou relisent
 un Inventaire. Un Inventaire reçoit `ean13` et `countedQuantity`, puis renvoie le
 fait immuable, l’écart calculé, la nouvelle base physique et le Stock vendable.

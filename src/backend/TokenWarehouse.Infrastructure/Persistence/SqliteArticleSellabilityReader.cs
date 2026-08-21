@@ -6,7 +6,8 @@ using TokenWarehouse.Domain;
 namespace TokenWarehouse.Infrastructure.Persistence;
 
 public sealed class SqliteArticleSellabilityReader(
-    IDbContextFactory<WarehouseDbContext> contextFactory) : IArticleSellabilityReader
+    IDbContextFactory<WarehouseDbContext> contextFactory)
+    : IArticleSellabilityReader, IArticleSellabilityBatchReader
 {
     public async ValueTask<ArticleSellabilitySnapshot?> FindSellabilityByEanAsync(
         Ean13 ean13,
@@ -20,6 +21,27 @@ public sealed class SqliteArticleSellabilityReader(
         return entity is null
             ? null
             : ToSnapshot(entity);
+    }
+
+    public async ValueTask<IReadOnlyDictionary<Ean13, ArticleSellabilitySnapshot>> FindSellabilityByEansAsync(
+        IReadOnlyList<Ean13> eans,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(eans);
+        var values = eans.Select(ean13 => ean13.Value).Distinct(StringComparer.Ordinal).ToArray();
+        if (values.Length == 0)
+        {
+            return new Dictionary<Ean13, ArticleSellabilitySnapshot>();
+        }
+
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+        var entities = await context.Articles
+            .AsNoTracking()
+            .Where(article => values.Contains(article.Ean13))
+            .ToListAsync(cancellationToken);
+        return entities
+            .Select(ToSnapshot)
+            .ToDictionary(article => article.Ean13);
     }
 
     internal static ArticleSellabilitySnapshot ToSnapshot(ArticleEntity entity)

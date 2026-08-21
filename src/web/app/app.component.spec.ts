@@ -334,6 +334,102 @@ describe('AppComponent', () => {
     http.verify();
   });
 
+  it('submits multiple supply lines and maps a rejected line without losing drafts', async () => {
+    const fixture = TestBed.configureTestingModule({
+      imports: [AppComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    }).createComponent(AppComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
+    http.expectOne('/api/stock').flush([]);
+    await fixture.whenStable();
+
+    const valueEvent = (value: string) => ({ target: { value } } as unknown as Event);
+    const component = fixture.componentInstance;
+    component.setSupplyLineField(0, 'ean13', valueEvent('0123456789012'));
+    component.setSupplyLineField(0, 'quantity', valueEvent('3'));
+    component.addSupplyLine();
+    component.setSupplyLineField(1, 'ean13', valueEvent('5901234123457'));
+    component.setSupplyLineField(1, 'quantity', valueEvent('2'));
+
+    const submission = component.onSupplySubmit(new Event('submit'));
+    const request = http.expectOne('/api/supplies/bulk');
+    expect(request.request.body).toEqual({
+      lines: [
+        { ean13: '0123456789012', quantity: 3 },
+        { ean13: '5901234123457', quantity: 2 },
+      ],
+    });
+    expect(component.stockPositions()).toEqual([]);
+    request.flush({
+      operation: {
+        id: 'bulk-operation-1',
+        type: 'supply',
+        occurredAt: '2030-01-15T10:00:00Z',
+        lines: [
+          { lineNumber: 1, ean13: '0123456789012', quantity: 3 },
+          { lineNumber: 2, ean13: '5901234123457', quantity: 2 },
+        ],
+      },
+      positions: [
+        {
+          ean13: '0123456789012',
+          name: 'Premier Article',
+          type: 'food',
+          isActive: true,
+          status: 'active',
+          physicalQuantity: 11,
+          sellableQuantity: 11,
+          availability: 'AVAILABLE',
+          reason: null,
+        },
+        {
+          ean13: '5901234123457',
+          name: 'Second Article',
+          type: 'food',
+          isActive: true,
+          status: 'active',
+          physicalQuantity: 7,
+          sellableQuantity: 7,
+          availability: 'AVAILABLE',
+          reason: null,
+        },
+      ],
+    });
+    await submission;
+    fixture.detectChanges();
+
+    expect(component.stockPositions().map((position) => position.physicalQuantity)).toEqual([11, 7]);
+    expect(fixture.nativeElement.querySelector('#supply-status').textContent).toContain('bulk-operation-1');
+
+    component.setSupplyLineField(1, 'quantity', valueEvent('0'));
+    const failedSubmission = component.onSupplySubmit(new Event('submit'));
+    const failedRequest = http.expectOne('/api/supplies/bulk');
+    failedRequest.flush(
+      {
+        code: 'bulk_supply.validation',
+        title: 'La livraison est invalide.',
+        errors: { 'lines[1].quantity': ['La quantité est invalide.'] },
+      },
+      { status: 400, statusText: 'Bad Request' },
+    );
+    await failedSubmission;
+    fixture.detectChanges();
+
+    expect(component.supplyLines()[0]).toEqual({ ean13: '0123456789012', quantity: '3' });
+    expect(component.supplyLines()[1]).toEqual({ ean13: '5901234123457', quantity: '0' });
+    expect(fixture.nativeElement.querySelector('#supply-quantity-1-error').textContent).toContain('invalide');
+    expect(fixture.nativeElement.querySelector('#supplyQuantity-1')).toBe(document.activeElement);
+    expect(component.stockPositions().map((position) => position.physicalQuantity)).toEqual([11, 7]);
+
+    component.removeSupplyLine(0);
+    fixture.detectChanges();
+    expect(component.supplyLines()).toEqual([{ ean13: '5901234123457', quantity: '0' }]);
+    expect(fixture.nativeElement.querySelector('#supply-quantity-error').textContent).toContain('invalide');
+    http.verify();
+  });
+
   it('shows only the fields applicable to the selected classification', async () => {
     const fixture = TestBed.configureTestingModule({
       imports: [AppComponent],

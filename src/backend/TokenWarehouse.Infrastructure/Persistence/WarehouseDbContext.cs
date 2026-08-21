@@ -12,6 +12,8 @@ public sealed class WarehouseDbContext(DbContextOptions<WarehouseDbContext> opti
 
     public DbSet<StockOperationEntity> StockOperations => Set<StockOperationEntity>();
 
+    public DbSet<StockOperationLineEntity> StockOperationLines => Set<StockOperationLineEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         var article = modelBuilder.Entity<ArticleEntity>();
@@ -83,6 +85,29 @@ public sealed class WarehouseDbContext(DbContextOptions<WarehouseDbContext> opti
                 "ResultingPhysicalStock = CountedQuantity");
         });
         operation.HasOne<ArticleEntity>()
+            .WithMany()
+            .HasForeignKey(entity => entity.Ean13)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        var operationLine = modelBuilder.Entity<StockOperationLineEntity>();
+        operationLine.HasKey(entity => new { entity.OperationId, entity.LineNumber });
+        operationLine.Property(entity => entity.Ean13).IsRequired();
+        operationLine.Property(entity => entity.Quantity).IsRequired();
+        operationLine.HasIndex(entity => new { entity.OperationId, entity.Ean13 }).IsUnique();
+        operationLine.ToTable("StockOperationLines", table =>
+        {
+            table.HasCheckConstraint(
+                "CK_StockOperationLines_LineNumber_Positive",
+                "LineNumber > 0");
+            table.HasCheckConstraint(
+                "CK_StockOperationLines_Quantity_Positive",
+                "Quantity > 0");
+        });
+        operationLine.HasOne(entity => entity.Operation)
+            .WithMany(operation => operation.Lines)
+            .HasForeignKey(entity => entity.OperationId)
+            .OnDelete(DeleteBehavior.Cascade);
+        operationLine.HasOne<ArticleEntity>()
             .WithMany()
             .HasForeignKey(entity => entity.Ean13)
             .OnDelete(DeleteBehavior.Restrict);

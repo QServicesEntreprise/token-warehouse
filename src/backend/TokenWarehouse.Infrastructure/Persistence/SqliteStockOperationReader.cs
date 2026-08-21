@@ -15,6 +15,7 @@ public sealed class SqliteStockOperationReader(
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
         var entity = await context.StockOperations
             .AsNoTracking()
+            .Include(operation => operation.Lines)
             .SingleOrDefaultAsync(operation => operation.Id == id, cancellationToken);
 
         return entity is null ? null : ToDomain(entity);
@@ -27,8 +28,40 @@ public sealed class SqliteStockOperationReader(
                 entity.TimestampUtc,
                 CultureInfo.InvariantCulture,
                 DateTimeStyles.RoundtripKind,
-                out var timestampUtc)
-            || !string.Equals(entity.Type, "INVENTORY", StringComparison.Ordinal))
+                out var timestampUtc))
+        {
+            throw new InvalidOperationException("Stored StockOperation data is invalid.");
+        }
+
+        if (string.Equals(entity.Type, "supply", StringComparison.OrdinalIgnoreCase))
+        {
+            if (entity.Lines.Count == 0)
+            {
+                if (!Quantity.TryCreatePositive(entity.Quantity, out var quantity))
+                {
+                    throw new InvalidOperationException("Stored Supply data is invalid.");
+                }
+
+                return StockOperation.CreateSupply(entity.Id, ean13, quantity, timestampUtc);
+            }
+
+            var lines = entity.Lines
+                .OrderBy(line => line.LineNumber)
+                .Select(line =>
+                {
+                    if (!Ean13.TryCreate(line.Ean13, out var lineEan13)
+                        || !Quantity.TryCreatePositive(line.Quantity, out var quantity))
+                    {
+                        throw new InvalidOperationException("Stored Supply line data is invalid.");
+                    }
+
+                    return new StockOperationLine(line.LineNumber, lineEan13, quantity);
+                })
+                .ToArray();
+            return StockOperation.CreateBulkSupply(entity.Id, lines, timestampUtc);
+        }
+
+        if (!string.Equals(entity.Type, "INVENTORY", StringComparison.Ordinal))
         {
             throw new InvalidOperationException("Stored StockOperation data is invalid.");
         }
