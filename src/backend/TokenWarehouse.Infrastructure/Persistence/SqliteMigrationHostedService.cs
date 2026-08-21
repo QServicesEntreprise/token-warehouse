@@ -97,6 +97,7 @@ public sealed class SqliteMigrationHostedService(
     {
         const string foodEan = "0123456789012";
         const string nonFoodEan = "4006381333931";
+        const string inventoryEan = "7351353713578";
 
         if (!await context.Articles.AnyAsync(article => article.Ean13 == foodEan, cancellationToken))
         {
@@ -124,6 +125,21 @@ public sealed class SqliteMigrationHostedService(
                 PriceHtCents = 200,
                 IsActive = true,
                 Packaging = "new"
+            });
+        }
+
+        if (!await context.Articles.AnyAsync(article => article.Ean13 == inventoryEan, cancellationToken))
+        {
+            context.Articles.Add(new ArticleEntity
+            {
+                Ean13 = inventoryEan,
+                Type = "food",
+                Name = "Inventaire de démonstration",
+                NameSearchKey = ArticleNameSearchKey.From("Inventaire de démonstration"),
+                PriceHtCents = 100,
+                IsActive = true,
+                Dlc = today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                ConsumptionModes = "takeaway"
             });
         }
 
@@ -233,6 +249,15 @@ public sealed class SqliteMigrationHostedService(
             {
                 Ean13 = nonFoodEan,
                 PhysicalQuantity = 7
+            });
+        }
+
+        if (!await context.StockPositions.AnyAsync(position => position.Ean13 == inventoryEan, cancellationToken))
+        {
+            context.StockPositions.Add(new StockPositionEntity
+            {
+                Ean13 = inventoryEan,
+                PhysicalQuantity = 8
             });
         }
 

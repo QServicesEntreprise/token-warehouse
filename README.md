@@ -74,7 +74,11 @@ npm run start:web
 L’API expose `GET /health`, `GET /api/articles`, `POST /api/articles`,
 `GET /api/articles/{ean13}`, `PATCH /api/articles/{ean13}`,
 `POST /api/articles/{ean13}/archive`, `POST /api/articles/{ean13}/reactivate`
-et `GET /api/history?ean13={ean13}`. Le PATCH accepte `priceHtCents` pour le
+`POST /api/inventories`, `GET /api/inventories/{id}` et `GET /api/history?ean13={ean13}`.
+Un Inventaire reçoit `ean13` et `countedQuantity`, puis renvoie le fait immuable,
+l’écart calculé, la nouvelle base physique et le Stock vendable. Le GET par
+identifiant relit le fait sans modifier la position courante.
+Le PATCH accepte `priceHtCents` pour le
 parcours de prix existant, ou les attributs évolutifs `name`, `dlc` et
 `consumptionModes` pour un Article alimentaire, et `name` et `packaging` pour
 un Article non alimentaire. Un PATCH qui mélange prix et attributs est refusé;
@@ -82,6 +86,10 @@ une modification d’attributs renvoie la représentation canonique après commi
 et ajoute un fait immuable à l’Historique.
 Le host applique les migrations SQLite au démarrage sans service externe ni
 secret.
+
+Pour les tests déterministes, `TOKEN_WAREHOUSE_UTC_NOW` peut fixer l’instant
+UTC des opérations et `TOKEN_WAREHOUSE_WAREHOUSE_DATE` la date métier de
+l’Entrepôt.
 
 ## Contrat Stock courant
 

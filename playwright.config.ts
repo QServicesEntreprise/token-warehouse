@@ -29,6 +29,7 @@ export default defineConfig({
         ASPNETCORE_ENVIRONMENT: 'Testing',
         TOKEN_WAREHOUSE_E2E_SEED: 'true',
         TOKEN_WAREHOUSE_WAREHOUSE_DATE: '2030-01-15',
+        TOKEN_WAREHOUSE_UTC_NOW: '2030-01-15T10:00:00Z',
         ConnectionStrings__Warehouse: `Data Source=${e2eDatabasePath}`,
       },
     },
