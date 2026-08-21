@@ -10,8 +10,8 @@ et de consultation d’un Article.
 - SQLite local dans `src/backend/TokenWarehouse.Api/token-warehouse.db` pour le
   lancement manuel; les tests d'intégration utilisent un fichier temporaire et
   une connexion SQLite `:memory:` conservée ouverte.
-- Le test Playwright utilise `artifacts/playwright/token-warehouse-playwright.db`,
-  un fichier éphémère supprimé avec les artefacts.
+- Le test Playwright utilise `src/backend/TokenWarehouse.Api/token-warehouse.db`,
+  réinitialisé avant chaque exécution.
 - Playwright `1.62.1` lance l'API et Angular lui-même sur `5100` et `4200`.
 
 Les dépendances vont de `Domain` vers `Application`, puis vers
@@ -70,7 +70,8 @@ dotnet run --project src/backend/TokenWarehouse.Api/TokenWarehouse.Api.csproj --
 npm run start:web
 ```
 
-L’API expose `GET /health`, `POST /api/articles` et `GET /api/articles/{ean13}`.
+L’API expose `GET /health`, `GET /api/articles`, `POST /api/articles` et
+`GET /api/articles/{ean13}`.
 Le host applique les migrations SQLite au démarrage sans service externe ni
 secret.
 
@@ -81,6 +82,11 @@ Les valeurs canoniques du JSON sont `food`/`nonFood`, `takeaway`/`onsite` et
 chaîne de 13 chiffres, `priceHtCents` comme entier et renvoie `isActive: true`.
 Les réponses alimentaires exposent `dlc` et `consumptionModes`; les réponses
 non alimentaires exposent `packaging`, sans attribut de l’autre classification.
+
+La liste accepte `status=active|archived|all` (actif par défaut), `search` pour
+le nom ou l’EAN-13, `type=food|nonFood`, `mode=takeaway|onsite` et
+`packaging=new|refurbished|unsellable`. Les dimensions présentes sont combinées
+par intersection; une collection vide reste une réponse `200 []`.
 
 Les erreurs sont `application/problem+json`: `400` avec `code: article.validation`
 et `errors` indexées par champ, `409` avec `code: article.ean13.conflict`, `404`

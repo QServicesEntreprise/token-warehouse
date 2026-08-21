@@ -59,6 +59,29 @@ public static class ArticleEndpoints
             };
         });
 
+        app.MapGet("/api/articles", async (
+            string? status,
+            string? search,
+            string? type,
+            string? mode,
+            string? packaging,
+            IListArticlesUseCase useCase,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await useCase.ListAsync(new ArticleListQuery
+            {
+                Status = status,
+                Search = search,
+                Type = type,
+                Mode = mode,
+                Packaging = packaging
+            }, cancellationToken);
+
+            return result.Status == ArticleListStatus.ValidationFailed
+                ? ValidationProblem(result.Errors)
+                : Results.Ok(result.Articles.Select(ArticleResponse.From).ToArray());
+        });
+
         app.MapGet("/api/articles/{ean13}", async (
             string ean13,
             IGetArticleUseCase useCase,

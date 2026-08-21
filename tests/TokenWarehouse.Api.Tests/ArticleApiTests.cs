@@ -6,6 +6,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using TokenWarehouse.Application;
@@ -298,6 +299,203 @@ public sealed class ArticleApiTests
         Assert.DoesNotContain("SQLite", body, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task Lists_active_articles_by_default_and_exposes_archived_and_all_views()
+    {
+        using var factory = new ArticleHostFactory();
+        using var client = factory.CreateClient();
+
+        await client.PostAsJsonAsync("/api/articles", new
+        {
+            ean13 = "0123456789012",
+            type = "food",
+            name = "Café du Comptoir",
+            priceHtCents = 199,
+            dlc = "2026-12-31",
+            consumptionModes = new[] { "takeaway", "onsite" }
+        });
+        await client.PostAsJsonAsync("/api/articles", new
+        {
+            ean13 = "4006381333931",
+            type = "nonFood",
+            name = "Batterie neuve",
+            priceHtCents = 2500,
+            packaging = "new"
+        });
+        await SeedArchivedArticles(factory.Services);
+
+        using var active = await client.GetAsync("/api/articles");
+        using var archived = await client.GetAsync("/api/articles?status=archived");
+        using var all = await client.GetAsync("/api/articles?status=all");
+
+        Assert.Equal(HttpStatusCode.OK, active.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, archived.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, all.StatusCode);
+        Assert.Equal(
+            ["Batterie neuve", "Café du Comptoir"],
+            await ReadNames(active));
+        Assert.Equal(
+            ["Biscuit historique", "Lampe historique"],
+            await ReadNames(archived));
+        Assert.Equal(
+            ["Batterie neuve", "Biscuit historique", "Café du Comptoir", "Lampe historique"],
+            await ReadNames(all));
+
+        using var archivedDetail = await client.GetAsync("/api/articles/5901234123457");
+        Assert.Equal(HttpStatusCode.OK, archivedDetail.StatusCode);
+        using var archivedBody = JsonDocument.Parse(await archivedDetail.Content.ReadAsStringAsync());
+        Assert.False(archivedBody.RootElement.GetProperty("isActive").GetBoolean());
+        Assert.Equal("5901234123457", archivedBody.RootElement.GetProperty("ean13").GetString());
+    }
+
+    [Fact]
+    public async Task Searches_by_name_or_ean_and_applies_filter_intersections()
+    {
+        using var factory = new ArticleHostFactory();
+        using var client = factory.CreateClient();
+        await client.PostAsJsonAsync("/api/articles", new
+        {
+            ean13 = "0123456789012",
+            type = "food",
+            name = "Biscuit à emporter",
+            priceHtCents = 199,
+            dlc = "2026-12-31",
+            consumptionModes = new[] { "takeaway" }
+        });
+        await client.PostAsJsonAsync("/api/articles", new
+        {
+            ean13 = "4006381333931",
+            type = "food",
+            name = "Plat sur place",
+            priceHtCents = 499,
+            dlc = "2026-12-31",
+            consumptionModes = new[] { "onsite" }
+        });
+        await client.PostAsJsonAsync("/api/articles", new
+        {
+            ean13 = "5901234123457",
+            type = "food",
+            name = "Café aux deux modes",
+            priceHtCents = 299,
+            dlc = "2026-12-31",
+            consumptionModes = new[] { "takeaway", "onsite" }
+        });
+        await client.PostAsJsonAsync("/api/articles", new
+        {
+            ean13 = "7351353713578",
+            type = "nonFood",
+            name = "Lampe neuve",
+            priceHtCents = 3500,
+            packaging = "new"
+        });
+        await client.PostAsJsonAsync("/api/articles", new
+        {
+            ean13 = "5012345678900",
+            type = "nonFood",
+            name = "Lampe reconditionnée",
+            priceHtCents = 2900,
+            packaging = "refurbished"
+        });
+
+        using var nameSearch = await client.GetAsync("/api/articles?search=%20CAF%C3%89%20");
+        using var eanSearch = await client.GetAsync("/api/articles?search=0123456789012");
+        using var emptySearch = await client.GetAsync("/api/articles?search=%20%20");
+        using var takeaway = await client.GetAsync("/api/articles?mode=takeaway");
+        using var onsiteFood = await client.GetAsync("/api/articles?type=food&mode=onsite");
+        using var newPackaging = await client.GetAsync("/api/articles?packaging=new");
+        using var incompatible = await client.GetAsync("/api/articles?type=food&packaging=new");
+        using var opposite = await client.GetAsync("/api/articles?type=nonFood&mode=takeaway");
+
+        Assert.Equal(["Café aux deux modes"], await ReadNames(nameSearch));
+        Assert.Equal(["Biscuit à emporter"], await ReadNames(eanSearch));
+        Assert.Equal(5, (await ReadNames(emptySearch)).Count);
+        Assert.Equal(["Biscuit à emporter", "Café aux deux modes"], await ReadNames(takeaway));
+        Assert.Equal(["Café aux deux modes", "Plat sur place"], await ReadNames(onsiteFood));
+        Assert.Equal(["Lampe neuve"], await ReadNames(newPackaging));
+        Assert.Equal(HttpStatusCode.OK, incompatible.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, opposite.StatusCode);
+        Assert.Empty(await ReadNames(incompatible));
+        Assert.Empty(await ReadNames(opposite));
+
+        using var eanBody = JsonDocument.Parse(await eanSearch.Content.ReadAsStringAsync());
+        Assert.Equal("0123456789012", eanBody.RootElement[0].GetProperty("ean13").GetString());
+        Assert.False(eanBody.RootElement[0].TryGetProperty("packaging", out _));
+    }
+
+    [Theory]
+    [InlineData("status", "retired")]
+    [InlineData("type", "grocery")]
+    [InlineData("mode", "delivery")]
+    [InlineData("packaging", "damaged")]
+    public async Task Invalid_list_filters_return_structured_problem_details(
+        string field,
+        string value)
+    {
+        using var factory = new ArticleHostFactory();
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync($"/api/articles?{field}={value}");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("article.validation", body.RootElement.GetProperty("code").GetString());
+        Assert.True(body.RootElement.GetProperty("errors").TryGetProperty(field, out _));
+    }
+
+    [Fact]
+    public async Task Unexpected_list_storage_failure_returns_sanitized_problem_details()
+    {
+        using var factory = new FailingStoreHostFactory();
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync("/api/articles");
+
+        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.DoesNotContain(nameof(InvalidOperationException), body);
+        Assert.DoesNotContain("database internals", body);
+        Assert.DoesNotContain("SQLite", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static async Task<IReadOnlyList<string?>> ReadNames(HttpResponseMessage response)
+    {
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        return body.RootElement
+            .EnumerateArray()
+            .Select(article => article.GetProperty("name").GetString())
+            .ToArray();
+    }
+
+    private static async Task SeedArchivedArticles(IServiceProvider services)
+    {
+        using var scope = services.CreateScope();
+        var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>();
+        await using var context = await contextFactory.CreateDbContextAsync();
+        context.Articles.AddRange(
+            new ArticleEntity
+            {
+                Ean13 = "5901234123457",
+                Type = "food",
+                Name = "Biscuit historique",
+                PriceHtCents = 299,
+                IsActive = false,
+                Dlc = "2026-12-31",
+                ConsumptionModes = "takeaway"
+            },
+            new ArticleEntity
+            {
+                Ean13 = "5012345678900",
+                Type = "nonFood",
+                Name = "Lampe historique",
+                PriceHtCents = 2900,
+                IsActive = false,
+                Packaging = "refurbished"
+            });
+        await context.SaveChangesAsync();
+    }
+
     private sealed class ArticleHostFactory : WebApplicationFactory<Program>
     {
         private readonly string databasePath = Path.Combine(Path.GetTempPath(), $"token-warehouse-article-{Guid.NewGuid():N}.db");
@@ -375,6 +573,11 @@ public sealed class ArticleApiTests
             => throw new InvalidOperationException("database internals");
 
         public ValueTask<ArticleStoreInsertStatus> InsertAsync(Article article, CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("database internals");
+
+        public ValueTask<IReadOnlyList<Article>> ListAsync(
+            ArticleListFilter filter,
+            CancellationToken cancellationToken = default)
             => throw new InvalidOperationException("database internals");
     }
 }
