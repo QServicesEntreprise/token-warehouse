@@ -15,6 +15,8 @@ builder.Services.AddScoped<ArticleApplication>();
 builder.Services.AddScoped<StockApplication>();
 builder.Services.AddScoped<InventoryApplication>();
 builder.Services.AddScoped<IReadStockUseCase>(services => services.GetRequiredService<StockApplication>());
+builder.Services.AddScoped<SupplyApplication>();
+builder.Services.AddScoped<IRecordSupplyUseCase>(services => services.GetRequiredService<SupplyApplication>());
 builder.Services.AddScoped<IRegisterInventoryUseCase>(services => services.GetRequiredService<InventoryApplication>());
 builder.Services.AddScoped<IReadInventoryUseCase>(services => services.GetRequiredService<InventoryApplication>());
 builder.Services.AddScoped<ICreateArticleUseCase>(services => services.GetRequiredService<ArticleApplication>());
@@ -58,6 +60,7 @@ app.MapGet("/health", async (RuntimeReadiness readiness, CancellationToken cance
 
 app.MapArticleEndpoints();
 app.MapStockEndpoints();
+app.MapSupplyEndpoints();
 app.MapInventoryEndpoints();
 
 app.Run();

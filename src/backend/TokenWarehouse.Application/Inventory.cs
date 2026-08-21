@@ -36,13 +36,6 @@ public sealed record StockMutationCommitResult(
         => new(StockMutationCommitStatus.Failed, null);
 }
 
-public interface IArticleSellabilityReader
-{
-    ValueTask<ArticleSellabilitySnapshot?> FindAsync(
-        Ean13 ean13,
-        CancellationToken cancellationToken = default);
-}
-
 public interface IStockMutationCommitter
 {
     ValueTask<StockMutationCommitResult> CommitAsync(
@@ -144,7 +137,7 @@ public sealed class InventoryApplication(
 
         try
         {
-            var article = await articleReader.FindAsync(ean13, cancellationToken);
+            var article = await articleReader.FindSellabilityByEanAsync(ean13, cancellationToken);
             if (article is null)
             {
                 return new(

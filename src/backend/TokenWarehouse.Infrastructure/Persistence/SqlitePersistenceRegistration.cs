@@ -12,9 +12,10 @@ public static class SqlitePersistenceRegistration
         services.AddSingleton<IPersistenceAdapter, SqlitePersistenceAdapter>();
         services.AddScoped<SqliteArticleStore>();
         services.AddScoped<IArticleStore>(services => services.GetRequiredService<SqliteArticleStore>());
-        services.AddScoped<IArticleSellabilityReader>(services => services.GetRequiredService<SqliteArticleStore>());
+        services.AddScoped<IArticleSellabilityReader, SqliteArticleSellabilityReader>();
         services.AddScoped<IStockReadReader, SqliteStockReadReader>();
         services.AddScoped<IStockPositionReader, SqliteStockPositionReader>();
+        services.AddScoped<ISupplyCommitter, SqliteSupplyCommitter>();
         services.AddScoped<IStockMutationCommitter, SqliteStockMutationCommitter>();
         services.AddScoped<IStockOperationReader, SqliteStockOperationReader>();
         services.AddHostedService<SqliteMigrationHostedService>();

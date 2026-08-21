@@ -80,6 +80,8 @@ public sealed class SqliteStockMutationCommitter(
             Id = operation.Id,
             Type = "INVENTORY",
             Ean13 = operation.Ean13.Value,
+            Quantity = 0,
+            OccurredAt = operation.TimestampUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
             PreviousPhysicalStock = operation.PreviousPhysicalStock,
             CountedQuantity = operation.CountedQuantity,
             InventoryDifference = operation.InventoryDifference,

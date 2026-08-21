@@ -10,8 +10,8 @@ using TokenWarehouse.Infrastructure.Persistence;
 namespace TokenWarehouse.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(WarehouseDbContext))]
-    [Migration("20260821172408_InventoryOperations")]
-    partial class InventoryOperations
+    [Migration("20260821172342_StockOperations")]
+    partial class StockOperations
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -102,9 +102,6 @@ namespace TokenWarehouse.Infrastructure.Persistence.Migrations
                     b.Property<string>("Id")
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("CountedQuantity")
-                        .HasColumnType("INTEGER");
-
                     b.Property<string>("Ean13")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -116,19 +113,6 @@ namespace TokenWarehouse.Infrastructure.Persistence.Migrations
                     b.Property<int>("Quantity")
                         .HasColumnType("INTEGER");
 
-                    b.Property<int>("InventoryDifference")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("PreviousPhysicalStock")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("ResultingPhysicalStock")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("TimestampUtc")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -139,17 +123,7 @@ namespace TokenWarehouse.Infrastructure.Persistence.Migrations
 
                     b.ToTable("StockOperations", null, t =>
                         {
-                            t.HasCheckConstraint("CK_StockOperations_Quantity_Positive", "Type <> 'supply' OR Quantity > 0");
-
-                            t.HasCheckConstraint("CK_StockOperations_CountedQuantity_NonNegative", "CountedQuantity >= 0");
-
-                            t.HasCheckConstraint("CK_StockOperations_InventoryDifference_Formula", "InventoryDifference = CountedQuantity - PreviousPhysicalStock");
-
-                            t.HasCheckConstraint("CK_StockOperations_PreviousPhysicalStock_NonNegative", "PreviousPhysicalStock >= 0");
-
-                            t.HasCheckConstraint("CK_StockOperations_ResultingPhysicalStock_Formula", "ResultingPhysicalStock = CountedQuantity");
-
-                            t.HasCheckConstraint("CK_StockOperations_ResultingPhysicalStock_NonNegative", "ResultingPhysicalStock >= 0");
+                            t.HasCheckConstraint("CK_StockOperations_Quantity_Positive", "Quantity > 0");
                         });
                 });
 

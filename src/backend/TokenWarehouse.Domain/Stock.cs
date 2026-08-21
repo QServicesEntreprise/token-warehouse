@@ -25,6 +25,127 @@ public sealed record StockPosition
 
     public int Version { get; }
 
+    public StockPosition Add(Quantity quantity)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(quantity.Value);
+        return new(Ean13, checked(PhysicalQuantity + quantity.Value), Version);
+    }
+}
+
+public readonly record struct Quantity
+{
+    public Quantity(int value)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(value);
+        Value = value;
+    }
+
+    public int Value { get; }
+
+    public static bool TryCreatePositive(int? value, out Quantity quantity)
+    {
+        if (value is not > 0)
+        {
+            quantity = default;
+            return false;
+        }
+
+        quantity = new Quantity(value.Value);
+        return true;
+    }
+}
+
+public enum StockOperationType
+{
+    Supply,
+    Inventory
+}
+
+public sealed record StockOperation
+{
+    public StockOperation(
+        string id,
+        StockOperationType type,
+        Ean13 ean13,
+        Quantity quantity,
+        DateTimeOffset occurredAt)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            throw new ArgumentException("An operation identifier is required.", nameof(id));
+        }
+
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(quantity.Value);
+        Id = id;
+        Type = type;
+        Ean13 = ean13;
+        Quantity = quantity;
+        OccurredAt = occurredAt.ToUniversalTime();
+        TimestampUtc = OccurredAt;
+    }
+
+    private StockOperation(
+        string id,
+        Ean13 ean13,
+        InventoryReconciliationResult reconciliation,
+        DateTimeOffset timestampUtc)
+    {
+        Id = id;
+        Type = StockOperationType.Inventory;
+        Ean13 = ean13;
+        Quantity = new(0);
+        OccurredAt = timestampUtc.ToUniversalTime();
+        PreviousPhysicalStock = reconciliation.PreviousPhysicalStock;
+        CountedQuantity = reconciliation.CountedQuantity;
+        InventoryDifference = reconciliation.InventoryDifference;
+        ResultingPhysicalStock = reconciliation.ResultingPhysicalStock;
+        TimestampUtc = OccurredAt;
+    }
+
+    public string Id { get; }
+
+    public StockOperationType Type { get; }
+
+    public Ean13 Ean13 { get; }
+
+    public Quantity Quantity { get; }
+
+    public DateTimeOffset OccurredAt { get; }
+
+    public int PreviousPhysicalStock { get; }
+
+    public int CountedQuantity { get; }
+
+    public int InventoryDifference { get; }
+
+    public int ResultingPhysicalStock { get; }
+
+    public DateTimeOffset TimestampUtc { get; }
+
+    public static StockOperation CreateSupply(
+        string id,
+        Ean13 ean13,
+        Quantity quantity,
+        DateTimeOffset occurredAt)
+        => new(id, StockOperationType.Supply, ean13, quantity, occurredAt);
+
+    public static StockOperation CreateInventory(
+        string id,
+        Ean13 ean13,
+        InventoryReconciliationResult reconciliation,
+        DateTimeOffset timestampUtc)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+        ArgumentNullException.ThrowIfNull(reconciliation);
+        if (InventoryReconciliation.Reconcile(
+                reconciliation.PreviousPhysicalStock,
+                reconciliation.CountedQuantity) != reconciliation)
+        {
+            throw new ArgumentException("The reconciliation result is inconsistent.", nameof(reconciliation));
+        }
+
+        return new(id, ean13, reconciliation, timestampUtc);
+    }
 }
 
 public enum StockAvailability
@@ -48,7 +169,8 @@ public sealed record ArticleSellabilitySnapshot(
     bool IsActive,
     DateOnly? Dlc,
     IReadOnlyList<ConsumptionMode> ConsumptionModes,
-    PackagingCondition? Packaging)
+    PackagingCondition? Packaging,
+    int Version = 0)
 {
     public static ArticleSellabilitySnapshot From(Article article)
     {
@@ -61,7 +183,8 @@ public sealed record ArticleSellabilitySnapshot(
             article.IsActive,
             article.Dlc,
             article.ConsumptionModes,
-            article.Packaging);
+            article.Packaging,
+            article.Version);
     }
 }
 

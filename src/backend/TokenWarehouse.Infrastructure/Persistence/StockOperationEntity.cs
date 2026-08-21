@@ -8,6 +8,10 @@ public sealed class StockOperationEntity
 
     public string Ean13 { get; set; } = string.Empty;
 
+    public int Quantity { get; set; }
+
+    public string OccurredAt { get; set; } = string.Empty;
+
     public int PreviousPhysicalStock { get; set; }
 
     public int CountedQuantity { get; set; }
