@@ -89,7 +89,8 @@ public sealed class Article
         Money priceHt,
         DateOnly? dlc,
         IReadOnlyList<ConsumptionMode> consumptionModes,
-        PackagingCondition? packaging)
+        PackagingCondition? packaging,
+        bool isActive)
     {
         Ean13 = ean13;
         Type = type;
@@ -98,7 +99,7 @@ public sealed class Article
         Dlc = dlc;
         ConsumptionModes = Array.AsReadOnly(consumptionModes.ToArray());
         Packaging = packaging;
-        IsActive = true;
+        IsActive = isActive;
     }
 
     public Ean13 Ean13 { get; }
@@ -120,6 +121,12 @@ public sealed class Article
     public void ChangePriceHt(Money priceHt) => PriceHt = priceHt;
 
     public static ArticleCreationResult Create(ArticleDraft draft)
+        => Create(draft, true);
+
+    public static ArticleCreationResult Reconstitute(ArticleDraft draft, bool isActive)
+        => Create(draft, isActive);
+
+    private static ArticleCreationResult Create(ArticleDraft draft, bool isActive)
     {
         ArgumentNullException.ThrowIfNull(draft);
 
@@ -278,7 +285,8 @@ public sealed class Article
                 Money.FromCents(draft.PriceHtCents!.Value),
                 dlc,
                 modes,
-                packaging),
+                packaging,
+                isActive),
             []);
     }
 

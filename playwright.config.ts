@@ -2,11 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { defineConfig, devices } from '@playwright/test';
 
-fs.mkdirSync(path.resolve('artifacts/playwright'), { recursive: true });
-const e2eDatabasePath = path.resolve('artifacts/playwright/token-warehouse-playwright.db');
-for (const suffix of ['', '-shm', '-wal']) {
-  fs.rmSync(`${e2eDatabasePath}${suffix}`, { force: true });
-}
+const playwrightArtifactsPath = path.resolve('artifacts/playwright');
+fs.mkdirSync(playwrightArtifactsPath, { recursive: true });
+const e2eDatabaseDirectory = fs.mkdtempSync(path.join(playwrightArtifactsPath, 'e2e-'));
+const e2eDatabasePath = path.join(e2eDatabaseDirectory, 'token-warehouse.db');
 
 export default defineConfig({
   testDir: 'tests/e2e',
@@ -28,6 +27,7 @@ export default defineConfig({
       reuseExistingServer: false,
       env: {
         ASPNETCORE_ENVIRONMENT: 'Testing',
+        TOKEN_WAREHOUSE_E2E_SEED: 'true',
         ConnectionStrings__Warehouse: `Data Source=${e2eDatabasePath}`,
       },
     },

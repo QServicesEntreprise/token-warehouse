@@ -8,6 +8,8 @@ public sealed class ArticleEntity
 
     public string Name { get; set; } = string.Empty;
 
+    public string NameSearchKey { get; set; } = string.Empty;
+
     public int PriceHtCents { get; set; }
 
     public bool IsActive { get; set; }

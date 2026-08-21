@@ -77,3 +77,14 @@ test('documented cleanup removes the manual API SQLite database and sidecars', a
     assert.ok(readme.includes(`${manualDatabasePath}${suffix}`));
   }
 });
+
+test('Playwright fixtures isolate the manual SQLite database', async () => {
+  const config = await readFile(join(root, 'playwright.config.ts'), 'utf8');
+
+  assert.match(config, /path\.resolve\('artifacts\/playwright'\)/);
+  assert.match(config, /fs\.mkdtempSync\(path\.join\(playwrightArtifactsPath, 'e2e-'\)\)/);
+  assert.match(config, /const e2eDatabasePath = path\.join\(e2eDatabaseDirectory, 'token-warehouse\.db'\)/);
+  assert.match(config, /ConnectionStrings__Warehouse: `Data Source=\$\{e2eDatabasePath\}`/);
+  assert.doesNotMatch(config, /src\/backend\/TokenWarehouse\.Api\/token-warehouse\.db/);
+  assert.doesNotMatch(config, /rmSync/);
+});
