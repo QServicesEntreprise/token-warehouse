@@ -13,6 +13,7 @@ import {
 import { firstValueFrom } from 'rxjs';
 import {
   ArticleApiService,
+  ArticleAttributesUpdatePayload,
   ArticleCreatePayload,
   ArticleListResponse,
   ArticleListQuery,
@@ -310,6 +311,8 @@ const initialModel: ArticleFormModel = {
               @if (article.packaging) {
                 <div><dt>Packaging</dt><dd>{{ article.packaging }}</dd></div>
               }
+              <div><dt>Stock physique</dt><dd>{{ article.stock?.physicalQuantity ?? 0 }} unités</dd></div>
+              <div><dt>Stock vendable</dt><dd>{{ article.stock?.sellableQuantity ?? 0 }} unités</dd></div>
             </dl>
 
             <button
@@ -320,28 +323,106 @@ const initialModel: ArticleFormModel = {
               {{ transitioningEan() === article.ean13 ? 'Traitement…' : (isActiveArticle(article) ? 'Archiver l’Article' : 'Réactiver l’Article') }}
             </button>
 
-            <form id="price-update-form" (submit)="onPriceUpdate($event)" aria-labelledby="price-update-title">
-              <h4 id="price-update-title">Prix de référence</h4>
-              <label>
-                Prix HT (centimes)
-                <input
-                  id="detailPriceHtCents"
-                  type="number"
-                  step="1"
-                  inputmode="numeric"
-                  [value]="priceHtDraft()"
-                  [attr.aria-invalid]="priceHtFieldError() ? 'true' : null"
-                  aria-describedby="priceHt-update-error"
-                  (input)="setPriceHtDraft($event)" />
-                @if (priceHtFieldError()) {
-                  <span id="priceHt-update-error" class="field-error">{{ priceHtFieldError() }}</span>
+            @if (isActiveArticle(article)) {
+              <form id="attribute-update-form" (submit)="onAttributeUpdate($event)" aria-labelledby="attribute-update-title">
+                <h4 id="attribute-update-title">Attributs évolutifs</h4>
+                <label>
+                  Nom
+                  <input
+                    id="detailName"
+                    autocomplete="off"
+                    [value]="attributeNameDraft()"
+                    [attr.aria-invalid]="attributeFieldError('name') ? 'true' : null"
+                    aria-describedby="detail-name-error"
+                    (input)="setAttributeName($event)" />
+                  @if (attributeFieldError('name')) {
+                    <span id="detail-name-error" class="field-error">{{ attributeFieldError('name') }}</span>
+                  }
+                </label>
+
+                @if (article.type === 'food') {
+                  <label>
+                    DLC
+                    <input
+                      id="detailDlc"
+                      type="date"
+                      [value]="attributeDlcDraft()"
+                      [attr.aria-invalid]="attributeFieldError('dlc') ? 'true' : null"
+                      aria-describedby="detail-dlc-error"
+                      (input)="setAttributeDlc($event)" />
+                    @if (attributeFieldError('dlc')) {
+                      <span id="detail-dlc-error" class="field-error">{{ attributeFieldError('dlc') }}</span>
+                    }
+                  </label>
+
+                  <fieldset id="detailConsumptionModes" aria-describedby="detail-consumptionModes-error">
+                    <legend>Modes de consommation</legend>
+                    @for (mode of consumptionModeOptions; track mode.value) {
+                      <label class="choice">
+                        <input
+                          type="checkbox"
+                          [checked]="attributeModesDraft().includes(mode.value)"
+                          (change)="toggleAttributeMode(mode.value, $event)" />
+                        {{ mode.label }}
+                      </label>
+                    }
+                    @if (attributeFieldError('consumptionModes')) {
+                      <span id="detail-consumptionModes-error" class="field-error">{{ attributeFieldError('consumptionModes') }}</span>
+                    }
+                  </fieldset>
                 }
-              </label>
-              <p id="price-update-error" class="form-error" aria-live="assertive" tabindex="-1">{{ priceUpdateError() }}</p>
-              <button type="submit" [disabled]="updatingPrice()">
-                {{ updatingPrice() ? 'Enregistrement…' : 'Enregistrer le Prix HT' }}
-              </button>
-            </form>
+
+                @if (article.type === 'nonFood') {
+                  <label>
+                    Packaging
+                    <select
+                      id="detailPackaging"
+                      [value]="attributePackagingDraft()"
+                      [attr.aria-invalid]="attributeFieldError('packaging') ? 'true' : null"
+                      aria-describedby="detail-packaging-error"
+                      (change)="setAttributePackaging($event)">
+                      <option value="">Sélectionner</option>
+                      <option value="new">Neuf</option>
+                      <option value="refurbished">Reconditionné</option>
+                      <option value="unsellable">Invendable</option>
+                    </select>
+                    @if (attributeFieldError('packaging')) {
+                      <span id="detail-packaging-error" class="field-error">{{ attributeFieldError('packaging') }}</span>
+                    }
+                  </label>
+                }
+
+                <p id="attribute-update-error" class="form-error" aria-live="assertive" tabindex="-1">{{ attributeUpdateError() }}</p>
+                <button type="submit" [disabled]="updatingAttributes()">
+                  {{ updatingAttributes() ? 'Enregistrement…' : 'Enregistrer les attributs' }}
+                </button>
+              </form>
+            }
+
+            @if (isActiveArticle(article)) {
+              <form id="price-update-form" (submit)="onPriceUpdate($event)" aria-labelledby="price-update-title">
+                <h4 id="price-update-title">Prix de référence</h4>
+                <label>
+                  Prix HT (centimes)
+                  <input
+                    id="detailPriceHtCents"
+                    type="number"
+                    step="1"
+                    inputmode="numeric"
+                    [value]="priceHtDraft()"
+                    [attr.aria-invalid]="priceHtFieldError() ? 'true' : null"
+                    aria-describedby="priceHt-update-error"
+                    (input)="setPriceHtDraft($event)" />
+                  @if (priceHtFieldError()) {
+                    <span id="priceHt-update-error" class="field-error">{{ priceHtFieldError() }}</span>
+                  }
+                </label>
+                <p id="price-update-error" class="form-error" aria-live="assertive" tabindex="-1">{{ priceUpdateError() }}</p>
+                <button type="submit" [disabled]="updatingPrice()">
+                  {{ updatingPrice() ? 'Enregistrement…' : 'Enregistrer le Prix HT' }}
+                </button>
+              </form>
+            }
 
             <section aria-labelledby="quotes-title">
               <h4 id="quotes-title">Prix TTC</h4>
@@ -420,6 +501,15 @@ export class AppComponent implements OnInit {
   readonly priceHtFieldError = signal('');
   readonly priceUpdateError = signal('');
   readonly updatingPrice = signal(false);
+  readonly attributeNameDraft = signal('');
+  readonly attributeDlcDraft = signal('');
+  readonly attributeModesDraft = signal<ConsumptionMode[]>([]);
+  readonly attributePackagingDraft = signal<Packaging | ''>('');
+  readonly attributeFieldErrors = signal<Record<string, string>>({});
+  readonly attributeUpdateError = signal('');
+  readonly updatingAttributes = signal(false);
+
+  private attributeRequestId = 0;
 
   async onSubmit(event: Event): Promise<void> {
     event.preventDefault();
@@ -568,6 +658,8 @@ export class AppComponent implements OnInit {
       this.detail.set(null);
       this.priceUpdateError.set('');
       this.priceHtFieldError.set('');
+      this.attributeUpdateError.set('');
+      this.attributeFieldErrors.set({});
     }
     this.lookingUp.set(true);
     try {
@@ -616,6 +708,76 @@ export class AppComponent implements OnInit {
       this.focusPriceUpdate();
     } finally {
       this.updatingPrice.set(false);
+    }
+  }
+
+  setAttributeName(event: Event): void {
+    this.attributeNameDraft.set((event.target as HTMLInputElement).value);
+  }
+
+  setAttributeDlc(event: Event): void {
+    this.attributeDlcDraft.set((event.target as HTMLInputElement).value);
+  }
+
+  toggleAttributeMode(mode: ConsumptionMode, event: Event): void {
+    const checked = (event.target as HTMLInputElement).checked;
+    this.attributeModesDraft.update((current) => checked
+      ? [...new Set([...current, mode])]
+      : current.filter((value) => value !== mode));
+  }
+
+  setAttributePackaging(event: Event): void {
+    this.attributePackagingDraft.set((event.target as HTMLSelectElement).value as Packaging | '');
+  }
+
+  attributeFieldError(field: string): string {
+    return this.attributeFieldErrors()[field] ?? '';
+  }
+
+  async onAttributeUpdate(event: Event): Promise<void> {
+    event.preventDefault();
+    const article = this.detail();
+    if (!article || !this.isActiveArticle(article)) {
+      return;
+    }
+
+    this.attributeUpdateError.set('');
+    this.attributeFieldErrors.set({});
+    const requestId = ++this.attributeRequestId;
+    const payload: ArticleAttributesUpdatePayload = { name: this.attributeNameDraft() };
+    if (article.type === 'food') {
+      payload.dlc = this.attributeDlcDraft();
+      payload.consumptionModes = [...this.attributeModesDraft()];
+    } else {
+      payload.packaging = this.attributePackagingDraft() as Packaging;
+    }
+
+    this.updatingAttributes.set(true);
+    try {
+      const updated = await firstValueFrom(this.api.updateAttributes(article.ean13, payload));
+      if (requestId !== this.attributeRequestId) {
+        return;
+      }
+
+      this.showDetail(updated);
+      this.attributeUpdateError.set(`Les attributs de ${updated.name} ont été mis à jour.`);
+    } catch (error) {
+      if (requestId !== this.attributeRequestId) {
+        return;
+      }
+
+      const problem = this.problemDetails(error, 'La modification des attributs a échoué.');
+      this.attributeFieldErrors.set(
+        Object.fromEntries(
+          Object.entries(problem.errors ?? {}).map(([field, messages]) => [field, messages[0] ?? ''])
+        )
+      );
+      this.attributeUpdateError.set(problem.title ?? 'La modification des attributs a échoué.');
+      this.focusAttributeError();
+    } finally {
+      if (requestId === this.attributeRequestId) {
+        this.updatingAttributes.set(false);
+      }
     }
   }
 
@@ -776,11 +938,19 @@ export class AppComponent implements OnInit {
     this.priceHtDraft.set(String(article.priceHtCents));
     this.priceUpdateError.set('');
     this.priceHtFieldError.set('');
+    this.attributeNameDraft.set(article.name);
+    this.attributeDlcDraft.set(article.dlc ?? '');
+    this.attributeModesDraft.set([...(article.consumptionModes ?? [])]);
+    this.attributePackagingDraft.set(article.packaging ?? '');
+    this.attributeUpdateError.set('');
+    this.attributeFieldErrors.set({});
   }
 
   private invalidateDetailRequest(): void {
     this.detailRequestId += 1;
+    this.attributeRequestId += 1;
     this.lookingUp.set(false);
+    this.updatingAttributes.set(false);
   }
 
   private setPriceUpdateError(message: string, fieldMessage: string): void {
@@ -790,5 +960,19 @@ export class AppComponent implements OnInit {
 
   private focusPriceUpdate(): void {
     document.getElementById('detailPriceHtCents')?.focus();
+  }
+
+  private focusAttributeError(): void {
+    const field = Object.keys(this.attributeFieldErrors())[0];
+    const target = field === 'consumptionModes'
+      ? document.querySelector<HTMLElement>('#detailConsumptionModes input')
+      : field === 'name'
+        ? document.getElementById('detailName')
+        : field === 'dlc'
+          ? document.getElementById('detailDlc')
+          : field === 'packaging'
+            ? document.getElementById('detailPackaging')
+            : document.getElementById('attribute-update-error');
+    target?.focus();
   }
 }

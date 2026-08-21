@@ -22,9 +22,15 @@ export interface ArticleResponse extends ArticleCreatePayload {
   isActive: boolean;
   status: ArticleStatus;
   priceQuotes: PriceQuote[];
+  stock?: ArticleStock;
 }
 
-export type ArticleListResponse = Omit<ArticleResponse, 'priceQuotes'>;
+export type ArticleListResponse = Omit<ArticleResponse, 'priceQuotes' | 'stock'>;
+
+export interface ArticleStock {
+  physicalQuantity: number;
+  sellableQuantity: number;
+}
 
 export interface PriceQuote {
   saleContext?: ConsumptionMode;
@@ -40,6 +46,13 @@ export interface PriceQuote {
 
 export interface ArticlePriceUpdatePayload {
   priceHtCents: number;
+}
+
+export interface ArticleAttributesUpdatePayload {
+  name?: string;
+  dlc?: string;
+  consumptionModes?: ConsumptionMode[];
+  packaging?: Packaging;
 }
 
 export interface ArticleListQuery {
@@ -87,6 +100,10 @@ export class ArticleApiService {
   }
 
   updatePriceHt(ean13: string, payload: ArticlePriceUpdatePayload): Observable<ArticleResponse> {
+    return this.http.patch<ArticleResponse>(`/api/articles/${encodeURIComponent(ean13)}`, payload);
+  }
+
+  updateAttributes(ean13: string, payload: ArticleAttributesUpdatePayload): Observable<ArticleResponse> {
     return this.http.patch<ArticleResponse>(`/api/articles/${encodeURIComponent(ean13)}`, payload);
   }
 

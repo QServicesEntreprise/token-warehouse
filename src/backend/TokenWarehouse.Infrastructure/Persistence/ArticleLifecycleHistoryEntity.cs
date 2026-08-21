@@ -11,4 +11,8 @@ public sealed class ArticleLifecycleHistoryEntity
     public string NextStatus { get; set; } = string.Empty;
 
     public string OccurredAt { get; set; } = string.Empty;
+
+    public string Kind { get; set; } = "lifecycle";
+
+    public string? ChangesJson { get; set; }
 }

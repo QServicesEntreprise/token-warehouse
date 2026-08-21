@@ -316,6 +316,113 @@ public sealed class ArticleApplicationTests
         Assert.Equal(1000, (await application.GetAsync(command.Ean13!)).Article?.PriceHt.Cents);
     }
 
+    [Fact]
+    public async Task Updates_food_attributes_and_records_the_before_after_history_fact()
+    {
+        var store = new InMemoryArticleStore();
+        var application = CreateApplication(store);
+        const string ean13 = "0123456789012";
+
+        await application.CreateAsync(new CreateArticleCommand
+        {
+            Ean13 = ean13,
+            Type = "food",
+            Name = "Chocolat noir",
+            PriceHtCents = 199,
+            Dlc = "2026-12-31",
+            ConsumptionModes = ["takeaway"]
+        });
+
+        var result = await application.UpdateAttributesAsync(ean13, new UpdateArticleAttributesCommand
+        {
+            Name = "Chocolat noir bio",
+            NameProvided = true,
+            Dlc = "2027-01-31",
+            DlcProvided = true,
+            ConsumptionModes = ["takeaway", "onsite"],
+            ConsumptionModesProvided = true
+        });
+
+        Assert.Equal(ArticleUpdateStatus.Updated, result.Status);
+        Assert.Equal("Chocolat noir bio", result.Article?.Name);
+        Assert.Equal(new DateOnly(2027, 1, 31), result.Article?.Dlc);
+        Assert.Equal([ConsumptionMode.Takeaway, ConsumptionMode.OnSite], result.Article?.ConsumptionModes);
+        Assert.Equal(199, result.Article?.PriceHt.Cents);
+        Assert.Equal(1, store.AttributeUpdateCalls);
+
+        var fact = Assert.Single((await application.GetHistoryAsync(ean13)).Facts);
+        Assert.Equal(ean13, fact.Ean13.Value);
+        Assert.Equal(
+            ["name", "dlc", "consumptionModes"],
+            fact.Changes.Select(change => change.Field).ToArray());
+        Assert.Equal("Chocolat noir", fact.Changes[0].PreviousValue);
+        Assert.Equal("Chocolat noir bio", fact.Changes[0].NextValue);
+        Assert.Equal("2026-12-31", fact.Changes[1].PreviousValue);
+        Assert.Equal("2027-01-31", fact.Changes[1].NextValue);
+        Assert.Equal("takeaway", fact.Changes[2].PreviousValue);
+        Assert.Equal("takeaway,onsite", fact.Changes[2].NextValue);
+    }
+
+    [Fact]
+    public async Task Rejects_invalid_attribute_updates_without_writing_article_or_history()
+    {
+        var store = new InMemoryArticleStore();
+        var application = CreateApplication(store);
+        const string ean13 = "7351353713578";
+
+        await application.CreateAsync(new CreateArticleCommand
+        {
+            Ean13 = ean13,
+            Type = "nonFood",
+            Name = "Batterie",
+            PriceHtCents = 2500,
+            Packaging = "new"
+        });
+
+        var result = await application.UpdateAttributesAsync(ean13, new UpdateArticleAttributesCommand
+        {
+            Packaging = "unknown",
+            PackagingProvided = true,
+            UnsupportedFields = ["type"]
+        });
+
+        Assert.Equal(ArticleUpdateStatus.ValidationFailed, result.Status);
+        Assert.Contains(result.Errors, error => error.Code == "article.packaging.invalid");
+        Assert.Contains(result.Errors, error => error.Code == "article.field.unsupported");
+        Assert.Equal(0, store.AttributeUpdateCalls);
+        Assert.Equal("Batterie", (await application.GetAsync(ean13)).Article?.Name);
+        Assert.Empty((await application.GetHistoryAsync(ean13)).Facts);
+    }
+
+    [Fact]
+    public async Task Refuses_direct_attribute_update_of_an_archived_article()
+    {
+        var store = new InMemoryArticleStore();
+        var application = CreateApplication(store);
+        const string ean13 = "4006381333931";
+
+        await application.CreateAsync(new CreateArticleCommand
+        {
+            Ean13 = ean13,
+            Type = "nonFood",
+            Name = "Batterie",
+            PriceHtCents = 2500,
+            Packaging = "new"
+        });
+        await application.ChangeLifecycleAsync(ean13, ArticleLifecycleStatus.Archived);
+
+        var result = await application.UpdateAttributesAsync(ean13, new UpdateArticleAttributesCommand
+        {
+            Name = "Batterie archivée",
+            NameProvided = true
+        });
+
+        Assert.Equal(ArticleUpdateStatus.Conflict, result.Status);
+        Assert.Contains(result.Errors, error => error.Code == "article.update.archived");
+        Assert.Equal(0, store.AttributeUpdateCalls);
+        Assert.Equal("Batterie", (await application.GetAsync(ean13)).Article?.Name);
+    }
+
     private static Article CreateArticle(
         string ean13,
         string type,
@@ -354,6 +461,7 @@ public sealed class ArticleApplicationTests
     {
         private readonly List<Article> articles = [];
         private readonly List<ArticleLifecycleHistory> history = [];
+        private readonly List<ArticleAttributeHistory> attributeHistory = [];
 
         public int InsertCalls { get; private set; }
 
@@ -368,6 +476,10 @@ public sealed class ArticleApplicationTests
         public Article? UpdatedArticle { get; private set; }
 
         public int UpdateCalls { get; private set; }
+
+        public int AttributeUpdateCalls { get; private set; }
+
+        public ArticleStoreAttributeUpdateStatus AttributeUpdateStatus { get; set; } = ArticleStoreAttributeUpdateStatus.Updated;
 
         public ArticleListFilter? LastListFilter { get; private set; }
 
@@ -478,6 +590,40 @@ public sealed class ArticleApplicationTests
                 (ean13 is null
                     ? history
                     : history.Where(fact => fact.Ean13 == ean13.Value))
+                .ToArray());
+
+        public ValueTask<ArticleStoreAttributeUpdateStatus> UpdateAttributesAsync(
+            Article article,
+            ArticleAttributeHistory changes,
+            CancellationToken cancellationToken = default)
+        {
+            AttributeUpdateCalls++;
+            var index = articles.FindIndex(current => current.Ean13 == article.Ean13);
+            if (index < 0)
+            {
+                return ValueTask.FromResult(ArticleStoreAttributeUpdateStatus.NotFound);
+            }
+
+            if (!articles[index].IsActive || AttributeUpdateStatus != ArticleStoreAttributeUpdateStatus.Updated)
+            {
+                return ValueTask.FromResult(
+                    !articles[index].IsActive
+                        ? ArticleStoreAttributeUpdateStatus.Conflict
+                        : AttributeUpdateStatus);
+            }
+
+            articles[index] = article;
+            attributeHistory.Add(changes);
+            return ValueTask.FromResult(ArticleStoreAttributeUpdateStatus.Updated);
+        }
+
+        public ValueTask<IReadOnlyList<ArticleAttributeHistory>> ListAttributeHistoryAsync(
+            Ean13? ean13 = null,
+            CancellationToken cancellationToken = default)
+            => ValueTask.FromResult<IReadOnlyList<ArticleAttributeHistory>>(
+                (ean13 is null
+                    ? attributeHistory
+                    : attributeHistory.Where(fact => fact.Ean13 == ean13.Value))
                 .ToArray());
 
         public ValueTask<ArticleStorePriceUpdateCandidate> FindForPriceUpdateAsync(

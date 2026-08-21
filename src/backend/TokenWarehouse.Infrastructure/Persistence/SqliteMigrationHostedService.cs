@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
+using System.Globalization;
 using TokenWarehouse.Application;
 
 namespace TokenWarehouse.Infrastructure.Persistence;
@@ -27,6 +28,7 @@ public sealed class SqliteMigrationHostedService(
                 StringComparison.OrdinalIgnoreCase))
         {
             await SeedArchivedArticlesAsync(context, cancellationToken);
+            await SeedE2eStockArticlesAsync(context, cancellationToken);
         }
     }
 
@@ -84,6 +86,64 @@ public sealed class SqliteMigrationHostedService(
                 IsActive = false,
                 Packaging = "refurbished"
             });
+        await context.SaveChangesAsync(cancellationToken);
+    }
+
+    private static async Task SeedE2eStockArticlesAsync(
+        WarehouseDbContext context,
+        CancellationToken cancellationToken)
+    {
+        const string foodEan = "0123456789012";
+        const string nonFoodEan = "4006381333931";
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        if (!await context.Articles.AnyAsync(article => article.Ean13 == foodEan, cancellationToken))
+        {
+            context.Articles.Add(new ArticleEntity
+            {
+                Ean13 = foodEan,
+                Type = "food",
+                Name = "DLC de démonstration",
+                NameSearchKey = ArticleNameSearchKey.From("DLC de démonstration"),
+                PriceHtCents = 100,
+                IsActive = true,
+                Dlc = today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                ConsumptionModes = "takeaway"
+            });
+        }
+
+        if (!await context.Articles.AnyAsync(article => article.Ean13 == nonFoodEan, cancellationToken))
+        {
+            context.Articles.Add(new ArticleEntity
+            {
+                Ean13 = nonFoodEan,
+                Type = "nonFood",
+                Name = "Packaging de démonstration",
+                NameSearchKey = ArticleNameSearchKey.From("Packaging de démonstration"),
+                PriceHtCents = 200,
+                IsActive = true,
+                Packaging = "new"
+            });
+        }
+
+        if (!await context.StockPositions.AnyAsync(position => position.Ean13 == foodEan, cancellationToken))
+        {
+            context.StockPositions.Add(new StockPositionEntity
+            {
+                Ean13 = foodEan,
+                PhysicalQuantity = 12
+            });
+        }
+
+        if (!await context.StockPositions.AnyAsync(position => position.Ean13 == nonFoodEan, cancellationToken))
+        {
+            context.StockPositions.Add(new StockPositionEntity
+            {
+                Ean13 = nonFoodEan,
+                PhysicalQuantity = 7
+            });
+        }
+
         await context.SaveChangesAsync(cancellationToken);
     }
 }

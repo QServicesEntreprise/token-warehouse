@@ -510,6 +510,156 @@ describe('AppComponent', () => {
     expect(fixture.nativeElement.querySelector('#detailPriceHtCents')).toBe(document.activeElement);
     http.verify();
   });
+
+  it('edits food attributes through the PATCH seam and engages the server response', async () => {
+    const fixture = TestBed.configureTestingModule({
+      imports: [AppComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    }).createComponent(AppComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
+    await fixture.whenStable();
+
+    const component = fixture.componentInstance;
+    const current = foodArticle(1000, 55, 1055, 100, 1100);
+    component.lookupEan.set(current.ean13);
+    const lookup = component.onLookup(new Event('submit'));
+    http.expectOne(`/api/articles/${current.ean13}`).flush(current);
+    await lookup;
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('#attribute-update-form')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('#detailDlc')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('#detailConsumptionModes')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('#detailPackaging')).toBeNull();
+
+    const name = fixture.nativeElement.querySelector('#detailName') as HTMLInputElement;
+    name.value = 'Chocolat bio';
+    name.dispatchEvent(new Event('input'));
+    const dlc = fixture.nativeElement.querySelector('#detailDlc') as HTMLInputElement;
+    dlc.value = '2027-01-31';
+    dlc.dispatchEvent(new Event('input'));
+
+    const submission = component.onAttributeUpdate(new Event('submit'));
+    const patch = http.expectOne(`/api/articles/${current.ean13}`);
+    expect(patch.request.method).toBe('PATCH');
+    expect(patch.request.body).toEqual({
+      name: 'Chocolat bio',
+      dlc: '2027-01-31',
+      consumptionModes: ['takeaway', 'onsite'],
+    });
+    patch.flush({ ...current, name: 'Chocolat bio', dlc: '2027-01-31' });
+    await submission;
+    fixture.detectChanges();
+
+    expect(component.detail()?.name).toBe('Chocolat bio');
+    expect(fixture.nativeElement.querySelector('#attribute-update-error').textContent).toContain('mis à jour');
+    http.verify();
+  });
+
+  it('renders only non-food attribute controls and maps a server field error', async () => {
+    const fixture = TestBed.configureTestingModule({
+      imports: [AppComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    }).createComponent(AppComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
+    await fixture.whenStable();
+
+    const component = fixture.componentInstance;
+    const current: ArticleResponse = {
+      ean13: '7351353713578',
+      type: 'nonFood',
+      name: 'Batterie',
+      priceHtCents: 2500,
+      isActive: true,
+      status: 'active',
+      packaging: 'new',
+      priceQuotes: [],
+      stock: { physicalQuantity: 0, sellableQuantity: 0 },
+    };
+    component.lookupEan.set(current.ean13);
+    const lookup = component.onLookup(new Event('submit'));
+    http.expectOne(`/api/articles/${current.ean13}`).flush(current);
+    await lookup;
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('#detailDlc')).toBeNull();
+    expect(fixture.nativeElement.querySelector('#detailConsumptionModes')).toBeNull();
+    expect(fixture.nativeElement.querySelector('#detailPackaging')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('#detailPriceHtCents')).not.toBeNull();
+
+    const name = fixture.nativeElement.querySelector('#detailName') as HTMLInputElement;
+    name.value = '';
+    name.dispatchEvent(new Event('input'));
+    const submission = component.onAttributeUpdate(new Event('submit'));
+    const patch = http.expectOne(`/api/articles/${current.ean13}`);
+    patch.flush(
+      {
+        code: 'article.name.required',
+        title: 'La requête est invalide.',
+        errors: { name: ['Le nom de l’Article est requis.'] },
+      },
+      { status: 400, statusText: 'Bad Request' },
+    );
+    await submission;
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('#detail-name-error').textContent).toContain('requis');
+    expect(fixture.nativeElement.querySelector('#detailName')).toBe(document.activeElement);
+    http.verify();
+  });
+
+  it('ignores a stale attribute response after navigating to another detail', async () => {
+    const fixture = TestBed.configureTestingModule({
+      imports: [AppComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    }).createComponent(AppComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
+    await fixture.whenStable();
+
+    const component = fixture.componentInstance;
+    const current = foodArticle(1000, 55, 1055, 100, 1100);
+    component.lookupEan.set(current.ean13);
+    const currentLookup = component.onLookup(new Event('submit'));
+    http.expectOne(`/api/articles/${current.ean13}`).flush(current);
+    await currentLookup;
+    fixture.detectChanges();
+
+    const update = component.onAttributeUpdate(new Event('submit'));
+    const patch = http.expectOne(`/api/articles/${current.ean13}`);
+    component.lookupEan.set('7351353713578');
+    const newerLookup = component.onLookup(new Event('submit'));
+    const newerArticle: ArticleResponse = {
+      ean13: '7351353713578',
+      type: 'nonFood',
+      name: 'Batterie',
+      priceHtCents: 2500,
+      isActive: true,
+      status: 'active',
+      packaging: 'new',
+      priceQuotes: [],
+      stock: { physicalQuantity: 0, sellableQuantity: 0 },
+    };
+    http.expectOne('/api/articles/7351353713578').flush(newerArticle);
+    await newerLookup;
+    fixture.detectChanges();
+
+    expect(component.detail()?.ean13).toBe(newerArticle.ean13);
+    expect(component.updatingAttributes()).toBe(false);
+    patch.flush({ ...current, name: 'Réponse obsolète' });
+    await update;
+    fixture.detectChanges();
+
+    expect(component.detail()?.ean13).toBe(newerArticle.ean13);
+    expect(component.detail()?.name).toBe(newerArticle.name);
+    expect(component.attributeUpdateError()).toBe('');
+    http.verify();
+  });
 });
 
 function foodArticle(
@@ -542,5 +692,6 @@ function foodArticle(
         priceTtcCents: onsiteTtcCents,
       },
     ],
+    stock: { physicalQuantity: 0, sellableQuantity: 0 },
   };
 }

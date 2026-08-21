@@ -16,6 +16,7 @@ builder.Services.AddScoped<ICreateArticleUseCase>(services => services.GetRequir
 builder.Services.AddScoped<IGetArticleUseCase>(services => services.GetRequiredService<ArticleApplication>());
 builder.Services.AddScoped<IListArticlesUseCase>(services => services.GetRequiredService<ArticleApplication>());
 builder.Services.AddScoped<IUpdateArticlePriceUseCase>(services => services.GetRequiredService<ArticleApplication>());
+builder.Services.AddScoped<IUpdateArticleAttributesUseCase>(services => services.GetRequiredService<ArticleApplication>());
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddScoped<IChangeArticleLifecycleUseCase>(services => services.GetRequiredService<ArticleApplication>());
 builder.Services.AddScoped<IGetArticleHistoryUseCase>(services => services.GetRequiredService<ArticleApplication>());

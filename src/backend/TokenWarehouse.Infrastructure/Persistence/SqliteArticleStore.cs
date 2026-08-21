@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using TokenWarehouse.Application;
@@ -103,6 +104,7 @@ public sealed class SqliteArticleStore(IDbContextFactory<WarehouseDbContext> con
             }
 
             entity.IsActive = ToIsActive(targetStatus);
+            entity.Version++;
             context.ArticleLifecycleHistory.Add(ToEntity(history));
 
             await context.SaveChangesAsync(cancellationToken);
@@ -128,7 +130,9 @@ public sealed class SqliteArticleStore(IDbContextFactory<WarehouseDbContext> con
         CancellationToken cancellationToken = default)
     {
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
-        var query = context.ArticleLifecycleHistory.AsNoTracking().AsQueryable();
+        var query = context.ArticleLifecycleHistory
+            .AsNoTracking()
+            .Where(history => history.Kind == "lifecycle");
         if (ean13 is { } value)
         {
             query = query.Where(history => history.Ean13 == value.Value);
@@ -191,11 +195,18 @@ public sealed class SqliteArticleStore(IDbContextFactory<WarehouseDbContext> con
 
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
         var entity = await context.Articles
-            .SingleOrDefaultAsync(current => current.Ean13 == article.Ean13.Value, cancellationToken);
+            .SingleOrDefaultAsync(
+                current => current.Ean13 == article.Ean13.Value && current.Version == article.Version,
+                cancellationToken);
 
         if (entity is null)
         {
-            return ArticleStoreUpdateStatus.NotFound;
+            var exists = await context.Articles.AnyAsync(
+                current => current.Ean13 == article.Ean13.Value,
+                cancellationToken);
+            return exists
+                ? ArticleStoreUpdateStatus.Conflict
+                : ArticleStoreUpdateStatus.NotFound;
         }
 
         if (!entity.IsActive)
@@ -204,6 +215,7 @@ public sealed class SqliteArticleStore(IDbContextFactory<WarehouseDbContext> con
         }
 
         entity.PriceHtCents = article.PriceHt.Cents;
+        entity.Version++;
         try
         {
             await context.SaveChangesAsync(cancellationToken);
@@ -215,6 +227,81 @@ public sealed class SqliteArticleStore(IDbContextFactory<WarehouseDbContext> con
         }
     }
 
+    public async ValueTask<ArticleStoreAttributeUpdateStatus> UpdateAttributesAsync(
+        Article article,
+        ArticleAttributeHistory history,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(article);
+        ArgumentNullException.ThrowIfNull(history);
+
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+        try
+        {
+            await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+            var entity = await context.Articles.SingleOrDefaultAsync(
+                current => current.Ean13 == article.Ean13.Value
+                    && current.IsActive
+                    && current.Version == article.Version,
+                cancellationToken);
+
+            if (entity is null)
+            {
+                var exists = await context.Articles.AnyAsync(
+                    current => current.Ean13 == article.Ean13.Value,
+                    cancellationToken);
+                return exists
+                    ? ArticleStoreAttributeUpdateStatus.Conflict
+                    : ArticleStoreAttributeUpdateStatus.NotFound;
+            }
+
+            entity.Name = article.Name;
+            entity.NameSearchKey = ArticleNameSearchKey.From(article.Name);
+            entity.Dlc = article.Dlc?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            entity.ConsumptionModes = article.Type == ArticleType.Food
+                ? string.Join(',', article.ConsumptionModes.Select(ToWireMode))
+                : null;
+            entity.Packaging = article.Packaging is null ? null : ToWirePackaging(article.Packaging.Value);
+            entity.Version++;
+            context.ArticleLifecycleHistory.Add(ToEntity(history));
+
+            await context.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return ArticleStoreAttributeUpdateStatus.Updated;
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return ArticleStoreAttributeUpdateStatus.Conflict;
+        }
+        catch (DbUpdateException exception) when (IsSqliteLock(exception))
+        {
+            return ArticleStoreAttributeUpdateStatus.Conflict;
+        }
+        catch (SqliteException exception) when (exception.SqliteErrorCode is 5 or 6)
+        {
+            return ArticleStoreAttributeUpdateStatus.Conflict;
+        }
+    }
+
+    public async ValueTask<IReadOnlyList<ArticleAttributeHistory>> ListAttributeHistoryAsync(
+        Ean13? ean13 = null,
+        CancellationToken cancellationToken = default)
+    {
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+        var query = context.ArticleLifecycleHistory
+            .AsNoTracking()
+            .Where(history => history.Kind == "attributes");
+        if (ean13 is { } value)
+        {
+            query = query.Where(history => history.Ean13 == value.Value);
+        }
+
+        var entities = await query
+            .OrderBy(history => history.Id)
+            .ToListAsync(cancellationToken);
+        return entities.Select(ToAttributeHistory).ToArray();
+    }
+
     private static ArticleEntity ToEntity(Article article)
         => new()
         {
@@ -224,6 +311,7 @@ public sealed class SqliteArticleStore(IDbContextFactory<WarehouseDbContext> con
             NameSearchKey = ArticleNameSearchKey.From(article.Name),
             PriceHtCents = article.PriceHt.Cents,
             IsActive = article.IsActive,
+            Version = article.Version,
             Dlc = article.Dlc?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             ConsumptionModes = article.Type == ArticleType.Food
                 ? string.Join(',', article.ConsumptionModes.Select(ToWireMode))
@@ -238,6 +326,17 @@ public sealed class SqliteArticleStore(IDbContextFactory<WarehouseDbContext> con
             PreviousStatus = ToWireStatus(history.PreviousStatus),
             NextStatus = ToWireStatus(history.NextStatus),
             OccurredAt = history.OccurredAt.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture)
+        };
+
+    private static ArticleLifecycleHistoryEntity ToEntity(ArticleAttributeHistory history)
+        => new()
+        {
+            Ean13 = history.Ean13.Value,
+            PreviousStatus = "",
+            NextStatus = "",
+            OccurredAt = history.OccurredAt.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
+            Kind = "attributes",
+            ChangesJson = JsonSerializer.Serialize(history.Changes)
         };
 
     private static Article ToDomain(ArticleEntity entity)
@@ -256,7 +355,8 @@ public sealed class SqliteArticleStore(IDbContextFactory<WarehouseDbContext> con
                 Packaging = entity.Packaging,
                 PackagingProvided = entity.Packaging is not null
             },
-            entity.IsActive);
+            entity.IsActive,
+            entity.Version);
 
         if (!result.IsSuccess || result.Value is null)
         {
@@ -281,6 +381,25 @@ public sealed class SqliteArticleStore(IDbContextFactory<WarehouseDbContext> con
         }
 
         return new ArticleLifecycleHistory(ean13, previousStatus, nextStatus, occurredAt);
+    }
+
+    private static ArticleAttributeHistory ToAttributeHistory(ArticleLifecycleHistoryEntity entity)
+    {
+        if (!Ean13.TryCreate(entity.Ean13, out var ean13)
+            || !DateTimeOffset.TryParse(
+                entity.OccurredAt,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.RoundtripKind,
+                out var occurredAt)
+            || string.IsNullOrWhiteSpace(entity.ChangesJson))
+        {
+            throw new InvalidOperationException("Stored Article attribute history data is invalid.");
+        }
+
+        var changes = JsonSerializer.Deserialize<IReadOnlyList<ArticleAttributeChange>>(entity.ChangesJson);
+        return changes is null
+            ? throw new InvalidOperationException("Stored Article attribute history data is invalid.")
+            : new ArticleAttributeHistory(ean13, changes, occurredAt);
     }
 
     private static bool IsUniqueConstraintViolation(DbUpdateException exception)
