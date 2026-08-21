@@ -1,9 +1,26 @@
 import { expect, Route, test } from '@playwright/test';
 
-test('searches and filters the catalogue, including an archived detail', async ({ page }) => {
+const ean13ForAttempt = (prefix: string, attempt: number): string => {
+  const body = `${prefix}${String(attempt).padStart(3, '0')}`;
+  const checksum = (10 - [...body].reduce(
+    (sum, digit, index) => sum + Number(digit) * (index % 2 === 0 ? 1 : 3),
+    0,
+  ) % 10) % 10;
+  return `${body}${checksum}`;
+};
+
+test('searches and filters the catalogue, including an archived detail', async ({ page }, testInfo) => {
+  const attempt = testInfo.repeatEachIndex * (testInfo.project.retries + 1) + testInfo.retry;
+  const foodEan = ean13ForAttempt('012345678', attempt);
+  const nonFoodEan = ean13ForAttempt('400638133', attempt);
+  const articleRow = (ean13: string) => page.getByRole('row', { name: new RegExp(ean13) });
+
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Créer et consulter un Article' })).toBeVisible();
+  await page.locator('#catalog-search').fill(foodEan);
+  await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
   await expect(page.getByText('Aucun Article ne correspond à ces critères.')).toBeVisible();
+  await page.locator('#catalog-search').fill('');
 
   await page.locator('#catalog-status').selectOption('archived');
   await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
@@ -25,7 +42,7 @@ test('searches and filters the catalogue, including an archived detail', async (
   await page.keyboard.press('Tab');
   await expect(page.locator('#type')).toBeFocused();
 
-  await page.locator('#ean13').fill('0123456789012');
+  await page.locator('#ean13').fill(foodEan);
   await page.locator('#name').fill('Chocolat noir');
   await page.locator('#priceHtCents').fill('199');
   await page.locator('#dlc').fill('2026-12-31');
@@ -34,15 +51,15 @@ test('searches and filters the catalogue, including an archived detail', async (
   await page.getByRole('button', { name: 'Créer l’Article' }).click();
 
   await expect(page.getByRole('heading', { name: 'Chocolat noir' })).toBeVisible();
-  await expect(page.getByRole('row', { name: /Chocolat noir/ })).toBeVisible();
+  await expect(articleRow(foodEan)).toBeVisible();
 
   await page.locator('#catalog-search').fill('chocolat');
   await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
-  await expect(page.getByRole('row', { name: /Chocolat noir/ })).toBeVisible();
+  await expect(articleRow(foodEan)).toBeVisible();
 
-  await page.locator('#catalog-search').fill('0123456789012');
+  await page.locator('#catalog-search').fill(foodEan);
   await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
-  await expect(page.getByRole('row', { name: /0123456789012/ })).toBeVisible();
+  await expect(articleRow(foodEan)).toBeVisible();
 
   await page.locator('#catalog-search').fill('aucune référence');
   await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
@@ -52,7 +69,7 @@ test('searches and filters the catalogue, including an archived detail', async (
   await page.locator('#catalog-type').selectOption('food');
   await page.locator('#catalog-mode').selectOption('onsite');
   await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
-  await expect(page.getByRole('row', { name: /Chocolat noir/ })).toBeVisible();
+  await expect(articleRow(foodEan)).toBeVisible();
 
   await page.locator('#type').selectOption('nonFood');
   await expect(page.locator('#dlc')).toHaveCount(0);
@@ -60,7 +77,7 @@ test('searches and filters the catalogue, including an archived detail', async (
   await page.locator('#priceHtCents').focus();
   await page.keyboard.press('Tab');
   await expect(page.locator('#packaging')).toBeFocused();
-  await page.locator('#ean13').fill('4006381333931');
+  await page.locator('#ean13').fill(nonFoodEan);
   await page.locator('#name').fill('Batterie reconditionnée');
   await page.locator('#priceHtCents').fill('2500');
   await page.locator('#packaging').selectOption('refurbished');
@@ -70,11 +87,11 @@ test('searches and filters the catalogue, including an archived detail', async (
   await page.locator('#catalog-type').selectOption('nonFood');
   await page.locator('#catalog-packaging').selectOption('refurbished');
   await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
-  await expect(page.getByRole('row', { name: /Batterie reconditionnée/ })).toBeVisible();
+  await expect(articleRow(nonFoodEan)).toBeVisible();
   await expect(page.getByRole('row', { name: /Lampe historique/ })).toHaveCount(0);
 
   await page.reload();
-  await page.locator('#lookupEan13').fill('0123456789012');
+  await page.locator('#lookupEan13').fill(foodEan);
   await page.getByRole('button', { name: 'Consulter', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Chocolat noir' })).toBeVisible();
   await expect(page.getByText('2026-12-31')).toBeVisible();
@@ -90,7 +107,7 @@ test('searches and filters the catalogue, including an archived detail', async (
   await expect(page.locator('#ean13')).toBeFocused();
 
   await page.locator('#type').selectOption('nonFood');
-  await page.locator('#ean13').fill('4006381333931');
+  await page.locator('#ean13').fill(nonFoodEan);
   await page.locator('#name').fill('Doublon');
   await page.locator('#priceHtCents').fill('2500');
   await page.locator('#packaging').selectOption('refurbished');
