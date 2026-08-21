@@ -254,6 +254,72 @@ public sealed class ArticleApiTests
     }
 
     [Fact]
+    public async Task Attribute_updates_recompute_sellability_without_changing_physical_stock()
+    {
+        const string foodEan = "0123456789012";
+        const string nonFoodEan = "7351353713578";
+        var day = new DateTimeOffset(2026, 8, 21, 10, 30, 0, TimeSpan.Zero);
+        using var factory = new ArticleHostFactory(fixedNow: day);
+        using var client = factory.CreateClient();
+
+        using var foodCreate = await client.PostAsJsonAsync("/api/articles", new
+        {
+            ean13 = foodEan,
+            type = "food",
+            name = "Chocolat noir",
+            priceHtCents = 199,
+            dlc = "2026-08-20",
+            consumptionModes = new[] { "takeaway" }
+        });
+        Assert.Equal(HttpStatusCode.Created, foodCreate.StatusCode);
+        await SeedStockPositionAsync(factory.Services, foodEan, 12);
+
+        using var foodPatch = await client.PatchAsJsonAsync($"/api/articles/{foodEan}", new
+        {
+            dlc = "2026-08-21"
+        });
+        Assert.Equal(HttpStatusCode.OK, foodPatch.StatusCode);
+        using var foodPatched = JsonDocument.Parse(await foodPatch.Content.ReadAsStringAsync());
+        var foodStockOnDlc = foodPatched.RootElement.GetProperty("stock");
+        Assert.Equal(12, foodStockOnDlc.GetProperty("physicalQuantity").GetInt32());
+        Assert.Equal(12, foodStockOnDlc.GetProperty("sellableQuantity").GetInt32());
+
+        factory.SetNow(day.AddDays(1));
+        using var foodRead = await client.GetAsync($"/api/articles/{foodEan}");
+        using var foodLoaded = JsonDocument.Parse(await foodRead.Content.ReadAsStringAsync());
+        var foodStockTheNextDay = foodLoaded.RootElement.GetProperty("stock");
+        Assert.Equal(12, foodStockTheNextDay.GetProperty("physicalQuantity").GetInt32());
+        Assert.Equal(0, foodStockTheNextDay.GetProperty("sellableQuantity").GetInt32());
+
+        using var nonFoodCreate = await client.PostAsJsonAsync("/api/articles", new
+        {
+            ean13 = nonFoodEan,
+            type = "nonFood",
+            name = "Batterie",
+            priceHtCents = 2500,
+            packaging = "new"
+        });
+        Assert.Equal(HttpStatusCode.Created, nonFoodCreate.StatusCode);
+        await SeedStockPositionAsync(factory.Services, nonFoodEan, 7);
+
+        using var nonFoodPatch = await client.PatchAsJsonAsync($"/api/articles/{nonFoodEan}", new
+        {
+            packaging = "unsellable"
+        });
+        Assert.Equal(HttpStatusCode.OK, nonFoodPatch.StatusCode);
+        using var nonFoodPatched = JsonDocument.Parse(await nonFoodPatch.Content.ReadAsStringAsync());
+        var nonFoodStock = nonFoodPatched.RootElement.GetProperty("stock");
+        Assert.Equal(7, nonFoodStock.GetProperty("physicalQuantity").GetInt32());
+        Assert.Equal(0, nonFoodStock.GetProperty("sellableQuantity").GetInt32());
+
+        using var nonFoodRead = await client.GetAsync($"/api/articles/{nonFoodEan}");
+        using var nonFoodLoaded = JsonDocument.Parse(await nonFoodRead.Content.ReadAsStringAsync());
+        Assert.Equal(
+            7,
+            nonFoodLoaded.RootElement.GetProperty("stock").GetProperty("physicalQuantity").GetInt32());
+    }
+
+    [Fact]
     public async Task Refuses_direct_attribute_patch_of_an_archived_article()
     {
         using var factory = new ArticleHostFactory();
@@ -1028,15 +1094,33 @@ public sealed class ArticleApiTests
         await context.SaveChangesAsync();
     }
 
+    private static async Task SeedStockPositionAsync(IServiceProvider services, string ean13, int physicalQuantity)
+    {
+        using var scope = services.CreateScope();
+        var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>();
+        await using var context = await contextFactory.CreateDbContextAsync();
+        context.StockPositions.Add(new StockPositionEntity
+        {
+            Ean13 = ean13,
+            PhysicalQuantity = physicalQuantity
+        });
+        await context.SaveChangesAsync();
+    }
+
     private sealed class ArticleHostFactory : WebApplicationFactory<Program>
     {
         private readonly string databasePath = Path.Combine(Path.GetTempPath(), $"token-warehouse-article-{Guid.NewGuid():N}.db");
         private readonly CultureInfo? requestCulture;
+        private readonly MutableClock? fixedClock;
 
-        public ArticleHostFactory(CultureInfo? requestCulture = null)
+        public ArticleHostFactory(CultureInfo? requestCulture = null, DateTimeOffset? fixedNow = null)
         {
             this.requestCulture = requestCulture;
+            fixedClock = fixedNow is { } now ? new MutableClock(now) : null;
         }
+
+        public void SetNow(DateTimeOffset now)
+            => (fixedClock ?? throw new InvalidOperationException("A fixed clock is required.")).Now = now;
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -1046,6 +1130,15 @@ public sealed class ArticleApiTests
             {
                 builder.ConfigureServices(services =>
                     services.AddSingleton<IStartupFilter>(new RequestCultureStartupFilter(requestCulture)));
+            }
+
+            if (fixedClock is not null)
+            {
+                builder.ConfigureServices(services =>
+                {
+                    services.RemoveAll<IClock>();
+                    services.AddSingleton<IClock>(fixedClock);
+                });
             }
         }
 
@@ -1059,6 +1152,13 @@ public sealed class ArticleApiTests
                 File.Delete($"{databasePath}-wal");
             }
         }
+    }
+
+    private sealed class MutableClock(DateTimeOffset now) : IClock
+    {
+        public DateTimeOffset Now { get; set; } = now;
+
+        public DateTimeOffset UtcNow => Now;
     }
 
     private static async Task SetArticleArchivedAsync(ArticleHostFactory factory, string ean13)

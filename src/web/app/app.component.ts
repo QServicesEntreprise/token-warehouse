@@ -311,6 +311,8 @@ const initialModel: ArticleFormModel = {
               @if (article.packaging) {
                 <div><dt>Packaging</dt><dd>{{ article.packaging }}</dd></div>
               }
+              <div><dt>Stock physique</dt><dd>{{ article.stock?.physicalQuantity ?? 0 }} unités</dd></div>
+              <div><dt>Stock vendable</dt><dd>{{ article.stock?.sellableQuantity ?? 0 }} unités</dd></div>
             </dl>
 
             <button

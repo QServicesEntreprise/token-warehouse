@@ -286,6 +286,51 @@ test('searches and filters the catalogue, including an archived detail', async (
   await page.screenshot({ path: 'artifacts/playwright/catalogue.png', fullPage: true });
 });
 
+test('recomputes sellable stock after food DLC and non-food packaging updates', async ({ page }) => {
+  const foodEan = '0123456789012';
+  const nonFoodEan = '4006381333931';
+  const today = new Date().toISOString().slice(0, 10);
+  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const detailStock = (quantity: number) => page.locator('.article-detail').getByText(`${quantity} unités`, { exact: true });
+
+  await page.goto('/');
+  await page.locator('#lookupEan13').fill(foodEan);
+  await page.getByRole('button', { name: 'Consulter', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'DLC de démonstration' })).toBeVisible();
+  await page.locator('#detailDlc').fill(today);
+  await page.getByRole('button', { name: 'Enregistrer les attributs' }).click();
+  await expect(page.locator('#attribute-update-error')).toContainText('mis à jour');
+  await expect(detailStock(12)).toHaveCount(2);
+
+  await page.locator('#detailDlc').fill(yesterday);
+  await page.getByRole('button', { name: 'Enregistrer les attributs' }).click();
+  await expect(page.locator('#attribute-update-error')).toContainText('mis à jour');
+  await expect(page.locator('.article-detail').getByText(yesterday, { exact: true })).toBeVisible();
+  await expect(detailStock(12)).toHaveCount(1);
+  await expect(detailStock(0)).toHaveCount(1);
+
+  await page.locator('#lookupEan13').fill(nonFoodEan);
+  await page.getByRole('button', { name: 'Consulter', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Packaging de démonstration' })).toBeVisible();
+  await page.locator('#detailPackaging').selectOption('new');
+  await page.getByRole('button', { name: 'Enregistrer les attributs' }).click();
+  await expect(page.locator('#attribute-update-error')).toContainText('mis à jour');
+  await expect(detailStock(7)).toHaveCount(2);
+
+  await page.locator('#detailPackaging').selectOption('unsellable');
+  await page.getByRole('button', { name: 'Enregistrer les attributs' }).click();
+  await expect(page.locator('#attribute-update-error')).toContainText('mis à jour');
+  await expect(page.locator('.article-detail').getByText('unsellable', { exact: true })).toBeVisible();
+  await expect(detailStock(7)).toHaveCount(1);
+  await expect(detailStock(0)).toHaveCount(1);
+
+  await page.reload();
+  await page.locator('#lookupEan13').fill(nonFoodEan);
+  await page.getByRole('button', { name: 'Consulter', exact: true }).click();
+  await expect(detailStock(7)).toHaveCount(1);
+  await expect(detailStock(0)).toHaveCount(1);
+});
+
 test('recovers a failed catalogue request and opens detail with the keyboard', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Créer et consulter un Article' })).toBeVisible();

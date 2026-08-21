@@ -22,9 +22,15 @@ export interface ArticleResponse extends ArticleCreatePayload {
   isActive: boolean;
   status: ArticleStatus;
   priceQuotes: PriceQuote[];
+  stock?: ArticleStock;
 }
 
-export type ArticleListResponse = Omit<ArticleResponse, 'priceQuotes'>;
+export type ArticleListResponse = Omit<ArticleResponse, 'priceQuotes' | 'stock'>;
+
+export interface ArticleStock {
+  physicalQuantity: number;
+  sellableQuantity: number;
+}
 
 export interface PriceQuote {
   saleContext?: ConsumptionMode;

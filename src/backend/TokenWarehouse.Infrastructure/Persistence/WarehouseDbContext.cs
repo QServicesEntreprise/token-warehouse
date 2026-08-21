@@ -8,6 +8,8 @@ public sealed class WarehouseDbContext(DbContextOptions<WarehouseDbContext> opti
 
     public DbSet<ArticleLifecycleHistoryEntity> ArticleLifecycleHistory => Set<ArticleLifecycleHistoryEntity>();
 
+    public DbSet<StockPositionEntity> StockPositions => Set<StockPositionEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         var article = modelBuilder.Entity<ArticleEntity>();
@@ -28,6 +30,14 @@ public sealed class WarehouseDbContext(DbContextOptions<WarehouseDbContext> opti
         history.Property(entity => entity.OccurredAt).IsRequired();
         history.Property(entity => entity.Kind).IsRequired();
         history.HasOne<ArticleEntity>()
+            .WithMany()
+            .HasForeignKey(entity => entity.Ean13)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        var stock = modelBuilder.Entity<StockPositionEntity>();
+        stock.HasKey(entity => entity.Ean13);
+        stock.Property(entity => entity.PhysicalQuantity).IsRequired();
+        stock.HasOne<ArticleEntity>()
             .WithMany()
             .HasForeignKey(entity => entity.Ean13)
             .OnDelete(DeleteBehavior.Restrict);

@@ -578,6 +578,7 @@ describe('AppComponent', () => {
       status: 'active',
       packaging: 'new',
       priceQuotes: [],
+      stock: { physicalQuantity: 0, sellableQuantity: 0 },
     };
     component.lookupEan.set(current.ean13);
     const lookup = component.onLookup(new Event('submit'));
@@ -642,6 +643,7 @@ describe('AppComponent', () => {
       status: 'active',
       packaging: 'new',
       priceQuotes: [],
+      stock: { physicalQuantity: 0, sellableQuantity: 0 },
     };
     http.expectOne('/api/articles/7351353713578').flush(newerArticle);
     await newerLookup;
@@ -690,5 +692,6 @@ function foodArticle(
         priceTtcCents: onsiteTtcCents,
       },
     ],
+    stock: { physicalQuantity: 0, sellableQuantity: 0 },
   };
 }

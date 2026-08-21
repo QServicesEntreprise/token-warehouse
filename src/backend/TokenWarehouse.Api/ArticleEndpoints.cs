@@ -529,6 +529,8 @@ public sealed class ArticleResponse
 
     public IReadOnlyList<PriceQuoteResponse> PriceQuotes { get; init; } = [];
 
+    public ArticleStockResponse Stock { get; init; } = new();
+
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Dlc { get; init; }
 
@@ -547,6 +549,7 @@ public sealed class ArticleResponse
         IsActive = article.IsActive,
         Status = ToWireStatus(article.IsActive),
         PriceQuotes = article.PriceQuotes.Select(PriceQuoteResponse.From).ToArray(),
+        Stock = ArticleStockResponse.From(article.Stock),
         Dlc = article.Type == ArticleType.Food
             ? article.Dlc?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
             : null,
@@ -571,6 +574,19 @@ public sealed class ArticleResponse
             PackagingCondition.Refurbished => "refurbished",
             _ => "unsellable"
         };
+}
+
+public sealed class ArticleStockResponse
+{
+    public int PhysicalQuantity { get; init; }
+
+    public int SellableQuantity { get; init; }
+
+    public static ArticleStockResponse From(ArticleStockView stock) => new()
+    {
+        PhysicalQuantity = stock.PhysicalQuantity,
+        SellableQuantity = stock.SellableQuantity
+    };
 }
 
 public sealed class ArticleHistoryResponse
