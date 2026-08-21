@@ -24,6 +24,17 @@ main {
   gap: 0.75rem;
 }
 
+.main-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.main-nav a {
+  color: #173b70;
+  font-weight: 700;
+}
+
 .eyebrow {
   margin: 0;
   color: #53627b;
@@ -197,6 +208,12 @@ thead th {
 }
 
 .article-detail {
+  border-top: 1px solid #d8e0ec;
+  margin-top: 1rem;
+  padding-top: 1rem;
+}
+
+.stock-detail {
   border-top: 1px solid #d8e0ec;
   margin-top: 1rem;
   padding-top: 1rem;

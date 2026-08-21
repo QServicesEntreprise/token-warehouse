@@ -8,7 +8,8 @@ namespace TokenWarehouse.Infrastructure.Persistence;
 public sealed class SqliteMigrationHostedService(
     IDbContextFactory<WarehouseDbContext> contextFactory,
     IPersistenceAdapter persistence,
-    IHostEnvironment environment) : IHostedService
+    IHostEnvironment environment,
+    IClock clock) : IHostedService
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -28,7 +29,7 @@ public sealed class SqliteMigrationHostedService(
                 StringComparison.OrdinalIgnoreCase))
         {
             await SeedArchivedArticlesAsync(context, cancellationToken);
-            await SeedE2eStockArticlesAsync(context, cancellationToken);
+            await SeedE2eStockArticlesAsync(context, clock.WarehouseDate, cancellationToken);
         }
     }
 
@@ -91,11 +92,11 @@ public sealed class SqliteMigrationHostedService(
 
     private static async Task SeedE2eStockArticlesAsync(
         WarehouseDbContext context,
+        DateOnly today,
         CancellationToken cancellationToken)
     {
         const string foodEan = "0123456789012";
         const string nonFoodEan = "4006381333931";
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
         if (!await context.Articles.AnyAsync(article => article.Ean13 == foodEan, cancellationToken))
         {
@@ -108,7 +109,7 @@ public sealed class SqliteMigrationHostedService(
                 PriceHtCents = 100,
                 IsActive = true,
                 Dlc = today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-                ConsumptionModes = "takeaway"
+                ConsumptionModes = "takeaway,onsite"
             });
         }
 
@@ -123,6 +124,97 @@ public sealed class SqliteMigrationHostedService(
                 PriceHtCents = 200,
                 IsActive = true,
                 Packaging = "new"
+            });
+        }
+
+        var stockFixtureArticles = new[]
+        {
+            new ArticleEntity
+            {
+                Ean13 = "1234567890128",
+                Type = "food",
+                Name = "Alimentaire expiré",
+                NameSearchKey = ArticleNameSearchKey.From("Alimentaire expiré"),
+                PriceHtCents = 100,
+                IsActive = true,
+                Dlc = "2020-01-14",
+                ConsumptionModes = "takeaway"
+            },
+            new ArticleEntity
+            {
+                Ean13 = "0360002914522",
+                Type = "food",
+                Name = "Article sans position",
+                NameSearchKey = ArticleNameSearchKey.From("Article sans position"),
+                PriceHtCents = 100,
+                IsActive = true,
+                Dlc = "2099-01-15",
+                ConsumptionModes = "takeaway"
+            },
+            new ArticleEntity
+            {
+                Ean13 = "9876543210982",
+                Type = "nonFood",
+                Name = "Article vendable",
+                NameSearchKey = ArticleNameSearchKey.From("Article vendable"),
+                PriceHtCents = 100,
+                IsActive = true,
+                Packaging = "new"
+            },
+            new ArticleEntity
+            {
+                Ean13 = "1111111111116",
+                Type = "nonFood",
+                Name = "Packaging invendable",
+                NameSearchKey = ArticleNameSearchKey.From("Packaging invendable"),
+                PriceHtCents = 100,
+                IsActive = true,
+                Packaging = "unsellable"
+            }
+        };
+
+        foreach (var article in stockFixtureArticles)
+        {
+            if (!await context.Articles.AnyAsync(existing => existing.Ean13 == article.Ean13, cancellationToken))
+            {
+                context.Articles.Add(article);
+            }
+        }
+
+        if (await context.Articles.AnyAsync(article => article.Ean13 == "5901234123457", cancellationToken)
+            && !await context.StockPositions.AnyAsync(position => position.Ean13 == "5901234123457", cancellationToken))
+        {
+            context.StockPositions.Add(new StockPositionEntity
+            {
+                Ean13 = "5901234123457",
+                PhysicalQuantity = 4
+            });
+        }
+
+        if (!await context.StockPositions.AnyAsync(position => position.Ean13 == "1234567890128", cancellationToken))
+        {
+            context.StockPositions.Add(new StockPositionEntity
+            {
+                Ean13 = "1234567890128",
+                PhysicalQuantity = 7
+            });
+        }
+
+        if (!await context.StockPositions.AnyAsync(position => position.Ean13 == "9876543210982", cancellationToken))
+        {
+            context.StockPositions.Add(new StockPositionEntity
+            {
+                Ean13 = "9876543210982",
+                PhysicalQuantity = 8
+            });
+        }
+
+        if (!await context.StockPositions.AnyAsync(position => position.Ean13 == "1111111111116", cancellationToken))
+        {
+            context.StockPositions.Add(new StockPositionEntity
+            {
+                Ean13 = "1111111111116",
+                PhysicalQuantity = 3
             });
         }
 

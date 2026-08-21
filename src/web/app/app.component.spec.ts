@@ -6,6 +6,144 @@ import { AppComponent } from './app.component';
 import { ArticleResponse } from './article-api.service';
 
 describe('AppComponent', () => {
+  it('announces Stock loading, empty and error states and retries the request', async () => {
+    const fixture = TestBed.configureTestingModule({
+      imports: [AppComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    }).createComponent(AppComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
+    const initialStock = http.expectOne('/api/stock');
+    expect(fixture.componentInstance.stockState()).toBe('loading');
+    expect(fixture.nativeElement.querySelector('#stock-state').textContent).toContain('Chargement du Stock');
+    initialStock.flush([]);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.stockState()).toBe('empty');
+    expect(fixture.nativeElement.querySelector('#stock-state').textContent).toContain('Aucun Article');
+
+    fixture.componentInstance.retryStock();
+    const failedStock = http.expectOne('/api/stock');
+    failedStock.flush({ title: 'Le Stock est indisponible.' }, { status: 500, statusText: 'Server Error' });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.stockState()).toBe('error');
+    expect(fixture.nativeElement.querySelector('#stock-state [role="alert"]').textContent).toContain('indisponible');
+
+    fixture.componentInstance.retryStock();
+    const retry = http.expectOne('/api/stock');
+    retry.flush([
+      {
+        ean13: '0123456789012',
+        name: 'Article retrouvé',
+        type: 'food',
+        isActive: true,
+        status: 'active',
+        physicalQuantity: 0,
+        sellableQuantity: 0,
+        availability: 'OUT_OF_STOCK',
+        reason: null,
+      },
+    ]);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.stockState()).toBe('ready');
+    expect(fixture.nativeElement.querySelector('#stock-table').textContent).toContain('Rupture');
+    http.verify();
+  });
+
+  it('renders the server Stock contract and opens its keyboard-usable detail', async () => {
+    const fixture = TestBed.configureTestingModule({
+      imports: [AppComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    }).createComponent(AppComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
+    const stock = http.expectOne('/api/stock');
+    stock.flush([
+      {
+        ean13: '0123456789012',
+        name: 'Alimentaire double mode',
+        type: 'food',
+        isActive: true,
+        status: 'active',
+        physicalQuantity: 5,
+        sellableQuantity: 5,
+        availability: 'AVAILABLE',
+        reason: null,
+        dlc: '2030-01-15',
+        consumptionModes: ['takeaway', 'onsite'],
+      },
+      {
+        ean13: '4006381333931',
+        name: 'Alimentaire expiré',
+        type: 'food',
+        isActive: true,
+        status: 'active',
+        physicalQuantity: 7,
+        sellableQuantity: 0,
+        availability: 'NOT_SELLABLE',
+        reason: 'DLC_EXPIRED',
+        dlc: '2030-01-14',
+        consumptionModes: ['takeaway'],
+      },
+    ]);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const component = fixture.componentInstance;
+    expect(component.stockState()).toBe('ready');
+    expect(fixture.nativeElement.querySelector('#stock-state').textContent).toContain('2 Articles trouvés');
+    expect(fixture.nativeElement.querySelector('#stock-table').textContent).toContain('5');
+    expect(fixture.nativeElement.querySelector('#stock-table').textContent).toContain('7');
+    expect(fixture.nativeElement.querySelector('#stock-table').textContent).toContain('DLC dépassée');
+
+    const detailPromise = component.openStockPosition(component.stockPositions()[0]);
+    const detailRequest = http.expectOne('/api/stock/0123456789012');
+    expect(detailRequest.request.method).toBe('GET');
+    detailRequest.flush({
+      ean13: '0123456789012',
+      name: 'Alimentaire double mode',
+      type: 'food',
+      isActive: true,
+      status: 'active',
+      physicalQuantity: 5,
+      sellableQuantity: 5,
+      availability: 'AVAILABLE',
+      reason: null,
+      dlc: '2030-01-15',
+      consumptionModes: ['takeaway', 'onsite'],
+    });
+    await detailPromise;
+    fixture.detectChanges();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(component.stockDetail()?.ean13).toBe('0123456789012');
+    expect(fixture.nativeElement.querySelector('#stock-detail').textContent).toContain('Stock physique');
+    expect(fixture.nativeElement.querySelector('#stock-detail').textContent).toContain('Stock vendable');
+    expect(fixture.nativeElement.querySelector('#stock-detail button, #stock-detail a')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('#stock-detail')).toBe(document.activeElement);
+
+    const failedDetailPromise = component.openStockPosition(component.stockPositions()[1]);
+    const failedDetailRequest = http.expectOne('/api/stock/4006381333931');
+    failedDetailRequest.flush(
+      { title: 'Le détail du Stock est indisponible.' },
+      { status: 500, statusText: 'Server Error' },
+    );
+    await failedDetailPromise;
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('#stock-detail-error').textContent)
+      .toContain('indisponible');
+
+    flushUnusedStockRequest(http);
+    http.verify();
+  });
+
   it('shows only the fields applicable to the selected classification', async () => {
     const fixture = TestBed.configureTestingModule({
       imports: [AppComponent],
@@ -68,6 +206,7 @@ describe('AppComponent', () => {
     expect(fixture.nativeElement.querySelector('#ean13-error').textContent).toContain('EAN');
     expect(fixture.nativeElement.querySelector('#form-error')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('#ean13')).toBe(document.activeElement);
+    flushUnusedStockRequest(http);
     http.verify();
   });
 
@@ -112,6 +251,7 @@ describe('AppComponent', () => {
 
     expect(component.catalogState()).toBe('empty');
     expect(fixture.nativeElement.textContent).toContain('Aucun Article ne correspond');
+    flushUnusedStockRequest(http);
     http.verify();
   });
 
@@ -175,6 +315,7 @@ describe('AppComponent', () => {
 
     expect(component.catalogArticles().map((article) => article.name)).toEqual(['Réponse courante']);
     expect(component.catalogState()).toBe('ready');
+    flushUnusedStockRequest(http);
     http.verify();
   });
 
@@ -226,6 +367,7 @@ describe('AppComponent', () => {
 
     expect(fixture.nativeElement.textContent).toContain('Archivé');
     expect(fixture.nativeElement.querySelector('[aria-label="Archiver Café du Comptoir"]')).toBeNull();
+    flushUnusedStockRequest(http);
     http.verify();
   });
 
@@ -352,6 +494,7 @@ describe('AppComponent', () => {
     expect(component.detail()?.status).toBe('archived');
     expect(fixture.nativeElement.querySelector('.article-detail').textContent).toContain('Archivé');
     expect(fixture.nativeElement.querySelector('.article-detail button').textContent).toContain('Réactiver l’Article');
+    flushUnusedStockRequest(http);
     http.verify();
   });
 
@@ -430,6 +573,7 @@ describe('AppComponent', () => {
     expect(fixture.nativeElement.querySelector('.article-detail').textContent).toContain('Archivé');
     expect(fixture.nativeElement.querySelector('.article-detail button').textContent).toContain('Réactiver l’Article');
     expect(component.lifecycleMessage()).toBe('Café du Comptoir est actif.');
+    flushUnusedStockRequest(http);
     http.verify();
   });
 
@@ -469,6 +613,7 @@ describe('AppComponent', () => {
 
     expect(fixture.nativeElement.textContent).toContain('210 centimes');
     expect(fixture.nativeElement.textContent).toContain('219 centimes');
+    flushUnusedStockRequest(http);
     http.verify();
   });
 
@@ -508,6 +653,7 @@ describe('AppComponent', () => {
     expect(fixture.nativeElement.querySelector('#price-update-error').textContent).toContain('Prix HT');
     expect(fixture.nativeElement.querySelector('#priceHt-update-error').textContent).toContain('conflit');
     expect(fixture.nativeElement.querySelector('#detailPriceHtCents')).toBe(document.activeElement);
+    flushUnusedStockRequest(http);
     http.verify();
   });
 
@@ -555,6 +701,7 @@ describe('AppComponent', () => {
 
     expect(component.detail()?.name).toBe('Chocolat bio');
     expect(fixture.nativeElement.querySelector('#attribute-update-error').textContent).toContain('mis à jour');
+    flushUnusedStockRequest(http);
     http.verify();
   });
 
@@ -609,6 +756,7 @@ describe('AppComponent', () => {
 
     expect(fixture.nativeElement.querySelector('#detail-name-error').textContent).toContain('requis');
     expect(fixture.nativeElement.querySelector('#detailName')).toBe(document.activeElement);
+    flushUnusedStockRequest(http);
     http.verify();
   });
 
@@ -658,6 +806,7 @@ describe('AppComponent', () => {
     expect(component.detail()?.ean13).toBe(newerArticle.ean13);
     expect(component.detail()?.name).toBe(newerArticle.name);
     expect(component.attributeUpdateError()).toBe('');
+    flushUnusedStockRequest(http);
     http.verify();
   });
 });
@@ -694,4 +843,10 @@ function foodArticle(
     ],
     stock: { physicalQuantity: 0, sellableQuantity: 0 },
   };
+}
+
+function flushUnusedStockRequest(http: HttpTestingController): void {
+  for (const request of http.match('/api/stock')) {
+    request.flush([]);
+  }
 }

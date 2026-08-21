@@ -423,6 +423,46 @@ public sealed class ArticleApplicationTests
         Assert.Equal("Batterie", (await application.GetAsync(ean13)).Article?.Name);
     }
 
+    [Fact]
+    public async Task Stock_read_returns_one_ordered_position_per_article_and_fills_missing_stock_with_zero()
+    {
+        var active = CreateArticle("0123456789012", "food", "Alimentaire double mode", ["takeaway", "onsite"]);
+        var archived = CreateArticle("4006381333931", "nonFood", "Infrastructure archivée", null, isActive: false);
+        var withoutPosition = CreateArticle("7351353713578", "nonFood", "Infrastructure sans position", null);
+        var articles = new InMemoryArticleSellabilityReader(
+            ArticleSellabilitySnapshot.From(withoutPosition),
+            ArticleSellabilitySnapshot.From(archived),
+            ArticleSellabilitySnapshot.From(active));
+        var positions = new InMemoryStockPositionReader(
+            new StockPosition(archived.Ean13, 4),
+            new StockPosition(active.Ean13, 5));
+        var application = new StockApplication(articles, positions, TestClock);
+
+        var result = await application.ListAsync();
+
+        Assert.Equal(StockReadStatus.Success, result.Status);
+        Assert.Equal(
+            ["0123456789012", "4006381333931", "7351353713578"],
+            result.Positions.Select(position => position.Ean13.Value).ToArray());
+        Assert.Equal((5, 5, StockAvailability.Available, null),
+            (result.Positions[0].PhysicalQuantity,
+             result.Positions[0].SellableQuantity,
+             result.Positions[0].Availability,
+             result.Positions[0].Reason));
+        Assert.Equal((4, 0, StockAvailability.NotSellable, SellabilityReason.Archived),
+            (result.Positions[1].PhysicalQuantity,
+             result.Positions[1].SellableQuantity,
+             result.Positions[1].Availability,
+             result.Positions[1].Reason));
+        Assert.Equal((0, 0, StockAvailability.OutOfStock, null),
+            (result.Positions[2].PhysicalQuantity,
+             result.Positions[2].SellableQuantity,
+             result.Positions[2].Availability,
+             result.Positions[2].Reason));
+        Assert.Equal(1, positions.ListCalls);
+        Assert.Equal(0, positions.FindCalls);
+    }
+
     private static Article CreateArticle(
         string ean13,
         string type,
@@ -455,6 +495,45 @@ public sealed class ArticleApplicationTests
     private sealed class FixedClock(DateTimeOffset now) : IClock
     {
         public DateTimeOffset UtcNow => now;
+    }
+
+    private sealed class InMemoryArticleSellabilityReader(
+        params ArticleSellabilitySnapshot[] snapshots) : IArticleSellabilityReader
+    {
+        private readonly IReadOnlyList<ArticleSellabilitySnapshot> snapshots = snapshots;
+
+        public ValueTask<IReadOnlyList<ArticleSellabilitySnapshot>> ListAsync(
+            CancellationToken cancellationToken = default)
+            => ValueTask.FromResult(snapshots);
+
+        public ValueTask<ArticleSellabilitySnapshot?> FindByEanAsync(
+            Ean13 ean13,
+            CancellationToken cancellationToken = default)
+            => ValueTask.FromResult(
+                snapshots.SingleOrDefault(snapshot => snapshot.Ean13 == ean13));
+    }
+
+    private sealed class InMemoryStockPositionReader(params StockPosition[] positions) : IStockPositionReader
+    {
+        private readonly IReadOnlyList<StockPosition> positions = positions;
+
+        public int ListCalls { get; private set; }
+
+        public int FindCalls { get; private set; }
+
+        public ValueTask<IReadOnlyList<StockPosition>> ListAsync(CancellationToken cancellationToken = default)
+        {
+            ListCalls++;
+            return ValueTask.FromResult(positions);
+        }
+
+        public ValueTask<StockPosition?> FindByEanAsync(
+            Ean13 ean13,
+            CancellationToken cancellationToken = default)
+        {
+            FindCalls++;
+            return ValueTask.FromResult(positions.SingleOrDefault(position => position.Ean13 == ean13));
+        }
     }
 
     private sealed class InMemoryArticleStore : IArticleStore

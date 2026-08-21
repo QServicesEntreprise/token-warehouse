@@ -320,6 +320,154 @@ public sealed class ArticleApiTests
     }
 
     [Fact]
+    public async Task Stock_collection_returns_one_stable_row_per_article_with_state_and_reason()
+    {
+        var day = new DateTimeOffset(2030, 1, 15, 10, 30, 0, TimeSpan.Zero);
+        using var factory = new ArticleHostFactory(fixedNow: day);
+        using var client = factory.CreateClient();
+
+        async Task CreateArticle(object payload, string ean13, int? physicalQuantity = null)
+        {
+            using var response = await client.PostAsJsonAsync("/api/articles", payload);
+            Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+            if (physicalQuantity is not null)
+            {
+                await SeedStockPositionAsync(factory.Services, ean13, physicalQuantity.Value);
+            }
+        }
+
+        await CreateArticle(new
+        {
+            ean13 = "0123456789012",
+            type = "food",
+            name = "Alimentaire double mode",
+            priceHtCents = 100,
+            dlc = "2030-01-15",
+            consumptionModes = new[] { "takeaway", "onsite" }
+        }, "0123456789012", 5);
+        await CreateArticle(new
+        {
+            ean13 = "4006381333931",
+            type = "food",
+            name = "Alimentaire expiré",
+            priceHtCents = 100,
+            dlc = "2030-01-14",
+            consumptionModes = new[] { "takeaway" }
+        }, "4006381333931", 7);
+        await CreateArticle(new
+        {
+            ean13 = "7351353713578",
+            type = "nonFood",
+            name = "Article archivé",
+            priceHtCents = 100,
+            packaging = "new"
+        }, "7351353713578", 4);
+        using (var archive = await client.PostAsync("/api/articles/7351353713578/archive", null))
+        {
+            Assert.Equal(HttpStatusCode.OK, archive.StatusCode);
+        }
+        await CreateArticle(new
+        {
+            ean13 = "5901234123457",
+            type = "nonFood",
+            name = "Packaging invendable",
+            priceHtCents = 100,
+            packaging = "unsellable"
+        }, "5901234123457", 3);
+        await CreateArticle(new
+        {
+            ean13 = "5012345678900",
+            type = "nonFood",
+            name = "Article vendable",
+            priceHtCents = 100,
+            packaging = "new"
+        }, "5012345678900", 8);
+        await CreateArticle(new
+        {
+            ean13 = "1234567890128",
+            type = "food",
+            name = "Article sans position",
+            priceHtCents = 100,
+            dlc = "2030-01-15",
+            consumptionModes = new[] { "takeaway" }
+        }, "1234567890128");
+        Assert.Equal(0, await CountStockPositionsAsync(factory.Services, "1234567890128"));
+
+        using var first = await client.GetAsync("/api/stock");
+        using var second = await client.GetAsync("/api/stock");
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal("application/json", first.Content.Headers.ContentType?.MediaType);
+        var firstBody = await first.Content.ReadAsStringAsync();
+        Assert.Equal(firstBody, await second.Content.ReadAsStringAsync());
+        using var rows = JsonDocument.Parse(firstBody);
+        var positions = rows.RootElement.EnumerateArray().ToArray();
+
+        Assert.Equal(6, positions.Length);
+        Assert.Equal(
+            ["0123456789012", "1234567890128", "4006381333931", "5012345678900", "5901234123457", "7351353713578"],
+            positions.Select(row => row.GetProperty("ean13").GetString()!).ToArray());
+
+        var available = positions.Single(row => row.GetProperty("ean13").GetString() == "0123456789012");
+        Assert.Equal(5, available.GetProperty("physicalQuantity").GetInt32());
+        Assert.Equal(5, available.GetProperty("sellableQuantity").GetInt32());
+        Assert.Equal("AVAILABLE", available.GetProperty("availability").GetString());
+        Assert.Equal("Alimentaire double mode", available.GetProperty("name").GetString());
+        Assert.Equal(2, available.GetProperty("consumptionModes").GetArrayLength());
+        Assert.False(available.TryGetProperty("packaging", out _));
+        Assert.Null(available.GetProperty("reason").GetString());
+
+        var outOfStock = positions.Single(row => row.GetProperty("ean13").GetString() == "1234567890128");
+        Assert.Equal(0, outOfStock.GetProperty("physicalQuantity").GetInt32());
+        Assert.Equal("OUT_OF_STOCK", outOfStock.GetProperty("availability").GetString());
+        Assert.Null(outOfStock.GetProperty("reason").GetString());
+
+        var expired = positions.Single(row => row.GetProperty("ean13").GetString() == "4006381333931");
+        Assert.Equal(7, expired.GetProperty("physicalQuantity").GetInt32());
+        Assert.Equal(0, expired.GetProperty("sellableQuantity").GetInt32());
+        Assert.Equal("NOT_SELLABLE", expired.GetProperty("availability").GetString());
+        Assert.Equal("DLC_EXPIRED", expired.GetProperty("reason").GetString());
+
+        var archived = positions.Single(row => row.GetProperty("ean13").GetString() == "7351353713578");
+        Assert.Equal(4, archived.GetProperty("physicalQuantity").GetInt32());
+        Assert.Equal("ARCHIVED", archived.GetProperty("reason").GetString());
+
+        var unsellable = positions.Single(row => row.GetProperty("ean13").GetString() == "5901234123457");
+        Assert.Equal(3, unsellable.GetProperty("physicalQuantity").GetInt32());
+        Assert.Equal("UNSELLABLE_PACKAGING", unsellable.GetProperty("reason").GetString());
+        Assert.False(unsellable.TryGetProperty("dlc", out _));
+
+        using var detail = await client.GetAsync("/api/stock/0123456789012");
+        Assert.Equal(HttpStatusCode.OK, detail.StatusCode);
+        using var detailBody = JsonDocument.Parse(await detail.Content.ReadAsStringAsync());
+        Assert.Equal(available.GetProperty("ean13").GetString(), detailBody.RootElement.GetProperty("ean13").GetString());
+        Assert.Equal(available.GetProperty("physicalQuantity").GetInt32(), detailBody.RootElement.GetProperty("physicalQuantity").GetInt32());
+        Assert.Equal(available.GetProperty("sellableQuantity").GetInt32(), detailBody.RootElement.GetProperty("sellableQuantity").GetInt32());
+
+        factory.SetNow(day.AddDays(1));
+        using var nextDay = await client.GetAsync("/api/stock");
+        using var nextDayBody = JsonDocument.Parse(await nextDay.Content.ReadAsStringAsync());
+        var expiredOnNextDay = nextDayBody.RootElement
+            .EnumerateArray()
+            .Single(row => row.GetProperty("ean13").GetString() == "0123456789012");
+        Assert.Equal(5, expiredOnNextDay.GetProperty("physicalQuantity").GetInt32());
+        Assert.Equal(0, expiredOnNextDay.GetProperty("sellableQuantity").GetInt32());
+        Assert.Equal("NOT_SELLABLE", expiredOnNextDay.GetProperty("availability").GetString());
+        Assert.Equal("DLC_EXPIRED", expiredOnNextDay.GetProperty("reason").GetString());
+        Assert.Equal(0, await CountStockPositionsAsync(factory.Services, "1234567890128"));
+
+        using var malformed = await client.GetAsync("/api/stock/123");
+        Assert.Equal(HttpStatusCode.BadRequest, malformed.StatusCode);
+        Assert.Equal("application/problem+json", malformed.Content.Headers.ContentType?.MediaType);
+        using var malformedBody = JsonDocument.Parse(await malformed.Content.ReadAsStringAsync());
+        Assert.Equal("stock.validation", malformedBody.RootElement.GetProperty("code").GetString());
+        Assert.True(malformedBody.RootElement.GetProperty("errors").TryGetProperty("ean13", out _));
+
+        using var unknown = await client.GetAsync("/api/stock/9876543210982");
+        Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
+        Assert.Equal("application/problem+json", unknown.Content.Headers.ContentType?.MediaType);
+    }
+
+    [Fact]
     public async Task Refuses_direct_attribute_patch_of_an_archived_article()
     {
         using var factory = new ArticleHostFactory();
@@ -1055,6 +1203,22 @@ public sealed class ArticleApiTests
         Assert.DoesNotContain("SQLite", body, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task Unexpected_stock_read_failure_returns_sanitized_problem_details()
+    {
+        using var factory = new FailingStoreHostFactory();
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync("/api/stock");
+
+        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.DoesNotContain(nameof(InvalidOperationException), body);
+        Assert.DoesNotContain("database internals", body);
+        Assert.DoesNotContain("SQLite", body, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static async Task<IReadOnlyList<string?>> ReadNames(HttpResponseMessage response)
     {
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
@@ -1105,6 +1269,14 @@ public sealed class ArticleApiTests
             PhysicalQuantity = physicalQuantity
         });
         await context.SaveChangesAsync();
+    }
+
+    private static async Task<int> CountStockPositionsAsync(IServiceProvider services, string ean13)
+    {
+        using var scope = services.CreateScope();
+        var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>();
+        await using var context = await contextFactory.CreateDbContextAsync();
+        return await context.StockPositions.CountAsync(position => position.Ean13 == ean13);
     }
 
     private sealed class ArticleHostFactory : WebApplicationFactory<Program>

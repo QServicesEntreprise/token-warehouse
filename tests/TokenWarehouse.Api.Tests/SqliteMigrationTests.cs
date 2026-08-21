@@ -84,4 +84,88 @@ public sealed class SqliteMigrationTests
             File.Delete(filePath);
         }
     }
+
+    [Fact]
+    public async Task Stock_positions_reject_negative_quantities_and_duplicate_current_rows()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<WarehouseDbContext>()
+            .UseSqlite(connection)
+            .Options;
+
+        await using (var context = new WarehouseDbContext(options))
+        {
+            await context.Database.MigrateAsync();
+            context.Articles.AddRange(
+                new ArticleEntity
+                {
+                    Ean13 = "0123456789012",
+                    Type = "food",
+                    Name = "Article positif",
+                    NameSearchKey = "ARTICLE POSITIF",
+                    PriceHtCents = 100,
+                    IsActive = true,
+                    Dlc = "2030-01-15",
+                    ConsumptionModes = "takeaway"
+                },
+                new ArticleEntity
+                {
+                    Ean13 = "7351353713578",
+                    Type = "nonFood",
+                    Name = "Article négatif",
+                    NameSearchKey = "ARTICLE NEGATIF",
+                    PriceHtCents = 100,
+                    IsActive = true,
+                    Packaging = "new"
+                });
+            await context.SaveChangesAsync();
+
+            context.StockPositions.Add(new StockPositionEntity
+            {
+                Ean13 = "0123456789012",
+                PhysicalQuantity = 4
+            });
+            context.StockPositions.Add(new StockPositionEntity
+            {
+                Ean13 = "7351353713578",
+                PhysicalQuantity = 0
+            });
+            await context.SaveChangesAsync();
+        }
+
+        await using (var duplicateContext = new WarehouseDbContext(options))
+        {
+            duplicateContext.StockPositions.Add(new StockPositionEntity
+            {
+                Ean13 = "0123456789012",
+                PhysicalQuantity = 5
+            });
+            await Assert.ThrowsAsync<DbUpdateException>(() => duplicateContext.SaveChangesAsync());
+        }
+
+        await using (var negativeContext = new WarehouseDbContext(options))
+        {
+            negativeContext.StockPositions.Add(new StockPositionEntity
+            {
+                Ean13 = "7351353713578",
+                PhysicalQuantity = -1
+            });
+            await Assert.ThrowsAsync<DbUpdateException>(() => negativeContext.SaveChangesAsync());
+        }
+
+        await using var readContext = new WarehouseDbContext(options);
+        Assert.Equal(
+            4,
+            await readContext.StockPositions
+                .Where(position => position.Ean13 == "0123456789012")
+                .Select(position => position.PhysicalQuantity)
+                .SingleAsync());
+        Assert.Equal(
+            0,
+            await readContext.StockPositions
+                .Where(position => position.Ean13 == "7351353713578")
+                .Select(position => position.PhysicalQuantity)
+                .SingleAsync());
+    }
 }

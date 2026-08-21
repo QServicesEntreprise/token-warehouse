@@ -24,6 +24,12 @@ import {
   Packaging,
   ProblemDetails,
 } from './article-api.service';
+import {
+  StockApiService,
+  StockAvailability,
+  StockPositionResponse,
+  StockReason,
+} from './stock-api.service';
 
 interface ArticleFormModel {
   ean13: string;
@@ -37,6 +43,7 @@ interface ArticleFormModel {
 
 type CatalogState = 'loading' | 'ready' | 'empty' | 'error';
 type CatalogType = ArticleType | 'all';
+type StockState = 'loading' | 'ready' | 'empty' | 'error';
 
 const initialModel: ArticleFormModel = {
   ean13: '',
@@ -60,6 +67,96 @@ const initialModel: ArticleFormModel = {
         <h1 id="page-title">Créer et consulter un Article</h1>
         <p>Une référence EAN-13, un Prix HT en centimes et les attributs de sa classification.</p>
       </header>
+
+      <nav class="main-nav" aria-label="Navigation principale">
+        <a href="#stock-panel">Stock</a>
+        <a href="#catalog-title">Catalogue</a>
+      </nav>
+
+      <section id="stock-panel" class="panel" aria-labelledby="stock-title">
+        <div>
+          <p class="eyebrow">Vue opérationnelle</p>
+          <h2 id="stock-title">Stock courant</h2>
+        </div>
+        <p>Le Stock vendable est calculé par le serveur à partir du Stock physique et des règles courantes de l’Article.</p>
+
+        <div id="stock-state" class="catalog-state" aria-live="polite" role="status">
+          @switch (stockState()) {
+            @case ('loading') {
+              <p>Chargement du Stock…</p>
+            }
+            @case ('ready') {
+              <p>{{ stockPositions().length }} Article{{ stockPositions().length > 1 ? 's' : '' }} trouvé{{ stockPositions().length > 1 ? 's' : '' }}.</p>
+            }
+            @case ('empty') {
+              <p>Aucun Article n’est présent dans le Catalogue.</p>
+            }
+            @case ('error') {
+              <p class="form-error" role="alert">{{ stockError() }}</p>
+              <button type="button" class="secondary-button" (click)="retryStock()">Réessayer</button>
+            }
+          }
+        </div>
+
+        @if (stockPositions().length > 0) {
+          <div class="table-wrap">
+            <table id="stock-table">
+              <caption class="sr-only">Positions courantes du Stock</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Article</th>
+                  <th scope="col">EAN-13</th>
+                  <th scope="col">Stock physique</th>
+                  <th scope="col">Stock vendable</th>
+                  <th scope="col">Disponibilité</th>
+                  <th scope="col">Raison</th>
+                  <th scope="col"><span class="sr-only">Action</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (position of stockPositions(); track position.ean13) {
+                  <tr>
+                    <th scope="row">{{ position.name }}</th>
+                    <td>{{ position.ean13 }}</td>
+                    <td>{{ position.physicalQuantity }} unités</td>
+                    <td>{{ position.sellableQuantity }} unités</td>
+                    <td>{{ formatStockAvailability(position.availability) }}</td>
+                    <td>{{ formatStockReason(position.reason) }}</td>
+                    <td>
+                      <button
+                        type="button"
+                        class="table-action"
+                        [disabled]="stockDetailLoading()"
+                        [attr.aria-label]="'Consulter le détail du Stock de ' + position.name"
+                        (click)="openStockPosition(position)">
+                        {{ stockDetailLoading() ? 'Chargement…' : 'Détail' }}
+                      </button>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+
+        @if (stockDetail(); as position) {
+          <article id="stock-detail" class="stock-detail" role="region" aria-labelledby="stock-detail-title" tabindex="-1">
+            <h3 id="stock-detail-title">Détail du Stock — {{ position.name }}</h3>
+            <dl>
+              <div><dt>EAN-13</dt><dd>{{ position.ean13 }}</dd></div>
+              <div><dt>Stock physique</dt><dd>{{ position.physicalQuantity }} unités</dd></div>
+              <div><dt>Stock vendable</dt><dd>{{ position.sellableQuantity }} unités</dd></div>
+              <div><dt>Disponibilité</dt><dd>{{ formatStockAvailability(position.availability) }}</dd></div>
+              <div><dt>Raison</dt><dd>{{ formatStockReason(position.reason) }}</dd></div>
+            </dl>
+            <button type="button" class="secondary-button" (click)="closeStockDetail()">Fermer le détail du Stock</button>
+          </article>
+        }
+
+        @if (stockDetailError()) {
+          <p id="stock-detail-error" class="form-error" role="alert" aria-live="assertive">{{ stockDetailError() }}</p>
+        }
+      </section>
 
       <section class="panel" aria-labelledby="catalog-title">
         <div>
@@ -450,6 +547,7 @@ const initialModel: ArticleFormModel = {
 })
 export class AppComponent implements OnInit {
   private readonly api = inject(ArticleApiService);
+  private readonly stockApi = inject(StockApiService);
 
   readonly model = signal<ArticleFormModel>({ ...initialModel, consumptionModes: [] });
   readonly articleForm = form(this.model, (schemaPath) => {
@@ -489,13 +587,22 @@ export class AppComponent implements OnInit {
   readonly catalogPackaging = signal<Packaging | ''>('');
   readonly transitioningEan = signal('');
   readonly lifecycleMessage = signal('');
+  readonly stockPositions = signal<StockPositionResponse[]>([]);
+  readonly stockState = signal<StockState>('loading');
+  readonly stockError = signal('');
+  readonly stockDetail = signal<StockPositionResponse | null>(null);
+  readonly stockDetailError = signal('');
+  readonly stockDetailLoading = signal(false);
 
   private catalogRequestId = 0;
+  private stockRequestId = 0;
+  private stockDetailRequestId = 0;
   private detailRequestId = 0;
   private lifecycleRequestId = 0;
 
   ngOnInit(): void {
     void this.loadCatalog();
+    void this.loadStock();
   }
   readonly priceHtDraft = signal('');
   readonly priceHtFieldError = signal('');
@@ -579,6 +686,57 @@ export class AppComponent implements OnInit {
 
   retryCatalog(): void {
     void this.loadCatalog();
+  }
+
+  retryStock(): void {
+    void this.loadStock();
+  }
+
+  async openStockPosition(position: StockPositionResponse): Promise<void> {
+    const requestId = ++this.stockDetailRequestId;
+    this.stockDetail.set(null);
+    this.stockDetailError.set('');
+    this.stockDetailLoading.set(true);
+    try {
+      const detail = await firstValueFrom(this.stockApi.getByEan13(position.ean13));
+      if (requestId === this.stockDetailRequestId) {
+        this.stockDetail.set(detail);
+        setTimeout(() => document.getElementById('stock-detail')?.focus());
+      }
+    } catch (error) {
+      if (requestId === this.stockDetailRequestId) {
+        this.stockDetailError.set(this.problemMessage(error, 'Le détail du Stock ne peut pas être chargé.'));
+      }
+    } finally {
+      if (requestId === this.stockDetailRequestId) {
+        this.stockDetailLoading.set(false);
+      }
+    }
+  }
+
+  closeStockDetail(): void {
+    this.stockDetailRequestId += 1;
+    this.stockDetailLoading.set(false);
+    this.stockDetail.set(null);
+    this.stockDetailError.set('');
+  }
+
+  formatStockAvailability(availability: StockAvailability): string {
+    return availability === 'AVAILABLE'
+      ? 'Disponible'
+      : availability === 'OUT_OF_STOCK'
+        ? 'Rupture'
+        : 'Non vendable';
+  }
+
+  formatStockReason(reason: StockReason | null): string {
+    return reason === 'ARCHIVED'
+      ? 'Article archivé'
+      : reason === 'DLC_EXPIRED'
+        ? 'DLC dépassée'
+        : reason === 'UNSELLABLE_PACKAGING'
+          ? 'Packaging invendable'
+          : '—';
   }
 
   openCatalogArticle(article: ArticleListResponse): void {
@@ -832,6 +990,31 @@ export class AppComponent implements OnInit {
       this.catalogState.set('error');
       this.catalogError.set(this.problemMessage(error, 'Le Catalogue ne peut pas être chargé. Réessayez.'));
       this.catalogStale.set(this.catalogArticles().length > 0);
+    }
+  }
+
+  private async loadStock(): Promise<void> {
+    const requestId = ++this.stockRequestId;
+    this.stockState.set('loading');
+    this.stockError.set('');
+    this.stockPositions.set([]);
+    this.closeStockDetail();
+
+    try {
+      const positions = await firstValueFrom(this.stockApi.list());
+      if (requestId !== this.stockRequestId) {
+        return;
+      }
+
+      this.stockPositions.set(positions);
+      this.stockState.set(positions.length > 0 ? 'ready' : 'empty');
+    } catch (error) {
+      if (requestId !== this.stockRequestId) {
+        return;
+      }
+
+      this.stockState.set('error');
+      this.stockError.set(this.problemMessage(error, 'Le Stock ne peut pas être chargé. Réessayez.'));
     }
   }
 

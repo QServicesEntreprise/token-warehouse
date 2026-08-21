@@ -37,6 +37,9 @@ public sealed class WarehouseDbContext(DbContextOptions<WarehouseDbContext> opti
         var stock = modelBuilder.Entity<StockPositionEntity>();
         stock.HasKey(entity => entity.Ean13);
         stock.Property(entity => entity.PhysicalQuantity).IsRequired();
+        stock.ToTable("StockPositions", table => table.HasCheckConstraint(
+            "CK_StockPositions_PhysicalQuantity_NonNegative",
+            "PhysicalQuantity >= 0"));
         stock.HasOne<ArticleEntity>()
             .WithMany()
             .HasForeignKey(entity => entity.Ean13)
