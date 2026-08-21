@@ -42,6 +42,11 @@ interface ArticleFormModel {
   packaging: Packaging | '';
 }
 
+interface SupplyFormModel {
+  ean13: string;
+  quantity: string;
+}
+
 type CatalogState = 'loading' | 'ready' | 'empty' | 'error';
 type CatalogType = ArticleType | 'all';
 type StockState = 'loading' | 'ready' | 'empty' | 'error';
@@ -174,10 +179,10 @@ const initialModel: ArticleFormModel = {
               id="supplyEan13"
               autocomplete="off"
               inputmode="numeric"
-              [value]="supplyEan()"
+              [formField]="supplyForm.ean13"
               [attr.aria-invalid]="supplyFieldError('ean13') ? 'true' : null"
               aria-describedby="supply-ean13-error"
-              (input)="setSupplyEan($event)" />
+              />
             <span id="supply-ean13-error" class="field-error">{{ supplyFieldError('ean13') }}</span>
           </label>
 
@@ -186,13 +191,12 @@ const initialModel: ArticleFormModel = {
             <input
               id="supplyQuantity"
               type="number"
-              min="1"
               step="1"
               inputmode="numeric"
-              [value]="supplyQuantity()"
+              [formField]="supplyForm.quantity"
               [attr.aria-invalid]="supplyFieldError('quantity') ? 'true' : null"
               aria-describedby="supply-quantity-error"
-              (input)="setSupplyQuantity($event)" />
+              />
             <span id="supply-quantity-error" class="field-error">{{ supplyFieldError('quantity') }}</span>
           </label>
 
@@ -595,6 +599,8 @@ export class AppComponent implements OnInit {
   private readonly stockApi = inject(StockApiService);
 
   readonly model = signal<ArticleFormModel>({ ...initialModel, consumptionModes: [] });
+  readonly supplyModel = signal<SupplyFormModel>({ ean13: '', quantity: '' });
+  readonly supplyForm = form(this.supplyModel);
   readonly articleForm = form(this.model, (schemaPath) => {
     required(schemaPath.ean13, { message: 'L’EAN-13 est requis.' });
     pattern(schemaPath.ean13, /^\d{13}$/, { message: 'L’EAN-13 doit contenir 13 chiffres.' });
@@ -638,8 +644,6 @@ export class AppComponent implements OnInit {
   readonly stockDetail = signal<StockPositionResponse | null>(null);
   readonly stockDetailError = signal('');
   readonly stockDetailLoading = signal(false);
-  readonly supplyEan = signal('');
-  readonly supplyQuantity = signal('');
   readonly supplyFieldErrors = signal<Record<string, string>>({});
   readonly supplyMessage = signal('');
   readonly supplySubmitting = signal(false);
@@ -772,14 +776,6 @@ export class AppComponent implements OnInit {
     this.stockDetailError.set('');
   }
 
-  setSupplyEan(event: Event): void {
-    this.supplyEan.set((event.target as HTMLInputElement).value);
-  }
-
-  setSupplyQuantity(event: Event): void {
-    this.supplyQuantity.set((event.target as HTMLInputElement).value);
-  }
-
   supplyFieldError(field: string): string {
     return this.supplyFieldErrors()[field] ?? '';
   }
@@ -792,8 +788,8 @@ export class AppComponent implements OnInit {
     this.supplySubmitting.set(true);
 
     const payload: SupplyPayload = {
-      ean13: this.supplyEan().trim(),
-      quantity: this.toSupplyQuantity(this.supplyQuantity()),
+      ean13: this.supplyModel().ean13.trim(),
+      quantity: this.toSupplyQuantity(this.supplyModel().quantity),
     };
 
     try {

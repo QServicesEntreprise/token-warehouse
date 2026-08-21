@@ -42,10 +42,6 @@ public readonly record struct Quantity
         return true;
     }
 
-    public static Quantity CreatePositive(int value)
-        => TryCreatePositive(value, out var quantity)
-            ? quantity
-            : throw new ArgumentOutOfRangeException(nameof(value));
 }
 
 public enum StockOperationType

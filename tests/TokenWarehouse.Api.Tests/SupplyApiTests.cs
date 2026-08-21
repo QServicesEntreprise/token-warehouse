@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -94,8 +95,8 @@ public sealed class SupplyApiTests
             Assert.True(body.RootElement.GetProperty("errors").TryGetProperty("quantity", out _), payload);
         }
 
-        Assert.Equal(0, await CountAsync(factory, context => context.StockPositions.CountAsync()));
-        Assert.Equal(0, await CountAsync(factory, context => context.StockOperations.CountAsync()));
+        Assert.Equal(0, await ReadAsync(factory, context => context.StockPositions.CountAsync()));
+        Assert.Equal(0, await ReadAsync(factory, context => context.StockOperations.CountAsync()));
     }
 
     [Fact]
@@ -122,8 +123,8 @@ public sealed class SupplyApiTests
         using var archivedBody = JsonDocument.Parse(await archived.Content.ReadAsStringAsync());
         Assert.Equal("article_archived", archivedBody.RootElement.GetProperty("code").GetString());
 
-        Assert.Equal(0, await CountAsync(factory, context => context.StockPositions.CountAsync()));
-        Assert.Equal(0, await CountAsync(factory, context => context.StockOperations.CountAsync()));
+        Assert.Equal(0, await ReadAsync(factory, context => context.StockPositions.CountAsync()));
+        Assert.Equal(0, await ReadAsync(factory, context => context.StockOperations.CountAsync()));
     }
 
     private static async Task CreateFoodAsync(HttpClient client, string ean13, string name)
@@ -154,13 +155,13 @@ public sealed class SupplyApiTests
     }
 
     private static async Task<List<OperationRow>> ReadOperationsAsync(SupplyHostFactory factory)
-        => await CountAsync(factory, async context => await context.StockOperations
+        => await ReadAsync(factory, async context => await context.StockOperations
             .AsNoTracking()
             .OrderBy(operation => operation.OccurredAt)
             .Select(operation => new OperationRow(operation.Id, operation.Quantity, operation.OccurredAt))
             .ToListAsync());
 
-    private static async Task<T> CountAsync<T>(
+    private static async Task<T> ReadAsync<T>(
         SupplyHostFactory factory,
         Func<WarehouseDbContext, Task<T>> read)
     {
@@ -172,18 +173,26 @@ public sealed class SupplyApiTests
 
     private sealed record OperationRow(string Id, int Quantity, string OccurredAt);
 
-    private sealed class SupplyHostFactory(DateTimeOffset now) : WebApplicationFactory<Program>
+    private sealed class SupplyHostFactory : WebApplicationFactory<Program>
     {
-        private readonly string databasePath = Path.Combine(
-            Path.GetTempPath(),
-            $"token-warehouse-supply-{Guid.NewGuid():N}.db");
+        private readonly SqliteConnection connection;
+        private readonly DateTimeOffset now;
+
+        public SupplyHostFactory(DateTimeOffset now)
+        {
+            this.now = now;
+            connection = new SqliteConnection("Data Source=:memory:");
+            connection.Open();
+        }
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment("Testing");
-            builder.UseSetting("ConnectionStrings:Warehouse", $"Data Source={databasePath}");
             builder.ConfigureServices(services =>
             {
+                services.RemoveAll<IDbContextFactory<WarehouseDbContext>>();
+                services.RemoveAll<DbContextOptions<WarehouseDbContext>>();
+                services.AddDbContextFactory<WarehouseDbContext>(options => options.UseSqlite(connection));
                 services.RemoveAll<IClock>();
                 services.AddSingleton<IClock>(new FixedClock(now));
             });
@@ -194,9 +203,7 @@ public sealed class SupplyApiTests
             base.Dispose(disposing);
             if (disposing)
             {
-                File.Delete(databasePath);
-                File.Delete($"{databasePath}-shm");
-                File.Delete($"{databasePath}-wal");
+                connection.Dispose();
             }
         }
     }

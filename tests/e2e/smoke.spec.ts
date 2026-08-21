@@ -390,6 +390,27 @@ test('records a unit supply and shows the committed stocks after reload', async 
   expect((await archivedResponsePromise).status()).toBe(409);
   await expect(supplyPanel.locator('#supply-status')).toContainText('archivé');
 
+  const supplyFailureRoute = /\/api\/supplies$/;
+  await page.route(supplyFailureRoute, async (route) => {
+    await route.fulfill({
+      status: 500,
+      contentType: 'application/problem+json',
+      body: JSON.stringify({ title: 'Une erreur interne est survenue.', code: 'internal_error' }),
+    });
+  });
+  await supplyPanel.locator('#supplyEan13').fill(ean13);
+  await supplyPanel.locator('#supplyQuantity').fill('1');
+  const failureResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'POST' && url.pathname === '/api/supplies';
+  });
+  await supplyPanel.getByRole('button', { name: 'Enregistrer l’Approvisionnement' }).click();
+  expect((await failureResponsePromise).status()).toBe(500);
+  await expect(supplyPanel.locator('#supply-status')).toContainText('erreur interne');
+  await expect(supplyPanel.locator('#supplyQuantity')).toHaveValue('1');
+  await expect(stockRow()).toContainText('13 unités');
+  await page.unroute(supplyFailureRoute);
+
   await page.screenshot({ path: 'artifacts/playwright/supply.png', fullPage: true });
 });
 
