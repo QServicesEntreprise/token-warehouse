@@ -46,4 +46,34 @@ public sealed class InventoryTests
         Assert.Equal(8, operation.ResultingPhysicalStock);
         Assert.Equal(new DateTimeOffset(2030, 1, 15, 10, 0, 0, TimeSpan.Zero), operation.TimestampUtc);
     }
+
+    [Fact]
+    public void Bulk_inventory_operation_keeps_distinct_lines_in_submission_order()
+    {
+        Assert.True(Ean13.TryCreate("0123456789012", out var firstEan));
+        Assert.True(Ean13.TryCreate("7351353713578", out var secondEan));
+        var lines = new[]
+        {
+            StockOperationLine.CreateInventoryLine(
+                1,
+                firstEan,
+                InventoryReconciliation.Reconcile(8, 11)),
+            StockOperationLine.CreateInventoryLine(
+                2,
+                secondEan,
+                InventoryReconciliation.Reconcile(5, 2))
+        };
+
+        var operation = StockOperation.CreateInventory(
+            "operation-bulk-1",
+            lines,
+            new DateTimeOffset(2030, 1, 15, 10, 0, 0, TimeSpan.Zero));
+
+        Assert.Equal("operation-bulk-1", operation.Id);
+        Assert.Equal(2, operation.Lines.Count);
+        Assert.Equal(firstEan, operation.Lines[0].Ean13);
+        Assert.Equal(3, operation.Lines[0].InventoryDifference);
+        Assert.Equal(secondEan, operation.Lines[1].Ean13);
+        Assert.Equal(-3, operation.Lines[1].InventoryDifference);
+    }
 }

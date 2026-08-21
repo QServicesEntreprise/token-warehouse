@@ -40,6 +40,28 @@ public sealed class SqliteStockPositionReader(IDbContextFactory<WarehouseDbConte
         return entity is null ? null : ToDomain(entity);
     }
 
+    public async ValueTask<IReadOnlyList<StockPosition>> FindByEansAsync(
+        IReadOnlyList<Ean13> eans,
+        CancellationToken cancellationToken = default)
+    {
+        var values = eans.Select(ean13 => ean13.Value).Distinct(StringComparer.Ordinal).ToArray();
+        if (values.Length == 0)
+        {
+            return [];
+        }
+
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+        var entities = await context.StockPositions
+            .AsNoTracking()
+            .Where(position => values.Contains(position.Ean13))
+            .OrderBy(position => position.Ean13)
+            .ToListAsync(cancellationToken);
+        return entities
+            .Select(ToDomain)
+            .OfType<StockPosition>()
+            .ToArray();
+    }
+
     internal static StockPosition? ToDomain(StockPositionEntity entity)
         => Ean13.TryCreate(entity.Ean13, out var ean13)
             ? new StockPosition(ean13, entity.PhysicalQuantity, entity.Version)

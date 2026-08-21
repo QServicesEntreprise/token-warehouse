@@ -1,10 +1,10 @@
 namespace TokenWarehouse.Infrastructure.Persistence;
 
-public sealed class StockOperationEntity
+public sealed class StockOperationLineEntity
 {
-    public string Id { get; set; } = string.Empty;
+    public string OperationId { get; set; } = string.Empty;
 
-    public string Type { get; set; } = string.Empty;
+    public int LineNumber { get; set; }
 
     public string Ean13 { get; set; } = string.Empty;
 
@@ -15,8 +15,4 @@ public sealed class StockOperationEntity
     public int InventoryDifference { get; set; }
 
     public int ResultingPhysicalStock { get; set; }
-
-    public string TimestampUtc { get; set; } = string.Empty;
-
-    public ICollection<StockOperationLineEntity> Lines { get; set; } = [];
 }

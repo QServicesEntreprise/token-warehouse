@@ -74,10 +74,13 @@ npm run start:web
 L’API expose `GET /health`, `GET /api/articles`, `POST /api/articles`,
 `GET /api/articles/{ean13}`, `PATCH /api/articles/{ean13}`,
 `POST /api/articles/{ean13}/archive`, `POST /api/articles/{ean13}/reactivate`
-`POST /api/inventories`, `GET /api/inventories/{id}` et `GET /api/history?ean13={ean13}`.
-Un Inventaire reçoit `ean13` et `countedQuantity`, puis renvoie le fait immuable,
-l’écart calculé, la nouvelle base physique et le Stock vendable. Le GET par
-identifiant relit le fait sans modifier la position courante.
+`POST /api/inventories`, `POST /api/inventories/bulk`, `GET /api/inventories/{id}`
+et `GET /api/history?ean13={ean13}`.
+Un Inventaire unitaire reçoit `ean13` et `countedQuantity`; l’Inventaire en masse
+reçoit une collection non vide `lines` avec un seul Article par ligne. Les deux
+réponses renvoient uniquement le fait engagé, l’écart calculé, la nouvelle base
+physique et le Stock vendable. Le GET par identifiant relit le fait sans modifier
+la position courante; une opération en masse conserve ses lignes dans leur ordre.
 Le PATCH accepte `priceHtCents` pour le
 parcours de prix existant, ou les attributs évolutifs `name`, `dlc` et
 `consumptionModes` pour un Article alimentaire, et `name` et `packaging` pour

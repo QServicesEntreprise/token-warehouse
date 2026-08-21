@@ -57,6 +57,22 @@ public interface IStockPositionReader
     ValueTask<StockPosition?> FindByEanAsync(
         Ean13 ean13,
         CancellationToken cancellationToken = default);
+
+    async ValueTask<IReadOnlyList<StockPosition>> FindByEansAsync(
+        IReadOnlyList<Ean13> eans,
+        CancellationToken cancellationToken = default)
+    {
+        var positions = new List<StockPosition>(eans.Count);
+        foreach (var ean13 in eans)
+        {
+            if (await FindByEanAsync(ean13, cancellationToken) is { } position)
+            {
+                positions.Add(position);
+            }
+        }
+
+        return positions;
+    }
 }
 
 public sealed record ArticleListItemView(
