@@ -106,6 +106,17 @@ public interface IArticleStore
         ArticleListFilter filter,
         CancellationToken cancellationToken = default);
 
+    ValueTask<ArticleStoreLifecycleTransitionStatus> TransitionLifecycleAsync(
+        Ean13 ean13,
+        ArticleLifecycleStatus expectedStatus,
+        ArticleLifecycleStatus targetStatus,
+        ArticleLifecycleHistory history,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<IReadOnlyList<ArticleLifecycleHistory>> ListLifecycleHistoryAsync(
+        Ean13? ean13 = null,
+        CancellationToken cancellationToken = default);
+
     ValueTask<ArticleStorePriceUpdateCandidate> FindForPriceUpdateAsync(
         Ean13 ean13,
         CancellationToken cancellationToken = default);
@@ -113,6 +124,13 @@ public interface IArticleStore
     ValueTask<ArticleStoreUpdateStatus> UpdatePriceHtAsync(
         Article article,
         CancellationToken cancellationToken = default);
+}
+
+public enum ArticleStoreLifecycleTransitionStatus
+{
+    Updated,
+    NotFound,
+    Conflict
 }
 
 public enum ArticleStoreUpdateStatus
@@ -202,9 +220,16 @@ public interface IUpdateArticlePriceUseCase
         CancellationToken cancellationToken = default);
 }
 
-public sealed class ArticleApplication(IArticleStore store)
-    : ICreateArticleUseCase, IGetArticleUseCase, IListArticlesUseCase, IUpdateArticlePriceUseCase
+public sealed class ArticleApplication(IArticleStore store, IClock? clock = null)
+    : ICreateArticleUseCase,
+      IGetArticleUseCase,
+      IListArticlesUseCase,
+      IUpdateArticlePriceUseCase,
+      IChangeArticleLifecycleUseCase,
+      IGetArticleHistoryUseCase
 {
+    private IClock Clock { get; } = clock ?? new SystemClock();
+
     public async Task<ArticleCreateResult> CreateAsync(
         CreateArticleCommand command,
         CancellationToken cancellationToken = default)
@@ -246,6 +271,110 @@ public sealed class ArticleApplication(IArticleStore store)
         return article is null
             ? new ArticleReadResult(ArticleReadStatus.NotFound, null, [])
             : new ArticleReadResult(ArticleReadStatus.Found, ToView(article), []);
+    }
+
+    public async Task<ArticleLifecycleChangeResult> ChangeLifecycleAsync(
+        string ean13,
+        ArticleLifecycleStatus targetStatus,
+        CancellationToken cancellationToken = default)
+    {
+        var errors = new List<ArticleValidationError>();
+        if (!Ean13.TryCreate(ean13, out var parsedEan13))
+        {
+            errors.Add(new(
+                "article.ean13.invalid",
+                "ean13",
+                "L’EAN-13 doit contenir 13 chiffres et un checksum valide."));
+        }
+
+        if (!Enum.IsDefined(typeof(ArticleLifecycleStatus), targetStatus))
+        {
+            errors.Add(new(
+                "article.lifecycle.target.invalid",
+                "status",
+                "L’état de cycle de vie est inconnu."));
+        }
+
+        if (errors.Count > 0)
+        {
+            return new(ArticleLifecycleChangeStatus.ValidationFailed, null, errors);
+        }
+
+        var article = await store.FindByEanAsync(parsedEan13, cancellationToken);
+        if (article is null)
+        {
+            return new(ArticleLifecycleChangeStatus.NotFound, null, []);
+        }
+
+        var transition = targetStatus == ArticleLifecycleStatus.Archived
+            ? article.Archive()
+            : article.Reactivate();
+        if (!transition.IsSuccess)
+        {
+            return new(ArticleLifecycleChangeStatus.Conflict, null, transition.Errors);
+        }
+
+        var history = new ArticleLifecycleHistory(
+            parsedEan13,
+            transition.PreviousStatus,
+            transition.CurrentStatus,
+            Clock.UtcNow);
+        var status = await store.TransitionLifecycleAsync(
+            parsedEan13,
+            transition.PreviousStatus,
+            transition.CurrentStatus,
+            history,
+            cancellationToken);
+
+        return status switch
+        {
+            ArticleStoreLifecycleTransitionStatus.Updated
+                => new ArticleLifecycleChangeResult(
+                    ArticleLifecycleChangeStatus.Updated,
+                    ToView(article),
+                    []),
+            ArticleStoreLifecycleTransitionStatus.NotFound
+                => new ArticleLifecycleChangeResult(
+                    ArticleLifecycleChangeStatus.NotFound,
+                    null,
+                    []),
+            _ => new ArticleLifecycleChangeResult(
+                ArticleLifecycleChangeStatus.Conflict,
+                null,
+                [LifecycleConflictError(targetStatus)])
+        };
+    }
+
+    public async Task<ArticleHistoryResult> GetHistoryAsync(
+        string? ean13 = null,
+        CancellationToken cancellationToken = default)
+    {
+        Ean13? parsedEan13 = null;
+        if (!string.IsNullOrWhiteSpace(ean13))
+        {
+            if (!Ean13.TryCreate(ean13, out var parsed))
+            {
+                return new(
+                    ArticleHistoryReadStatus.ValidationFailed,
+                    [],
+                    [new(
+                        "article.ean13.invalid",
+                        "ean13",
+                        "L’EAN-13 doit contenir 13 chiffres et un checksum valide.")]);
+            }
+
+            parsedEan13 = parsed;
+            if (await store.FindByEanAsync(parsed, cancellationToken) is null)
+            {
+                return new(ArticleHistoryReadStatus.NotFound, [], []);
+            }
+        }
+
+        var facts = await store.ListLifecycleHistoryAsync(parsedEan13, cancellationToken);
+        return new(
+            ArticleHistoryReadStatus.Success,
+            facts.Select(ToHistoryView).ToArray(),
+            []);
     }
 
     public async Task<ArticleListResult> ListAsync(
@@ -453,6 +582,17 @@ public sealed class ArticleApplication(IArticleStore store)
                 "priceHtCents",
                 "Le Prix HT de cet Article ne peut pas être modifié dans son état courant.")]);
 
+    private static ArticleValidationError LifecycleConflictError(ArticleLifecycleStatus targetStatus)
+        => targetStatus == ArticleLifecycleStatus.Archived
+            ? new(
+                "article.lifecycle.already_archived",
+                "status",
+                "L’Article ne peut plus être archivé dans son état courant.")
+            : new(
+                "article.lifecycle.already_active",
+                "status",
+                "L’Article ne peut plus être réactivé dans son état courant.");
+
     private static ArticleListItemView ToListItemView(Article article)
         => new(
             article.Ean13,
@@ -477,4 +617,11 @@ public sealed class ArticleApplication(IArticleStore store)
         {
             PriceQuotes = PricingPolicy.Calculate(article).Quotes
         };
+
+    private static ArticleHistoryView ToHistoryView(ArticleLifecycleHistory history)
+        => new(
+            history.Ean13,
+            history.PreviousStatus,
+            history.NextStatus,
+            history.OccurredAt);
 }

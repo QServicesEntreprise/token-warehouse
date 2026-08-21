@@ -533,6 +533,115 @@ public sealed class ArticleApiTests
     }
 
     [Fact]
+    public async Task Archives_reactivates_and_persists_the_same_article_and_lifecycle_history()
+    {
+        using var factory = new ArticleHostFactory();
+        using var client = factory.CreateClient();
+        const string ean13 = "0123456789012";
+        var payload = new
+        {
+            ean13,
+            type = "food",
+            name = "Chocolat noir",
+            priceHtCents = 199,
+            dlc = "2026-12-31",
+            consumptionModes = new[] { "takeaway" }
+        };
+
+        using var create = await client.PostAsJsonAsync("/api/articles", payload);
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+
+        using var archive = await client.PostAsync($"/api/articles/{ean13}/archive", null);
+        Assert.Equal(HttpStatusCode.OK, archive.StatusCode);
+        using var archivedBody = JsonDocument.Parse(await archive.Content.ReadAsStringAsync());
+        Assert.False(archivedBody.RootElement.GetProperty("isActive").GetBoolean());
+        Assert.Equal("archived", archivedBody.RootElement.GetProperty("status").GetString());
+        Assert.Equal(ean13, archivedBody.RootElement.GetProperty("ean13").GetString());
+        Assert.Equal(199, archivedBody.RootElement.GetProperty("priceHtCents").GetInt32());
+
+        using var active = await client.GetAsync("/api/articles");
+        using var archived = await client.GetAsync("/api/articles?status=archived");
+        Assert.DoesNotContain(ean13, await active.Content.ReadAsStringAsync());
+        Assert.Contains(ean13, await archived.Content.ReadAsStringAsync());
+
+        using var firstHistory = await client.GetAsync($"/api/history?ean13={ean13}");
+        Assert.Equal(HttpStatusCode.OK, firstHistory.StatusCode);
+        using var firstHistoryBody = JsonDocument.Parse(await firstHistory.Content.ReadAsStringAsync());
+        var archiveFact = Assert.Single(firstHistoryBody.RootElement.EnumerateArray());
+        Assert.Equal("active", archiveFact.GetProperty("previousStatus").GetString());
+        Assert.Equal("archived", archiveFact.GetProperty("nextStatus").GetString());
+        Assert.Equal(ean13, archiveFact.GetProperty("ean13").GetString());
+
+        using var reuseArchived = await client.PostAsJsonAsync("/api/articles", payload);
+        Assert.Equal(HttpStatusCode.Conflict, reuseArchived.StatusCode);
+        using var reuseArchivedBody = JsonDocument.Parse(await reuseArchived.Content.ReadAsStringAsync());
+        Assert.Equal("article.ean13.conflict", reuseArchivedBody.RootElement.GetProperty("code").GetString());
+
+        using var reactivate = await client.PostAsync($"/api/articles/{ean13}/reactivate", null);
+        Assert.Equal(HttpStatusCode.OK, reactivate.StatusCode);
+        using var reactivatedBody = JsonDocument.Parse(await reactivate.Content.ReadAsStringAsync());
+        Assert.True(reactivatedBody.RootElement.GetProperty("isActive").GetBoolean());
+        Assert.Equal("active", reactivatedBody.RootElement.GetProperty("status").GetString());
+        Assert.Equal(ean13, reactivatedBody.RootElement.GetProperty("ean13").GetString());
+        Assert.Equal(199, reactivatedBody.RootElement.GetProperty("priceHtCents").GetInt32());
+
+        using var all = await client.GetAsync("/api/articles?status=all");
+        Assert.Contains(ean13, await all.Content.ReadAsStringAsync());
+
+        using var secondHistory = await client.GetAsync($"/api/history?ean13={ean13}");
+        using var secondHistoryBody = JsonDocument.Parse(await secondHistory.Content.ReadAsStringAsync());
+        Assert.Equal(2, secondHistoryBody.RootElement.GetArrayLength());
+        Assert.Equal("archived", secondHistoryBody.RootElement[1].GetProperty("previousStatus").GetString());
+        Assert.Equal("active", secondHistoryBody.RootElement[1].GetProperty("nextStatus").GetString());
+
+        using var repeated = await client.PostAsync($"/api/articles/{ean13}/reactivate", null);
+        Assert.Equal(HttpStatusCode.Conflict, repeated.StatusCode);
+        Assert.Equal("application/problem+json", repeated.Content.Headers.ContentType?.MediaType);
+        using var repeatedBody = JsonDocument.Parse(await repeated.Content.ReadAsStringAsync());
+        Assert.Equal("article.lifecycle.already_active", repeatedBody.RootElement.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task Concurrent_archives_produce_one_success_one_conflict_and_one_history_fact()
+    {
+        using var factory = new ArticleHostFactory();
+        using var setupClient = factory.CreateClient();
+        const string ean13 = "7351353713578";
+
+        using var create = await setupClient.PostAsJsonAsync("/api/articles", new
+        {
+            ean13,
+            type = "nonFood",
+            name = "Batterie",
+            priceHtCents = 2500,
+            packaging = "new"
+        });
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+
+        using var firstClient = factory.CreateClient();
+        using var secondClient = factory.CreateClient();
+        var responses = await Task.WhenAll(
+            firstClient.PostAsync($"/api/articles/{ean13}/archive", null),
+            secondClient.PostAsync($"/api/articles/{ean13}/archive", null));
+        try
+        {
+            Assert.Equal(1, responses.Count(response => response.StatusCode == HttpStatusCode.OK));
+            Assert.Equal(1, responses.Count(response => response.StatusCode == HttpStatusCode.Conflict));
+        }
+        finally
+        {
+            foreach (var response in responses)
+            {
+                response.Dispose();
+            }
+        }
+
+        using var history = await setupClient.GetAsync($"/api/history?ean13={ean13}");
+        using var historyBody = JsonDocument.Parse(await history.Content.ReadAsStringAsync());
+        Assert.Equal(1, historyBody.RootElement.GetArrayLength());
+    }
+
+    [Fact]
     public async Task Lists_active_articles_by_default_and_exposes_archived_and_all_views()
     {
         using var factory = new ArticleHostFactory();
@@ -924,6 +1033,19 @@ public sealed class ArticleApiTests
 
         public ValueTask<IReadOnlyList<Article>> ListAsync(
             ArticleListFilter filter,
+            CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("database internals");
+
+        public ValueTask<ArticleStoreLifecycleTransitionStatus> TransitionLifecycleAsync(
+            Ean13 ean13,
+            ArticleLifecycleStatus expectedStatus,
+            ArticleLifecycleStatus targetStatus,
+            ArticleLifecycleHistory history,
+            CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("database internals");
+
+        public ValueTask<IReadOnlyList<ArticleLifecycleHistory>> ListLifecycleHistoryAsync(
+            Ean13? ean13 = null,
             CancellationToken cancellationToken = default)
             => throw new InvalidOperationException("database internals");
 

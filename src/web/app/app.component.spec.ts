@@ -178,6 +178,57 @@ describe('AppComponent', () => {
     http.verify();
   });
 
+  it('archives a catalogue row through the API and reloads the active view', async () => {
+    const fixture = TestBed.configureTestingModule({
+      imports: [AppComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    }).createComponent(AppComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    const initial = http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles');
+    initial.flush([
+      {
+        ean13: '0123456789012',
+        type: 'food',
+        name: 'Café du Comptoir',
+        priceHtCents: 199,
+        isActive: true,
+        status: 'active',
+        dlc: '2026-12-31',
+        consumptionModes: ['takeaway'],
+      },
+    ]);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const action = fixture.nativeElement.querySelector('[aria-label="Archiver Café du Comptoir"]') as HTMLButtonElement;
+    expect(action).not.toBeNull();
+    action.click();
+    const archive = http.expectOne('/api/articles/0123456789012/archive');
+    expect(archive.request.method).toBe('POST');
+    archive.flush({
+      ean13: '0123456789012',
+      type: 'food',
+      name: 'Café du Comptoir',
+      priceHtCents: 199,
+      isActive: false,
+      status: 'archived',
+      dlc: '2026-12-31',
+      consumptionModes: ['takeaway'],
+      priceQuotes: [],
+    });
+    await fixture.whenStable();
+    const reload = http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles');
+    expect(reload.request.params.get('status')).toBe('active');
+    reload.flush([]);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('Archivé');
+    expect(fixture.nativeElement.querySelector('[aria-label="Archiver Café du Comptoir"]')).toBeNull();
+    http.verify();
+  });
+
   it('shows two server quotes and submits only the editable HT price', async () => {
     const fixture = TestBed.configureTestingModule({
       imports: [AppComponent],
@@ -270,6 +321,7 @@ function foodArticle(
     name: 'Chocolat noir',
     priceHtCents,
     isActive: true,
+    status: 'active',
     dlc: '2026-12-31',
     consumptionModes: ['takeaway', 'onsite'],
     priceQuotes: [

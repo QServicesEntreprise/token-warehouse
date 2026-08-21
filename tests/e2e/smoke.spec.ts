@@ -76,6 +76,28 @@ test('searches and filters the catalogue, including an archived detail', async (
   await page.locator('#catalog-search').fill(foodEan);
   await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
   await expect(articleRow(foodEan)).toBeVisible();
+  const archiveAction = articleRow(foodEan).getByRole('button', { name: 'Archiver Chocolat noir' });
+  await archiveAction.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#catalog-lifecycle-status')).toContainText('archivé');
+  await expect(articleRow(foodEan)).toHaveCount(0);
+
+  await page.locator('#catalog-status').selectOption('archived');
+  await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
+  await expect(articleRow(foodEan)).toBeVisible();
+  const reactivateAction = articleRow(foodEan).getByRole('button', { name: 'Réactiver Chocolat noir' });
+  await reactivateAction.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#catalog-lifecycle-status')).toContainText('actif');
+  await expect(articleRow(foodEan)).toHaveCount(0);
+
+  await page.locator('#catalog-status').selectOption('active');
+  await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
+  await expect(articleRow(foodEan)).toBeVisible();
+
+  await page.locator('#catalog-search').fill(foodEan);
+  await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
+  await expect(articleRow(foodEan)).toBeVisible();
 
   await page.locator('#catalog-search').fill('aucune référence');
   await page.getByRole('button', { name: 'Rechercher', exact: true }).click();

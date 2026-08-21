@@ -82,6 +82,57 @@ public static class ArticleEndpoints
                 : Results.Ok(result.Articles.Select(ArticleListResponse.From).ToArray());
         });
 
+        app.MapPost("/api/articles/{ean13}/archive", async (
+            string ean13,
+            IChangeArticleLifecycleUseCase useCase,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await useCase.ChangeLifecycleAsync(
+                ean13,
+                ArticleLifecycleStatus.Archived,
+                cancellationToken);
+            return result.Status switch
+            {
+                ArticleLifecycleChangeStatus.Updated => Results.Ok(ArticleResponse.From(result.Article!)),
+                ArticleLifecycleChangeStatus.NotFound => NotFoundProblem(),
+                ArticleLifecycleChangeStatus.Conflict => LifecycleConflictProblem(result),
+                _ => ValidationProblem(result.Errors)
+            };
+        });
+
+        app.MapPost("/api/articles/{ean13}/reactivate", async (
+            string ean13,
+            IChangeArticleLifecycleUseCase useCase,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await useCase.ChangeLifecycleAsync(
+                ean13,
+                ArticleLifecycleStatus.Active,
+                cancellationToken);
+            return result.Status switch
+            {
+                ArticleLifecycleChangeStatus.Updated => Results.Ok(ArticleResponse.From(result.Article!)),
+                ArticleLifecycleChangeStatus.NotFound => NotFoundProblem(),
+                ArticleLifecycleChangeStatus.Conflict => LifecycleConflictProblem(result),
+                _ => ValidationProblem(result.Errors)
+            };
+        });
+
+        app.MapGet("/api/history", async (
+            string? ean13,
+            IGetArticleHistoryUseCase useCase,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await useCase.GetHistoryAsync(ean13, cancellationToken);
+            return result.Status switch
+            {
+                ArticleHistoryReadStatus.Success
+                    => Results.Ok(result.Facts.Select(ArticleHistoryResponse.From).ToArray()),
+                ArticleHistoryReadStatus.NotFound => NotFoundProblem(),
+                _ => ValidationProblem(result.Errors)
+            };
+        });
+
         app.MapPatch("/api/articles/{ean13}", async (
             string ean13,
             HttpRequest request,
@@ -176,6 +227,16 @@ public static class ArticleEndpoints
         string code = "article.ean13.conflict",
         string title = "L’Article existe déjà.")
         => ArticleProblem(StatusCodes.Status409Conflict, title, code, errors);
+
+    private static IResult LifecycleConflictProblem(ArticleLifecycleChangeResult result)
+    {
+        var error = result.Errors.FirstOrDefault();
+        return ArticleProblem(
+            StatusCodes.Status409Conflict,
+            error?.Message ?? "La transition de cycle de vie est en conflit.",
+            error?.Code ?? "article.lifecycle.conflict",
+            result.Errors);
+    }
 
     private static IResult ArticleProblem(
         int statusCode,
@@ -308,6 +369,8 @@ public sealed class ArticleListResponse
     public int PriceHtCents { get; init; }
     public bool IsActive { get; init; }
 
+    public string Status { get; init; } = string.Empty;
+
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Dlc { get; init; }
 
@@ -324,6 +387,7 @@ public sealed class ArticleListResponse
         Name = article.Name,
         PriceHtCents = article.PriceHt.Cents,
         IsActive = article.IsActive,
+        Status = ArticleResponse.ToWireStatus(article.IsActive),
         Dlc = article.Type == ArticleType.Food
             ? article.Dlc?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
             : null,
@@ -344,6 +408,8 @@ public sealed class ArticleResponse
     public int PriceHtCents { get; init; }
     public bool IsActive { get; init; }
 
+    public string Status { get; init; } = string.Empty;
+
     public IReadOnlyList<PriceQuoteResponse> PriceQuotes { get; init; } = [];
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -362,6 +428,7 @@ public sealed class ArticleResponse
         Name = article.Name,
         PriceHtCents = article.PriceHt.Cents,
         IsActive = article.IsActive,
+        Status = ToWireStatus(article.IsActive),
         PriceQuotes = article.PriceQuotes.Select(PriceQuoteResponse.From).ToArray(),
         Dlc = article.Type == ArticleType.Food
             ? article.Dlc?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
@@ -377,6 +444,9 @@ public sealed class ArticleResponse
     internal static string ToWireMode(ConsumptionMode mode)
         => mode == ConsumptionMode.Takeaway ? "takeaway" : "onsite";
 
+    internal static string ToWireStatus(bool isActive)
+        => isActive ? "active" : "archived";
+
     internal static string ToWirePackaging(PackagingCondition packaging)
         => packaging switch
         {
@@ -384,6 +454,25 @@ public sealed class ArticleResponse
             PackagingCondition.Refurbished => "refurbished",
             _ => "unsellable"
         };
+}
+
+public sealed class ArticleHistoryResponse
+{
+    public string Ean13 { get; init; } = string.Empty;
+
+    public string PreviousStatus { get; init; } = string.Empty;
+
+    public string NextStatus { get; init; } = string.Empty;
+
+    public DateTimeOffset OccurredAt { get; init; }
+
+    public static ArticleHistoryResponse From(ArticleHistoryView fact) => new()
+    {
+        Ean13 = fact.Ean13.Value,
+        PreviousStatus = ArticleResponse.ToWireStatus(fact.PreviousStatus == ArticleLifecycleStatus.Active),
+        NextStatus = ArticleResponse.ToWireStatus(fact.NextStatus == ArticleLifecycleStatus.Active),
+        OccurredAt = fact.OccurredAt
+    };
 }
 
 public sealed class PriceQuoteResponse

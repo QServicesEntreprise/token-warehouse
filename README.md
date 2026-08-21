@@ -72,9 +72,10 @@ npm run start:web
 ```
 
 L’API expose `GET /health`, `GET /api/articles`, `POST /api/articles`,
-`GET /api/articles/{ean13}` et `PATCH /api/articles/{ean13}`. Le PATCH accepte
-uniquement `priceHtCents` comme entier JSON et renvoie la représentation
-recalculée.
+`GET /api/articles/{ean13}`, `PATCH /api/articles/{ean13}`,
+`POST /api/articles/{ean13}/archive`, `POST /api/articles/{ean13}/reactivate`
+et `GET /api/history?ean13={ean13}`. Le PATCH accepte uniquement
+`priceHtCents` comme entier JSON et renvoie la représentation recalculée.
 Le host applique les migrations SQLite au démarrage sans service externe ni
 secret.
 
@@ -82,7 +83,10 @@ secret.
 
 Les valeurs canoniques du JSON sont `food`/`nonFood`, `takeaway`/`onsite` et
 `new`/`refurbished`/`unsellable`. Une création valide transporte `ean13` comme
-chaîne de 13 chiffres, `priceHtCents` comme entier et renvoie `isActive: true`.
+chaîne de 13 chiffres, `priceHtCents` comme entier et renvoie `isActive: true`
+avec `status: "active"`. Les transitions renvoient le même contrat avec
+`status: "archived"` ou `status: "active"` et ajoutent un fait immuable
+consultable par l’Historique.
 Les réponses alimentaires exposent `dlc` et `consumptionModes`; les réponses
 non alimentaires exposent `packaging`, sans attribut de l’autre classification.
 Chaque réponse Article expose aussi `priceQuotes`: une quote pour un mode unique
