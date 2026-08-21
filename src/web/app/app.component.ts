@@ -510,14 +510,14 @@ export class AppComponent implements OnInit {
           ? this.api.archive(ean13)
           : this.api.reactivate(ean13),
       );
+      if (this.detail()?.ean13 === ean13) {
+        this.showDetail(updated);
+      }
       if (requestId !== this.lifecycleRequestId) {
         await this.loadCatalog();
         return;
       }
 
-      if (this.detail()?.ean13 === ean13) {
-        this.showDetail(updated);
-      }
       this.lifecycleMessage.set(
         `${updated.name} est ${updated.status === 'active' ? 'actif' : 'archivé'}.`,
       );

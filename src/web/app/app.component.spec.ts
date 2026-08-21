@@ -261,7 +261,29 @@ describe('AppComponent', () => {
     await fixture.whenStable();
 
     const component = fixture.componentInstance;
-    const olderTransition = component.onCatalogLifecycle(component.catalogArticles()[0]);
+    component.lookupEan.set('0123456789012');
+    const detailLookup = component.onLookup(new Event('submit'));
+    const detailRequest = http.expectOne('/api/articles/0123456789012');
+    detailRequest.flush({
+      ean13: '0123456789012',
+      type: 'food',
+      name: 'Café du Comptoir',
+      priceHtCents: 199,
+      isActive: true,
+      status: 'active',
+      dlc: '2026-12-31',
+      consumptionModes: ['takeaway'],
+      priceQuotes: [{
+        saleContext: 'takeaway',
+        taxRate: { code: 'takeaway', ratio: '11/200', numerator: 11, denominator: 200 },
+        vatCents: 11,
+        priceTtcCents: 210,
+      }],
+    });
+    await detailLookup;
+    fixture.detectChanges();
+
+    const olderTransition = component.onCatalogLifecycle(component.detail()!);
     const newerTransition = component.onCatalogLifecycle(component.catalogArticles()[1]);
     const archives = http.match((request) => request.method === 'POST' && request.url.endsWith('/archive'));
     expect(archives).toHaveLength(2);
@@ -313,6 +335,9 @@ describe('AppComponent', () => {
     expect(component.lifecycleMessage()).toBe('Batterie atelier est archivé.');
     expect(component.catalogArticles()).toEqual([]);
     expect(component.catalogState()).toBe('empty');
+    expect(component.detail()?.status).toBe('archived');
+    expect(fixture.nativeElement.querySelector('.article-detail').textContent).toContain('Archivé');
+    expect(fixture.nativeElement.querySelector('.article-detail button').textContent).toContain('Réactiver l’Article');
     http.verify();
   });
 
