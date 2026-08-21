@@ -26,8 +26,20 @@ public sealed class SqliteMigrationTests
                 var applied = (await context.Database.GetAppliedMigrationsAsync()).ToArray();
                 await context.Database.MigrateAsync();
 
+                await using var schemaCommand = context.Database.GetDbConnection().CreateCommand();
+                schemaCommand.CommandText = "PRAGMA table_info('Articles')";
+                await using var schemaReader = await schemaCommand.ExecuteReaderAsync();
+                var columns = new List<string>();
+                while (await schemaReader.ReadAsync())
+                {
+                    columns.Add(schemaReader.GetString(1));
+                }
+
                 Assert.NotEmpty(applied);
                 Assert.Equal(applied, (await context.Database.GetAppliedMigrationsAsync()).ToArray());
+                Assert.Contains("PriceHtCents", columns);
+                Assert.DoesNotContain("PriceTtcCents", columns);
+                Assert.DoesNotContain("VatCents", columns);
             }
 
             await using (var reopenedConnection = new SqliteConnection($"Data Source={filePath}"))

@@ -70,7 +70,9 @@ dotnet run --project src/backend/TokenWarehouse.Api/TokenWarehouse.Api.csproj --
 npm run start:web
 ```
 
-L’API expose `GET /health`, `POST /api/articles` et `GET /api/articles/{ean13}`.
+L’API expose `GET /health`, `POST /api/articles`, `GET /api/articles/{ean13}` et
+`PATCH /api/articles/{ean13}`. Le PATCH accepte uniquement `priceHtCents` comme
+entier JSON et renvoie la représentation recalculée.
 Le host applique les migrations SQLite au démarrage sans service externe ni
 secret.
 
@@ -81,6 +83,10 @@ Les valeurs canoniques du JSON sont `food`/`nonFood`, `takeaway`/`onsite` et
 chaîne de 13 chiffres, `priceHtCents` comme entier et renvoie `isActive: true`.
 Les réponses alimentaires exposent `dlc` et `consumptionModes`; les réponses
 non alimentaires exposent `packaging`, sans attribut de l’autre classification.
+Chaque réponse Article expose aussi `priceQuotes`: une quote pour un mode unique
+ou un Article non alimentaire, deux quotes pour les deux modes. Une quote porte
+`saleContext` si applicable, `taxRate` (`code`, `ratio`, `numerator`,
+`denominator`), `vatCents` et `priceTtcCents`. Les Prix TTC ne sont pas persistés.
 
 Les erreurs sont `application/problem+json`: `400` avec `code: article.validation`
 et `errors` indexées par champ, `409` avec `code: article.ean13.conflict`, `404`

@@ -167,6 +167,48 @@ const initialModel: ArticleFormModel = {
                 <div><dt>Packaging</dt><dd>{{ article.packaging }}</dd></div>
               }
             </dl>
+
+            <form id="price-update-form" (submit)="onPriceUpdate($event)" aria-labelledby="price-update-title">
+              <h4 id="price-update-title">Prix de référence</h4>
+              <label>
+                Prix HT (centimes)
+                <input
+                  id="detailPriceHtCents"
+                  type="number"
+                  step="1"
+                  inputmode="numeric"
+                  [value]="priceHtDraft()"
+                  [attr.aria-invalid]="priceHtFieldError() ? 'true' : null"
+                  aria-describedby="priceHt-update-error"
+                  (input)="setPriceHtDraft($event)" />
+                @if (priceHtFieldError()) {
+                  <span id="priceHt-update-error" class="field-error">{{ priceHtFieldError() }}</span>
+                }
+              </label>
+              <p id="price-update-error" class="form-error" aria-live="assertive" tabindex="-1">{{ priceUpdateError() }}</p>
+              <button type="submit" [disabled]="updatingPrice()">
+                {{ updatingPrice() ? 'Enregistrement…' : 'Enregistrer le Prix HT' }}
+              </button>
+            </form>
+
+            <section aria-labelledby="quotes-title">
+              <h4 id="quotes-title">Prix TTC</h4>
+              <div class="price-quotes">
+                @for (quote of article.priceQuotes; track quote.saleContext ?? quote.taxRate.code) {
+                  <dl class="price-quote">
+                    @if (quote.saleContext) {
+                      <div>
+                        <dt>Contexte de Vente</dt>
+                        <dd>{{ quote.saleContext === 'takeaway' ? 'À emporter' : 'Sur place' }}</dd>
+                      </div>
+                    }
+                    <div><dt>Taux de TVA</dt><dd>{{ quote.taxRate.ratio }}</dd></div>
+                    <div><dt>TVA</dt><dd>{{ quote.vatCents }} centimes</dd></div>
+                    <div><dt>Prix TTC</dt><dd>{{ quote.priceTtcCents }} centimes</dd></div>
+                  </dl>
+                }
+              </div>
+            </section>
           </article>
         }
       </section>
@@ -203,6 +245,10 @@ export class AppComponent {
   readonly lookupEan = signal('');
   readonly submitting = signal(false);
   readonly lookingUp = signal(false);
+  readonly priceHtDraft = signal('');
+  readonly priceHtFieldError = signal('');
+  readonly priceUpdateError = signal('');
+  readonly updatingPrice = signal(false);
 
   async onSubmit(event: Event): Promise<void> {
     event.preventDefault();
@@ -242,13 +288,48 @@ export class AppComponent {
     event.preventDefault();
     this.lookupError.set('');
     this.detail.set(null);
+    this.priceUpdateError.set('');
+    this.priceHtFieldError.set('');
     this.lookingUp.set(true);
     try {
-      this.detail.set(await firstValueFrom(this.api.getByEan13(this.lookupEan().trim())));
+      this.showDetail(await firstValueFrom(this.api.getByEan13(this.lookupEan().trim())));
     } catch (error) {
       this.lookupError.set(this.problemMessage(error, 'Article introuvable.'));
     } finally {
       this.lookingUp.set(false);
+    }
+  }
+
+  setPriceHtDraft(event: Event): void {
+    this.priceHtDraft.set((event.target as HTMLInputElement).value);
+  }
+
+  async onPriceUpdate(event: Event): Promise<void> {
+    event.preventDefault();
+    this.priceUpdateError.set('');
+    this.priceHtFieldError.set('');
+    const article = this.detail();
+    const priceHtCents = this.priceHtDraft().trim();
+    if (!article) {
+      return;
+    }
+
+    if (!/^-?\d+$/.test(priceHtCents)) {
+      this.setPriceUpdateError('Le Prix HT doit être un entier de centimes.', 'Le Prix HT doit être un entier de centimes.');
+      this.focusPriceUpdate();
+      return;
+    }
+
+    this.updatingPrice.set(true);
+    try {
+      this.showDetail(await firstValueFrom(this.api.updatePriceHt(article.ean13, { priceHtCents: Number(priceHtCents) })));
+    } catch (error) {
+      const problem = this.problemDetails(error);
+      const fieldError = problem.errors?.['priceHtCents']?.[0] ?? '';
+      this.setPriceUpdateError(problem.title ?? fieldError ?? 'La mise à jour a échoué.', fieldError);
+      this.focusPriceUpdate();
+    } finally {
+      this.updatingPrice.set(false);
     }
   }
 
@@ -257,7 +338,7 @@ export class AppComponent {
     this.detail.set(null);
     try {
       const created = await firstValueFrom(this.api.create(this.toPayload()));
-      this.detail.set(created);
+      this.showDetail(created);
       this.lookupEan.set(created.ean13);
       return undefined;
     } catch (error) {
@@ -349,5 +430,21 @@ export class AppComponent {
   private problemMessage(error: unknown, fallback: string): string {
     const problem = this.problemDetails(error);
     return problem.title ?? fallback;
+  }
+
+  private showDetail(article: ArticleResponse): void {
+    this.detail.set(article);
+    this.priceHtDraft.set(String(article.priceHtCents));
+    this.priceUpdateError.set('');
+    this.priceHtFieldError.set('');
+  }
+
+  private setPriceUpdateError(message: string, fieldMessage: string): void {
+    this.priceUpdateError.set(message);
+    this.priceHtFieldError.set(fieldMessage);
+  }
+
+  private focusPriceUpdate(): void {
+    document.getElementById('detailPriceHtCents')?.focus();
   }
 }
