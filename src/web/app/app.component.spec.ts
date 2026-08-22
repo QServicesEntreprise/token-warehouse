@@ -422,6 +422,72 @@ describe('AppComponent', () => {
     http.verify();
   });
 
+  it('renders immutable sale and counter-movement financial facts in history', async () => {
+    const fixture = TestBed.configureTestingModule({
+      imports: [AppComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    }).createComponent(AppComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
+    http.expectOne('/api/stock').flush([]);
+    await fixture.whenStable();
+
+    const component = fixture.componentInstance;
+    const load = component.loadHistory();
+    const request = http.expectOne('/api/history');
+    request.flush([
+      {
+        id: 'sale-1',
+        type: 'SALE_STOCK',
+        timestampUtc: '2030-01-15T10:00:00Z',
+        ean13: '0123456789012',
+        articles: [{ ean13: '0123456789012' }],
+        quantity: 2,
+        lines: [],
+        financial: {
+          context: 'takeaway',
+          unitPriceHtCents: 100,
+          taxRate: { code: 'takeaway', ratio: '11/200', numerator: 11, denominator: 200 },
+          amountHtCents: 200,
+          vatCents: 11,
+          amountTtcCents: 211,
+        },
+      },
+      {
+        id: 'counter-1',
+        type: 'COUNTER_MOVEMENT',
+        timestampUtc: '2030-01-15T10:01:00Z',
+        ean13: '0123456789012',
+        articles: [{ ean13: '0123456789012' }],
+        quantity: 2,
+        lines: [],
+        sourceOperationId: 'sale-1',
+        justification: 'Correction',
+        financialReversal: {
+          sourceOperationId: 'sale-1',
+          context: 'takeaway',
+          unitPriceHtCents: 100,
+          taxRate: { code: 'takeaway', ratio: '11/200', numerator: 11, denominator: 200 },
+          amountHtCents: -200,
+          vatCents: -11,
+          amountTtcCents: -211,
+        },
+      },
+    ]);
+    await load;
+    fixture.detectChanges();
+
+    const history = fixture.nativeElement.querySelector('#history-list').textContent;
+    expect(history).toContain('Prix HT unitaire historique');
+    expect(history).toContain('200 centimes');
+    expect(history).toContain('211 centimes');
+    expect(history).toContain('-200 centimes');
+    expect(history).toContain('-211 centimes');
+    flushUnusedDashboardRequest(http);
+    http.verify();
+  });
+
   it('submits an inventory and renders the server reconciliation receipt', async () => {
     const fixture = TestBed.configureTestingModule({
       imports: [AppComponent],

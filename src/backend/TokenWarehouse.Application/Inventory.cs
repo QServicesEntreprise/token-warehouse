@@ -166,6 +166,10 @@ public interface IStockOperationReader
             .Select(operation => new StockOperationReadFact(operation))
             .ToArray();
 
+    async ValueTask<IReadOnlyList<StockOperationReadFact>> ListForFinancialAsync(
+        CancellationToken cancellationToken = default)
+        => await ListForDashboardAsync(cancellationToken);
+
     ValueTask<IReadOnlyList<StockOperation>> ListCorrectableAsync(
         CancellationToken cancellationToken = default)
         => ValueTask.FromResult<IReadOnlyList<StockOperation>>([]);

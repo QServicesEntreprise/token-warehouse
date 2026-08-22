@@ -533,6 +533,83 @@ test('consults global and Article history after real Stock operations', async ({
 
 });
 
+test('keeps a committed Sale and its financial correction separately in History', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('#stock-table').getByRole('row', { name: /Alimentaire aux deux modes/ })).toBeVisible();
+
+  const saleSearchPromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'GET' && url.pathname === '/api/sales/articles';
+  });
+  await page.locator('#sale-search').fill(ean13);
+  await page.getByRole('button', { name: 'Rechercher un Article', exact: true }).click();
+  expect((await saleSearchPromise).status()).toBe(200);
+  await page.locator('#sale-articles-table').getByRole('button', { name: /Sélectionner Alimentaire aux deux modes/ }).click();
+  await page.locator('#sale-context-takeaway').check();
+  await page.locator('#sale-quantity').fill('2');
+
+  const saleResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'POST' && url.pathname === '/api/sales';
+  });
+  await page.locator('#sale-submit').click();
+  const saleResponse = await saleResponsePromise;
+  expect(saleResponse.status()).toBe(201);
+  const sale = await saleResponse.json() as {
+    operation: { id: string };
+    financial: { amountHtCents: number; vatCents: number; amountTtcCents: number };
+  };
+  expect(sale.financial).toMatchObject({ amountHtCents: 200, vatCents: 11, amountTtcCents: 211 });
+
+  await page.getByRole('link', { name: 'Contre-mouvement' }).click();
+  const sourcesPromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'GET' && url.pathname === '/api/stock/counter-movements/sources';
+  });
+  await page.locator('#counter-movement-load').click();
+  expect((await sourcesPromise).status()).toBe(200);
+  await page.locator('#counter-movement-source').selectOption(sale.operation.id);
+  await page.locator('#counter-movement-justification').fill('Correction financière E2E');
+
+  const counterResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'POST' && url.pathname === '/api/stock/counter-movements';
+  });
+  await page.locator('#counter-movement-submit').click();
+  const counterResponse = await counterResponsePromise;
+  expect(counterResponse.status()).toBe(201);
+
+  await page.getByRole('link', { name: 'Historique' }).click();
+  const historyPromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'GET' && url.pathname === '/api/history' && !url.search;
+  });
+  await page.getByRole('button', { name: 'Historique global', exact: true }).click();
+  expect((await historyPromise).status()).toBe(200);
+  const entries = await historyPromise.then((response) => response.json()) as Array<{
+    id: string;
+    type: string;
+    financial?: { amountHtCents: number; vatCents: number; amountTtcCents: number };
+    financialReversal?: { sourceOperationId: string; amountHtCents: number; vatCents: number; amountTtcCents: number };
+  }>;
+  const saleEntry = entries.find((entry) => entry.id === sale.operation.id);
+  expect(saleEntry).toMatchObject({
+    type: 'SALE_STOCK',
+    financial: { amountHtCents: 200, vatCents: 11, amountTtcCents: 211 },
+  });
+  const correctionEntry = entries.find((entry) => entry.type === 'COUNTER_MOVEMENT' && entry.financialReversal);
+  expect(correctionEntry).toMatchObject({
+    financialReversal: {
+      sourceOperationId: sale.operation.id,
+      amountHtCents: -200,
+      vatCents: -11,
+      amountTtcCents: -211,
+    },
+  });
+  await expect(page.locator(`[aria-labelledby="history-entry-${sale.operation.id}"]`)).toContainText('200 centimes');
+  await expect(page.locator('#history-list')).toContainText('-211 centimes');
+});
+
 test.describe('history read failure runtime seam', () => {
   test.use({ historyReadFailure: true });
 

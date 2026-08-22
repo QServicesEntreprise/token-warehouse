@@ -31,6 +31,7 @@ public static class SqlitePersistenceRegistration
         services.AddScoped<IStockOperationReader>(services =>
             services.GetRequiredService<SqliteStockOperationReader>());
         services.AddScoped<ISaleReader, SqliteSaleReader>();
+        services.AddScoped<IFinancialFactReader, SqliteFinancialFactReader>();
         services.AddScoped<SqliteHistoryReader>();
         services.AddScoped<IHistoryReader>(services => services.GetRequiredService<SqliteHistoryReader>());
         services.AddHostedService<SqliteMigrationHostedService>();

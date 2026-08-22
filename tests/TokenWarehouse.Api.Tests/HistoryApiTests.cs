@@ -145,6 +145,127 @@ public sealed class HistoryApiTests
     }
 
     [Fact]
+    public async Task Reads_the_sale_snapshot_and_its_signed_counter_movement_in_history()
+    {
+        using var factory = new HistoryHostFactory();
+        using var client = factory.CreateClient();
+        await factory.SeedArticleAsync("0123456789012");
+
+        using var supply = await client.PostAsJsonAsync(
+            "/api/supplies",
+            new { ean13 = "0123456789012", quantity = 3 });
+        Assert.Equal(HttpStatusCode.Created, supply.StatusCode);
+
+        using var sale = await client.PostAsJsonAsync(
+            "/api/sales",
+            new { ean13 = "0123456789012", quantity = 2 });
+        Assert.Equal(HttpStatusCode.Created, sale.StatusCode);
+        using var saleBody = JsonDocument.Parse(await sale.Content.ReadAsStringAsync());
+        var saleId = saleBody.RootElement.GetProperty("operation").GetProperty("id").GetString();
+
+        using var history = await client.GetAsync("/api/history?ean13=0123456789012");
+        using var historyBody = JsonDocument.Parse(await history.Content.ReadAsStringAsync());
+        var saleEntry = Assert.Single(
+            historyBody.RootElement.EnumerateArray(),
+            entry => entry.GetProperty("type").GetString() == "SALE_STOCK");
+        var financial = saleEntry.GetProperty("financial");
+        Assert.Equal(100, financial.GetProperty("unitPriceHtCents").GetInt32());
+        Assert.Equal("takeaway", financial.GetProperty("context").GetString());
+        Assert.Equal("takeaway", financial.GetProperty("taxRate").GetProperty("code").GetString());
+        Assert.Equal(200, financial.GetProperty("amountHtCents").GetInt32());
+        Assert.Equal(11, financial.GetProperty("vatCents").GetInt32());
+        Assert.Equal(211, financial.GetProperty("amountTtcCents").GetInt32());
+
+        using var counter = await client.PostAsJsonAsync(
+            "/api/stock/counter-movements",
+            new { sourceOperationId = saleId, justification = "Correction financière" });
+        Assert.Equal(HttpStatusCode.Created, counter.StatusCode);
+
+        using var correctedHistory = await client.GetAsync("/api/history?ean13=0123456789012");
+        using var correctedBody = JsonDocument.Parse(await correctedHistory.Content.ReadAsStringAsync());
+        var correction = Assert.Single(
+            correctedBody.RootElement.EnumerateArray(),
+            entry => entry.GetProperty("type").GetString() == "COUNTER_MOVEMENT");
+        var reversal = correction.GetProperty("financialReversal");
+        Assert.Equal(saleId, reversal.GetProperty("sourceOperationId").GetString());
+        Assert.Equal(-200, reversal.GetProperty("amountHtCents").GetInt32());
+        Assert.Equal(-11, reversal.GetProperty("vatCents").GetInt32());
+        Assert.Equal(-211, reversal.GetProperty("amountTtcCents").GetInt32());
+        Assert.Contains(
+            correctedBody.RootElement.EnumerateArray(),
+            entry => entry.GetProperty("id").GetString() == saleId
+                && entry.GetProperty("financial").GetProperty("amountTtcCents").GetInt32() == 211);
+    }
+
+    [Fact]
+    public async Task Reads_a_financial_summary_from_the_same_immutable_sale_facts()
+    {
+        using var factory = new HistoryHostFactory();
+        using var client = factory.CreateClient();
+        await factory.SeedArticleAsync("0123456789012");
+        await client.PostAsJsonAsync(
+            "/api/supplies",
+            new { ean13 = "0123456789012", quantity = 3 });
+        using var sale = await client.PostAsJsonAsync(
+            "/api/sales",
+            new { ean13 = "0123456789012", quantity = 2 });
+        using var saleBody = JsonDocument.Parse(await sale.Content.ReadAsStringAsync());
+        var saleId = saleBody.RootElement.GetProperty("operation").GetProperty("id").GetString();
+        using var counter = await client.PostAsJsonAsync(
+            "/api/stock/counter-movements",
+            new { sourceOperationId = saleId, justification = "Résumé financier" });
+        Assert.Equal(HttpStatusCode.Created, counter.StatusCode);
+
+        using var scope = factory.Services.CreateScope();
+        var useCase = scope.ServiceProvider.GetRequiredService<IReadFinancialSummaryUseCase>();
+        var result = await useCase.ReadAsync(new FinancialPeriod(
+            DateTimeOffset.MinValue,
+            DateTimeOffset.MaxValue));
+
+        Assert.Equal(FinancialSummaryReadStatus.Success, result.Status);
+        Assert.Equal(0, result.Summary!.RevenueHt.Cents);
+        Assert.Equal(0, result.Summary.RevenueTtc.Cents);
+        Assert.Equal(0, result.Summary.VatCollected.Cents);
+        Assert.Equal(
+            [TaxRate.Takeaway, TaxRate.OnSite, TaxRate.NonFood],
+            result.Summary.ByTaxRate.Select(line => line.TaxRate));
+        Assert.Equal(0, result.Summary.ByTaxRate[0].AmountTtc.Cents);
+    }
+
+    [Fact]
+    public async Task Reads_the_three_tax_rates_from_persisted_sale_snapshots()
+    {
+        using var factory = new HistoryHostFactory();
+        using var client = factory.CreateClient();
+        await factory.SeedFinancialArticlesAsync();
+
+        foreach (var ean13 in new[] { "0123456789012", "1234567890128", "2345678901234" })
+        {
+            using var sale = await client.PostAsJsonAsync(
+                "/api/sales",
+                new { ean13, quantity = 1 });
+            Assert.Equal(HttpStatusCode.Created, sale.StatusCode);
+        }
+
+        using var scope = factory.Services.CreateScope();
+        var useCase = scope.ServiceProvider.GetRequiredService<IReadFinancialSummaryUseCase>();
+        var result = await useCase.ReadAsync(new FinancialPeriod(
+            DateTimeOffset.MinValue,
+            DateTimeOffset.MaxValue));
+
+        Assert.Equal(FinancialSummaryReadStatus.Success, result.Status);
+        Assert.Equal(300, result.Summary!.RevenueHt.Cents);
+        Assert.Equal(36, result.Summary.VatCollected.Cents);
+        Assert.Equal(336, result.Summary.RevenueTtc.Cents);
+        Assert.Equal(
+            [(100, 6, 106), (100, 10, 110), (100, 20, 120)],
+            result.Summary.ByTaxRate.Select(line => (
+                line.AmountHt.Cents,
+                line.Vat.Cents,
+                line.AmountTtc.Cents)));
+    }
+
+    [Fact]
     public async Task Orders_equal_timestamps_by_operation_id()
     {
         using var factory = new HistoryHostFactory();
@@ -515,6 +636,41 @@ public sealed class HistoryApiTests
             var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>();
             await using var context = await contextFactory.CreateDbContextAsync();
             context.Articles.Add(Article(ean13, true));
+            await context.SaveChangesAsync();
+        }
+
+        public async Task SeedFinancialArticlesAsync()
+        {
+            using var scope = Services.CreateScope();
+            var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>();
+            await using var context = await contextFactory.CreateDbContextAsync();
+            context.Articles.AddRange(
+                Article("0123456789012", true),
+                new ArticleEntity
+                {
+                    Ean13 = "1234567890128",
+                    Type = "food",
+                    Name = "Sur place",
+                    NameSearchKey = "SUR PLACE",
+                    PriceHtCents = 100,
+                    IsActive = true,
+                    Dlc = "2099-01-15",
+                    ConsumptionModes = "onsite"
+                },
+                new ArticleEntity
+                {
+                    Ean13 = "2345678901234",
+                    Type = "nonFood",
+                    Name = "Non alimentaire",
+                    NameSearchKey = "NON ALIMENTAIRE",
+                    PriceHtCents = 100,
+                    IsActive = true,
+                    Packaging = "new"
+                });
+            context.StockPositions.AddRange(
+                Position("0123456789012", 2),
+                Position("1234567890128", 2),
+                Position("2345678901234", 2));
             await context.SaveChangesAsync();
         }
 

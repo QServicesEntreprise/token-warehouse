@@ -99,6 +99,15 @@ public sealed class SqliteHistoryReader(
                 throw new InvalidOperationException("Stored Sale financial reversal data is invalid.");
             }
         }
+        SaleFinancialSnapshot? financial = null;
+        if (type == HistoryEntryType.SaleStock
+            && SaleFinancialSnapshotSerializer.TryDeserialize(
+                entity.SaleCommitDataType,
+                entity.SaleCommitDataPayload,
+                out var saleFinancial))
+        {
+            financial = saleFinancial;
+        }
         var firstLine = selectedLines[0];
         var rootLine = storedLines.Length > 1 ? null : firstLine;
         var isSource = correctionsBySource.TryGetValue(entity.Id, out var correction);
@@ -114,6 +123,9 @@ public sealed class SqliteHistoryReader(
                 .ToArray(),
             Quantity = type is HistoryEntryType.Supply or HistoryEntryType.SaleStock
                 ? rootLine?.Quantity
+                : type == HistoryEntryType.CounterMovement
+                    && rootLine is { InverseEffect: > 0 }
+                    ? rootLine.InverseEffect
                 : null,
             StockEffect = type is HistoryEntryType.Supply or HistoryEntryType.SaleStock or HistoryEntryType.Inventory
                 ? rootLine?.StockEffect
@@ -136,6 +148,7 @@ public sealed class SqliteHistoryReader(
             SourceOperationId = sourceOperationId,
             SourceOperationType = sourceOperationType,
             Justification = type == HistoryEntryType.CounterMovement ? entity.Justification : null,
+            Financial = financial,
             FinancialReversal = financialReversal,
             CorrectedByOperationId = isSource ? correction!.Id : null,
             CorrectionOperationId = type == HistoryEntryType.CounterMovement ? entity.Id : null,

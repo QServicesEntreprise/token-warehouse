@@ -65,6 +65,9 @@ builder.Services.AddScoped<IChangeArticleLifecycleUseCase>(services => services.
 builder.Services.AddScoped<IGetArticleHistoryUseCase>(services => services.GetRequiredService<ArticleApplication>());
 builder.Services.AddScoped<HistoryApplication>();
 builder.Services.AddScoped<IReadHistoryUseCase>(services => services.GetRequiredService<HistoryApplication>());
+builder.Services.AddScoped<FinancialSummaryApplication>();
+builder.Services.AddScoped<IReadFinancialSummaryUseCase>(services =>
+    services.GetRequiredService<FinancialSummaryApplication>());
 
 builder.Services.AddSingleton<RuntimeReadiness>();
 
