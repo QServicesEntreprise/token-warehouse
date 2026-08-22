@@ -498,11 +498,15 @@ public sealed class HistoryApiTests
         await factory.SeedSaleWithSourceMismatchedFinancialReversalAsync();
 
         using var history = await client.GetAsync("/api/history");
+        using var filteredHistory = await client.GetAsync("/api/history?ean13=0123456789012");
 
         Assert.Equal(HttpStatusCode.InternalServerError, history.StatusCode);
         Assert.Equal("application/problem+json", history.Content.Headers.ContentType?.MediaType);
         using var historyBody = JsonDocument.Parse(await history.Content.ReadAsStringAsync());
         Assert.Equal("HISTORY_READ_FAILURE", historyBody.RootElement.GetProperty("code").GetString());
+        Assert.Equal(HttpStatusCode.InternalServerError, filteredHistory.StatusCode);
+        using var filteredHistoryBody = JsonDocument.Parse(await filteredHistory.Content.ReadAsStringAsync());
+        Assert.Equal("HISTORY_READ_FAILURE", filteredHistoryBody.RootElement.GetProperty("code").GetString());
 
         using var scope = factory.Services.CreateScope();
         var summary = await scope.ServiceProvider
@@ -850,6 +854,7 @@ public sealed class HistoryApiTests
             var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>();
             await using var context = await contextFactory.CreateDbContextAsync();
             const string ean13 = "0123456789012";
+            const string counterEan13 = "1234567890128";
             const string sourceOperationId = "sale-reversal-source-0001";
             const string counterMovementId = "counter-reversal-mismatch-0001";
             var snapshot = new SaleFinancialSnapshot(
@@ -877,21 +882,20 @@ public sealed class HistoryApiTests
                     quantity: 2),
                 FinancialCounterMovement(
                     counterMovementId,
-                    ean13,
+                    counterEan13,
                     "2030-01-15T11:00:00Z",
                     sourceOperationId,
                     mismatchedReversal));
             context.StockOperationLines.AddRange(
                 FinancialSaleLine(sourceOperationId, ean13, quantity: 2),
-                new StockOperationLineEntity
-                {
-                    OperationId = counterMovementId,
-                    LineNumber = 1,
-                    Ean13 = ean13,
-                    OperationType = "COUNTER_MOVEMENT",
-                    SourceEffect = -2,
-                    InverseEffect = 2
-                });
+                Line(
+                    counterMovementId,
+                    1,
+                    counterEan13,
+                    "COUNTER_MOVEMENT",
+                    0,
+                    sourceEffect: -2,
+                    inverseEffect: 2));
             await context.SaveChangesAsync();
         }
 

@@ -27,7 +27,7 @@ internal static class SqliteSaleFinancialSnapshotReader
         ArgumentNullException.ThrowIfNull(sourceSale);
 
         var sourceSnapshot = Read(sourceSale, out _);
-        if (!MatchesSource(
+        if (!MatchesSaleSource(
                 counterMovement,
                 counterMovementLines,
                 sourceSale)
@@ -141,7 +141,7 @@ internal static class SqliteSaleFinancialSnapshotReader
         }
     }
 
-    private static bool MatchesSource(
+    private static bool MatchesSaleSource(
         StockOperationEntity counterMovement,
         IReadOnlyList<StockOperationLineEntity> counterMovementLines,
         StockOperationEntity sourceSale)

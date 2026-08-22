@@ -78,6 +78,25 @@ public sealed class SqliteHistoryReader(
         var lines = storedLines.Length == 0
             ? [SyntheticLine(entity, operationEan13, type)]
             : storedLines.Select(line => ToHistoryLine(line, type)).ToArray();
+        SaleFinancialReversal? financialReversal = null;
+        var hasFinancialData = entity.SaleCommitDataType is not null
+            || entity.SaleCommitDataPayload is not null;
+        if (type == HistoryEntryType.CounterMovement
+            && (string.Equals(entity.SourceOperationType, "SALE", StringComparison.OrdinalIgnoreCase)
+                || hasFinancialData))
+        {
+            if (entity.SourceOperationId is null
+                || !operationsById.TryGetValue(entity.SourceOperationId, out var sourceSale))
+            {
+                throw new InvalidOperationException("Stored Sale financial reversal data is invalid.");
+            }
+
+            financialReversal = SqliteSaleFinancialSnapshotReader.ReadReversal(
+                entity,
+                storedLines,
+                sourceSale);
+        }
+
         var selectedLines = filteredEan13 is null
             ? lines
             : lines.Where(line => line.Ean13 == filteredEan13.Value).ToArray();
@@ -92,21 +111,6 @@ public sealed class SqliteHistoryReader(
         var sourceOperationType = type == HistoryEntryType.CounterMovement
             ? ToWireOperationType(entity.SourceOperationType)
             : null;
-        SaleFinancialReversal? financialReversal = null;
-        if (type == HistoryEntryType.CounterMovement
-            && string.Equals(entity.SourceOperationType, "SALE", StringComparison.OrdinalIgnoreCase))
-        {
-            if (entity.SourceOperationId is null
-                || !operationsById.TryGetValue(entity.SourceOperationId, out var sourceSale))
-            {
-                throw new InvalidOperationException("Stored Sale financial reversal data is invalid.");
-            }
-
-            financialReversal = SqliteSaleFinancialSnapshotReader.ReadReversal(
-                entity,
-                entity.Lines.OrderBy(line => line.LineNumber).ToArray(),
-                sourceSale);
-        }
         SaleFinancialSnapshot? financial = null;
         if (type == HistoryEntryType.SaleStock)
         {
