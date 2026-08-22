@@ -248,7 +248,7 @@ const lastInventoryIdStorageKey = 'token-warehouse.last-inventory-id';
             [value]="historyFilterEan()"
             (input)="setHistoryFilter($event)" />
           <button type="submit" [disabled]="historyState() === 'loading'">Filtrer l’Historique</button>
-          <button type="button" class="secondary-button" (click)="loadHistory()">Historique global</button>
+          <button type="button" class="secondary-button" (click)="loadHistory('')">Historique global</button>
         </form>
 
         <div id="history-state" class="catalog-state" role="status" aria-live="polite">
@@ -303,6 +303,7 @@ const lastInventoryIdStorageKey = 'token-warehouse.last-inventory-id';
                         Ligne {{ line.lineNumber }} — {{ line.ean13 }}
                         @if (line.quantity !== undefined) { · {{ line.quantity }} unités }
                         @if (line.stockEffect !== undefined) { · effet {{ formatHistoryEffect(line.stockEffect) }} }
+                        @if (line.inverseEffect !== undefined) { · effet inverse {{ formatHistoryEffect(line.inverseEffect) }} }
                         @if (line.countedQuantity !== undefined) { · comptée {{ line.countedQuantity }} }
                         @if (line.difference !== undefined) { · écart {{ formatHistoryEffect(line.difference) }} }
                         @if (line.resultingPhysicalStock !== undefined) { · résultat {{ line.resultingPhysicalStock }} }
@@ -992,6 +993,16 @@ const lastInventoryIdStorageKey = 'token-warehouse.last-inventory-id';
                       @if (entry.stockEffect !== undefined) { <p>Effet Stock : {{ formatHistoryEffect(entry.stockEffect) }} ; résultat : {{ entry.resultingPhysicalStock }} unités</p> }
                       @if (entry.previousStatus || entry.nextStatus) { <p>Cycle de vie : {{ entry.previousStatus }} → {{ entry.nextStatus }}</p> }
                       @if (entry.sourceOperationId) { <p>Source : <code>{{ entry.sourceOperationId }}</code> ; justification : {{ entry.justification }}</p> }
+                      @if (entry.lines.length > 0) {
+                        <ul aria-label="Lignes de l’opération">
+                          @for (line of entry.lines; track line.lineNumber) {
+                            <li>
+                              Ligne {{ line.lineNumber }} — {{ line.ean13 }}
+                              @if (line.inverseEffect !== undefined) { · effet inverse {{ formatHistoryEffect(line.inverseEffect) }} }
+                            </li>
+                          }
+                        </ul>
+                      }
                       @if (entry.changes?.length) {
                         <ul>
                           @for (change of entry.changes; track change.field) {

@@ -71,6 +71,10 @@ namespace TokenWarehouse.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("FactId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Kind")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -90,6 +94,9 @@ namespace TokenWarehouse.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("Ean13");
+
+                    b.HasIndex("FactId")
+                        .IsUnique();
 
                     b.HasIndex("OccurredAt", "Id");
 

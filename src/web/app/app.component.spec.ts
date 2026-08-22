@@ -1373,6 +1373,109 @@ describe('AppComponent', () => {
     expect(fixture.nativeElement.querySelector('#article-history-list').textContent).toContain('active');
     http.verify();
   });
+
+  it('returns from a filtered history to global and renders server inverse effects', async () => {
+    const fixture = TestBed.configureTestingModule({
+      imports: [AppComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    }).createComponent(AppComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
+    http.expectOne('/api/stock').flush([]);
+    await fixture.whenStable();
+
+    const component = fixture.componentInstance;
+    component.historyFilterEan.set('0123456789012');
+    const filtered = component.loadHistory();
+    http.expectOne('/api/history?ean13=0123456789012').flush([{
+      id: 'counter-01',
+      type: 'COUNTER_MOVEMENT',
+      timestampUtc: '2030-01-15T10:00:00Z',
+      ean13: '0123456789012',
+      articles: [{ ean13: '0123456789012' }],
+      lines: [
+        { lineNumber: 1, ean13: '0123456789012', inverseEffect: -3 },
+        { lineNumber: 2, ean13: '0123456789012', inverseEffect: 4 },
+        { lineNumber: 3, ean13: '0123456789012', inverseEffect: 0 },
+      ],
+      sourceOperationId: 'source-01',
+      sourceOperationType: 'SUPPLY',
+      justification: 'Correction',
+      correctionOperationId: 'counter-01',
+    }]);
+    await filtered;
+    fixture.detectChanges();
+
+    const global = component.historyFilterEan();
+    expect(global).toBe('0123456789012');
+    const globalRequestPromise = new Promise<void>((resolve) => {
+      const button = fixture.nativeElement.querySelector('#history-filter-form .secondary-button') as HTMLButtonElement;
+      button.addEventListener('click', () => resolve(), { once: true });
+      button.click();
+    });
+    await globalRequestPromise;
+    const request = http.expectOne('/api/history');
+    request.flush([{
+      id: 'supply-02',
+      type: 'SUPPLY',
+      timestampUtc: '2030-01-15T09:00:00Z',
+      ean13: '7351353713578',
+      articles: [{ ean13: '7351353713578' }],
+      quantity: 2,
+      stockEffect: 2,
+      resultingPhysicalStock: 2,
+      lines: [],
+    }, {
+      id: 'counter-01',
+      type: 'COUNTER_MOVEMENT',
+      timestampUtc: '2030-01-15T10:00:00Z',
+      ean13: '0123456789012',
+      articles: [{ ean13: '0123456789012' }],
+      lines: [
+        { lineNumber: 1, ean13: '0123456789012', inverseEffect: -3 },
+        { lineNumber: 2, ean13: '0123456789012', inverseEffect: 4 },
+        { lineNumber: 3, ean13: '0123456789012', inverseEffect: 0 },
+      ],
+      sourceOperationId: 'source-01',
+      sourceOperationType: 'SUPPLY',
+      justification: 'Correction',
+      correctionOperationId: 'counter-01',
+    }]);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(component.historyFilterEan()).toBe('');
+    const globalText = fixture.nativeElement.querySelector('#history-list').textContent as string;
+    expect(globalText).toContain('7351353713578');
+    expect(globalText).toContain('effet inverse -3');
+    expect(globalText).toContain('effet inverse +4');
+    expect(globalText).toContain('effet inverse 0');
+
+    const article = foodArticle(1000, 55, 1055, 100, 1100);
+    component.detail.set(article);
+    const articleHistory = component.loadArticleHistory(article.ean13);
+    http.expectOne('/api/history?ean13=0123456789012').flush([{
+      id: 'counter-01',
+      type: 'COUNTER_MOVEMENT',
+      timestampUtc: '2030-01-15T10:00:00Z',
+      ean13: article.ean13,
+      articles: [{ ean13: article.ean13 }],
+      lines: [
+        { lineNumber: 1, ean13: article.ean13, inverseEffect: -3 },
+        { lineNumber: 2, ean13: article.ean13, inverseEffect: 4 },
+        { lineNumber: 3, ean13: article.ean13, inverseEffect: 0 },
+      ],
+    }]);
+    await articleHistory;
+    fixture.detectChanges();
+
+    const articleText = fixture.nativeElement.querySelector('#article-history-list').textContent as string;
+    expect(articleText).toContain('effet inverse -3');
+    expect(articleText).toContain('effet inverse +4');
+    expect(articleText).toContain('effet inverse 0');
+    http.verify();
+  });
 });
 
 function foodArticle(

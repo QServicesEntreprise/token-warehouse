@@ -28,7 +28,9 @@ public sealed class WarehouseDbContext(DbContextOptions<WarehouseDbContext> opti
 
         var history = modelBuilder.Entity<ArticleLifecycleHistoryEntity>();
         history.HasKey(entity => entity.Id);
+        history.HasIndex(entity => entity.FactId).IsUnique();
         history.HasIndex(entity => new { entity.OccurredAt, entity.Id });
+        history.Property(entity => entity.FactId).IsRequired();
         history.Property(entity => entity.Ean13).IsRequired();
         history.Property(entity => entity.PreviousStatus).IsRequired();
         history.Property(entity => entity.NextStatus).IsRequired();

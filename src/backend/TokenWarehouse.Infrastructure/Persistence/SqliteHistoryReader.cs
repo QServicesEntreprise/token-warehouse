@@ -15,6 +15,7 @@ public sealed class SqliteHistoryReader(
     {
         ArgumentNullException.ThrowIfNull(query);
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
 
         if (query.Ean13 is { } filteredEan13
             && !await context.Articles.AsNoTracking().AnyAsync(
@@ -49,6 +50,7 @@ public sealed class SqliteHistoryReader(
             .ThenByDescending(entry => entry.Id, StringComparer.Ordinal)
             .ToArray();
 
+        await transaction.CommitAsync(cancellationToken);
         return new(HistoryReadStatus.Success, entries, []);
     }
 
@@ -134,7 +136,8 @@ public sealed class SqliteHistoryReader(
         ArticleLifecycleHistoryEntity entity,
         Ean13? filteredEan13)
     {
-        if (!Ean13.TryCreate(entity.Ean13, out var ean13)
+        if (string.IsNullOrWhiteSpace(entity.FactId)
+            || !Ean13.TryCreate(entity.Ean13, out var ean13)
             || !TryParseTimestamp(entity.OccurredAt, out var timestampUtc))
         {
             throw new InvalidOperationException("Stored Article history data is invalid.");
@@ -155,7 +158,7 @@ public sealed class SqliteHistoryReader(
 
             return new HistoryEntryView
             {
-                Id = $"catalog-history-{entity.Id:D20}",
+                Id = entity.FactId,
                 Type = nextStatus == ArticleLifecycleStatus.Archived
                     ? HistoryEntryType.CatalogArchive
                     : HistoryEntryType.CatalogReactivate,
@@ -188,7 +191,7 @@ public sealed class SqliteHistoryReader(
                 : HistoryEntryType.CatalogAttributeChange;
         return new HistoryEntryView
         {
-            Id = $"catalog-history-{entity.Id:D20}",
+            Id = entity.FactId,
             Type = type,
             TimestampUtc = timestampUtc,
             Articles = [new HistoryArticleView(ean13)],

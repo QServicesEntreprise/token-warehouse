@@ -2,6 +2,7 @@ import { expect } from '@playwright/test';
 import { test } from './fixtures';
 
 const ean13 = '0123456789012';
+const otherEan13 = '4012345678901';
 const apiBaseUrl = 'http://127.0.0.1:5100';
 
 test('consults global and Article history after real Stock operations', async ({ page }) => {
@@ -24,11 +25,22 @@ test('consults global and Article history after real Stock operations', async ({
     return response.request().method() === 'POST' && url.pathname === '/api/inventories';
   });
   await page.locator('#inventory-ean13').fill(ean13);
-  await page.locator('#inventory-countedQuantity').fill('10');
+  await page.locator('#inventory-countedQuantity').fill('12');
   await page.locator('#inventory-form button[type="submit"]').click();
   const inventoryResponse = await inventoryResponsePromise;
   expect(inventoryResponse.status()).toBe(201);
   const inventory = await inventoryResponse.json() as { operation: { id: string } };
+
+  const otherSupplyResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'POST' && url.pathname === '/api/supplies';
+  });
+  await page.locator('#supplyEan13').fill(otherEan13);
+  await page.locator('#supplyQuantity').fill('1');
+  await page.locator('#supply-form button[type="submit"]').click();
+  const otherSupplyResponse = await otherSupplyResponsePromise;
+  expect(otherSupplyResponse.status()).toBe(201);
+  const otherSupply = await otherSupplyResponse.json() as { operation: { id: string } };
 
   await page.getByRole('link', { name: 'Contre-mouvement' }).click();
   const sourcesResponsePromise = page.waitForResponse((response) => {
@@ -59,6 +71,7 @@ test('consults global and Article history after real Stock operations', async ({
   expect(globalEntries.map((entry) => entry.id)).toEqual(expect.arrayContaining([
     supply.operation.id,
     inventory.operation.id,
+    otherSupply.operation.id,
   ]));
   expect(globalEntries.map((entry) => entry.type)).toEqual(expect.arrayContaining([
     'SUPPLY',
@@ -79,6 +92,16 @@ test('consults global and Article history after real Stock operations', async ({
   expect((await filteredHistoryPromise).status()).toBe(200);
   await expect(page.locator('#history-list')).toContainText(ean13);
 
+  const resetGlobalHistoryPromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'GET' && url.pathname === '/api/history' && !url.search;
+  });
+  await page.getByRole('button', { name: 'Historique global', exact: true }).click();
+  expect((await resetGlobalHistoryPromise).status()).toBe(200);
+  await expect(page.locator('#history-ean13')).toHaveValue('');
+  await expect(page.locator('#history-list')).toContainText(otherSupply.operation.id);
+  await expect(page.locator('#history-list')).toContainText('effet inverse -2');
+
   const articleResponsePromise = page.waitForResponse((response) => {
     const url = new URL(response.url());
     return response.request().method() === 'GET' && url.pathname === `/api/articles/${ean13}`;
@@ -98,6 +121,7 @@ test('consults global and Article history after real Stock operations', async ({
   expect((await articleHistoryPromise).status()).toBe(200);
   await expect(page.locator('#article-history-list')).toContainText('Inventaire');
   await expect(page.locator('#article-history-list')).toContainText('10');
+  await expect(page.locator('#article-history-list')).toContainText('effet inverse -2');
 
   await page.reload();
   await page.getByRole('link', { name: 'Historique' }).click();
