@@ -44,6 +44,67 @@ public sealed record SaleFinancialFact(
     string? SourceOperationId = null,
     string? Justification = null);
 
+public static class SaleFinancialFactReader
+{
+    public static bool IsFinancial(StockOperationReadFact fact)
+        => fact.Operation.Type == StockOperationType.Sale
+            || (fact.Operation.Type == StockOperationType.CounterMovement
+                && fact.Operation.SourceOperationType == StockOperationType.Sale);
+
+    public static SaleFinancialFact From(StockOperationReadFact fact)
+    {
+        ArgumentNullException.ThrowIfNull(fact);
+
+        var operation = fact.Operation;
+        if (operation.Type == StockOperationType.Sale)
+        {
+            if (fact.Financial is not { } financial
+                || !Ean13.TryCreate(operation.Ean13.Value, out var saleEan13))
+            {
+                throw new InvalidOperationException("Stored Sale financial snapshot is missing.");
+            }
+
+            return new(
+                operation.Id,
+                SaleFinancialFactType.Sale,
+                operation.TimestampUtc,
+                saleEan13,
+                operation.Quantity.Value,
+                financial.UnitPriceHt,
+                financial.SaleContext,
+                financial.TaxRate,
+                financial.AmountHt,
+                financial.Vat,
+                financial.AmountTtc);
+        }
+
+        var reversal = fact.FinancialReversal ?? operation.FinancialReversal;
+        if (reversal is null
+            || operation.SourceOperationId is null
+            || operation.Lines.Count != 1
+            || operation.Lines[0].InverseEffect <= 0
+            || !Ean13.TryCreate(operation.Ean13.Value, out var counterEan13))
+        {
+            throw new InvalidOperationException("Stored Sale financial reversal is invalid.");
+        }
+
+        return new(
+            operation.Id,
+            SaleFinancialFactType.CounterMovement,
+            operation.TimestampUtc,
+            counterEan13,
+            operation.Lines[0].InverseEffect,
+            reversal.UnitPriceHt,
+            reversal.SaleContext,
+            reversal.TaxRate,
+            reversal.AmountHt,
+            reversal.Vat,
+            reversal.AmountTtc,
+            operation.SourceOperationId,
+            operation.Justification);
+    }
+}
+
 public sealed record FinancialTaxRateSummary(
     TaxRate TaxRate,
     Money AmountHt,

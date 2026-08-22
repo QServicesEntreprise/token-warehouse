@@ -120,6 +120,7 @@ h1 {
 }
 
 .dashboard-kpis,
+.dashboard-financial-kpis,
 .dashboard-alerts {
   display: grid;
   gap: 1rem;
@@ -134,6 +135,7 @@ h1 {
 }
 
 .dashboard-kpi h3,
+.dashboard-kpi h4,
 .dashboard-alerts h3 {
   margin: 0;
 }

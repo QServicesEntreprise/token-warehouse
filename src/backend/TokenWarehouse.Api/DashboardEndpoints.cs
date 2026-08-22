@@ -63,6 +63,8 @@ public sealed class DashboardResponse
 
     public IReadOnlyList<DashboardFlowDayResponse> FlowsByDay { get; init; } = [];
 
+    public DashboardFinancialResponse? Financial { get; init; }
+
     public static DashboardResponse From(CurrentDashboardView dashboard) => new()
     {
         Kpis = new()
@@ -77,7 +79,51 @@ public sealed class DashboardResponse
             NotSellable = dashboard.Alerts.NotSellable.Select(DashboardStockLineResponse.From).ToArray()
         },
         StockByArticle = dashboard.StockByArticle.Select(DashboardStockLineResponse.From).ToArray(),
-        FlowsByDay = dashboard.FlowsByDay.Select(DashboardFlowDayResponse.From).ToArray()
+        FlowsByDay = dashboard.FlowsByDay.Select(DashboardFlowDayResponse.From).ToArray(),
+        Financial = DashboardFinancialResponse.From(dashboard.Financial)
+    };
+}
+
+public sealed class DashboardFinancialResponse
+{
+    public int RevenueHtCents { get; init; }
+
+    public int RevenueTtcCents { get; init; }
+
+    public int VatCollectedCents { get; init; }
+
+    public IReadOnlyList<DashboardTaxRateSummaryResponse> ByTaxRate { get; init; } = [];
+
+    public static DashboardFinancialResponse? From(FinancialSummary? financial)
+        => financial is null
+            ? null
+            : new()
+            {
+                RevenueHtCents = financial.RevenueHt.Cents,
+                RevenueTtcCents = financial.RevenueTtc.Cents,
+                VatCollectedCents = financial.VatCollected.Cents,
+                ByTaxRate = financial.ByTaxRate
+                    .Select(DashboardTaxRateSummaryResponse.From)
+                    .ToArray()
+            };
+}
+
+public sealed class DashboardTaxRateSummaryResponse
+{
+    public TaxRateResponse TaxRate { get; init; } = new();
+
+    public int AmountHtCents { get; init; }
+
+    public int VatCents { get; init; }
+
+    public int AmountTtcCents { get; init; }
+
+    public static DashboardTaxRateSummaryResponse From(FinancialTaxRateSummary summary) => new()
+    {
+        TaxRate = TaxRateResponse.From(summary.TaxRate),
+        AmountHtCents = summary.AmountHt.Cents,
+        VatCents = summary.Vat.Cents,
+        AmountTtcCents = summary.AmountTtc.Cents
     };
 }
 

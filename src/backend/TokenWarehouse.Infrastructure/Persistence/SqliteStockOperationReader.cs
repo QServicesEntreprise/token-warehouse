@@ -119,14 +119,7 @@ public sealed class SqliteStockOperationReader(
         var saleSources = await LoadSaleSourcesAsync(context, entities, cancellationToken);
 
         return entities
-            .Select(entity =>
-            {
-                var read = ReadOperation(
-                    entity,
-                    entity.Lines.OrderBy(line => line.LineNumber).ToArray(),
-                    saleSources);
-                return new StockOperationReadFact(read.Operation, read.Financial?.SaleContext);
-            })
+            .Select(entity => ToFinancialReadFact(entity, saleSources))
             .OrderBy(fact => fact.Operation.TimestampUtc)
             .ThenBy(fact => fact.Operation.Id, StringComparer.Ordinal)
             .ToArray();
