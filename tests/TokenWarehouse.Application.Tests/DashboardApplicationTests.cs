@@ -7,7 +7,7 @@ namespace TokenWarehouse.Application.Tests;
 public sealed class DashboardApplicationTests
 {
     [Fact]
-    public async Task Assembles_current_kpis_alerts_and_rows_from_the_stock_contract()
+    public async Task Assembles_current_kpis_alerts_and_rows_from_the_dashboard_read_source()
     {
         var rows = new[]
         {
@@ -25,8 +25,7 @@ public sealed class DashboardApplicationTests
                 StockAvailability.OutOfStock, null),
         };
 
-        var result = await new DashboardApplication(new FakeStockContract(
-            new StockReadResult(StockReadStatus.Success, rows, null, []))).ReadAsync();
+        var result = await new DashboardApplication(new FakeDashboardSource(rows)).ReadAsync();
 
         Assert.Equal(DashboardReadStatus.Success, result.Status);
         Assert.NotNull(result.View);
@@ -43,7 +42,7 @@ public sealed class DashboardApplicationTests
             result.View.Alerts.NotSellable.Select(row => row.Ean13));
 
         var archived = result.View.StockByArticle.Single(row => row.Ean13 == "2345678901234");
-        Assert.Equal("ARCHIVED", archived.LifecycleStatus);
+        Assert.Equal(ArticleLifecycleStatus.Archived, archived.LifecycleStatus);
         Assert.Equal(4, archived.PhysicalStock);
         Assert.Equal(0, archived.SellableStock);
         Assert.Equal(4, archived.NonSellableStock);
@@ -63,8 +62,7 @@ public sealed class DashboardApplicationTests
             StockAvailability.Available,
             null);
 
-        var result = await new DashboardApplication(new FakeStockContract(
-            new StockReadResult(StockReadStatus.Success, [row], null, []))).ReadAsync();
+        var result = await new DashboardApplication(new FakeDashboardSource([row])).ReadAsync();
 
         Assert.Equal(DashboardReadStatus.Success, result.Status);
         Assert.Equal(7, result.View!.StockByArticle[0].PhysicalStock);
@@ -87,8 +85,7 @@ public sealed class DashboardApplicationTests
             StockAvailability.Available,
             null);
 
-        var result = await new DashboardApplication(new FakeStockContract(
-            new StockReadResult(StockReadStatus.Success, [invalid], null, []))).ReadAsync();
+        var result = await new DashboardApplication(new FakeDashboardSource([invalid])).ReadAsync();
 
         Assert.Equal(DashboardReadStatus.PersistenceFailed, result.Status);
         Assert.Null(result.View);
@@ -119,12 +116,9 @@ public sealed class DashboardApplicationTests
             reason);
     }
 
-    private sealed class FakeStockContract(StockReadResult result) : IStockPositionReadContract
+    private sealed class FakeDashboardSource(IReadOnlyList<StockPositionView> rows) : ICurrentDashboardReadSource
     {
-        public Task<StockReadResult> ListAsync(CancellationToken cancellationToken = default)
-            => Task.FromResult(result);
-
-        public Task<StockReadResult> GetAsync(string ean13, CancellationToken cancellationToken = default)
-            => Task.FromResult(result);
+        public Task<IReadOnlyList<StockPositionView>> ReadAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(rows);
     }
 }

@@ -94,7 +94,7 @@ public sealed class DashboardStockLineResponse
         Ean13 = line.Ean13,
         Name = line.Name,
         ArticleType = line.ArticleType == TokenWarehouse.Domain.ArticleType.Food ? "food" : "nonFood",
-        LifecycleStatus = line.LifecycleStatus,
+        LifecycleStatus = line.LifecycleStatus == ArticleLifecycleStatus.Active ? "ACTIVE" : "ARCHIVED",
         PhysicalStock = line.PhysicalStock,
         SellableStock = line.SellableStock,
         NonSellableStock = line.NonSellableStock,

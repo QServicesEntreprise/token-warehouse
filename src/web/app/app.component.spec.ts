@@ -1,8 +1,10 @@
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting, HttpTestingController } from '@angular/common/http/testing';
+import { By } from '@angular/platform-browser';
 import { TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AppComponent } from './app.component';
+import { DashboardComponent } from './dashboard.component';
 import { ArticleResponse } from './article-api.service';
 
 describe('AppComponent', () => {
@@ -402,8 +404,9 @@ describe('AppComponent', () => {
     });
     await fixture.whenStable();
     fixture.detectChanges();
+    const dashboardComponent = fixture.debugElement.query(By.directive(DashboardComponent)).componentInstance as DashboardComponent;
 
-    expect(fixture.componentInstance.dashboardState()).toBe('ready');
+    expect(dashboardComponent.dashboardState()).toBe('ready');
     expect(fixture.nativeElement.querySelector('#dashboard-kpi-physical').textContent).toContain('27');
     expect(fixture.nativeElement.querySelector('#dashboard-kpi-sellable').textContent).toContain('13');
     expect(fixture.nativeElement.querySelector('#dashboard-kpi-non-sellable').textContent).toContain('14');
@@ -425,10 +428,11 @@ describe('AppComponent', () => {
     }).createComponent(AppComponent);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
+    const dashboardComponent = fixture.debugElement.query(By.directive(DashboardComponent)).componentInstance as DashboardComponent;
     http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
     http.expectOne('/api/stock').flush([]);
     const initial = http.expectOne('/api/dashboard');
-    expect(fixture.componentInstance.dashboardState()).toBe('loading');
+    expect(dashboardComponent.dashboardState()).toBe('loading');
     expect(fixture.nativeElement.querySelector('#dashboard-state').textContent).toContain('Chargement du Dashboard');
     initial.flush({
       kpis: { physicalStock: 0, sellableStock: 0, nonSellableStock: 0 },
@@ -437,20 +441,20 @@ describe('AppComponent', () => {
     });
     await fixture.whenStable();
     fixture.detectChanges();
-    expect(fixture.componentInstance.dashboardState()).toBe('empty');
+    expect(dashboardComponent.dashboardState()).toBe('empty');
     expect(fixture.nativeElement.querySelector('#dashboard-state').textContent).toContain('Aucun Article');
 
-    fixture.componentInstance.retryDashboard();
+    dashboardComponent.retryDashboard();
     const failed = http.expectOne('/api/dashboard');
     failed.flush({ title: 'Le Dashboard est indisponible.' }, { status: 500, statusText: 'Server Error' });
     await fixture.whenStable();
     fixture.detectChanges();
-    expect(fixture.componentInstance.dashboardState()).toBe('error');
+    expect(dashboardComponent.dashboardState()).toBe('error');
     expect(fixture.nativeElement.querySelector('#dashboard-state [role="alert"]').textContent)
       .toContain('indisponible');
     expect(fixture.nativeElement.querySelector('#dashboard-table')).toBeNull();
 
-    fixture.componentInstance.retryDashboard();
+    dashboardComponent.retryDashboard();
     const retry = http.expectOne('/api/dashboard');
     retry.flush({
       kpis: { physicalStock: 1, sellableStock: 1, nonSellableStock: 0 },
@@ -469,7 +473,7 @@ describe('AppComponent', () => {
     });
     await fixture.whenStable();
     fixture.detectChanges();
-    expect(fixture.componentInstance.dashboardState()).toBe('ready');
+    expect(dashboardComponent.dashboardState()).toBe('ready');
     expect(fixture.nativeElement.querySelector('#dashboard-table').textContent).toContain('Article retrouvé');
     http.verify();
   });

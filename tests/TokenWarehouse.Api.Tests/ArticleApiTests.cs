@@ -533,6 +533,8 @@ public sealed class ArticleApiTests
             consumptionModes = new[] { "takeaway" }
         }, "5678901234562");
 
+        var positionsBeforeReads = await CountStockPositionsAsync(factory.Services);
+        var operationsBeforeReads = await CountStockOperationsAsync(factory.Services);
         using var first = await client.GetAsync("/api/dashboard");
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
         Assert.Equal("application/json", first.Content.Headers.ContentType?.MediaType);
@@ -566,10 +568,20 @@ public sealed class ArticleApiTests
         Assert.Equal(4, archived.GetProperty("nonSellableStock").GetInt32());
         Assert.Equal("ARCHIVED", archived.GetProperty("reason").GetString());
 
-        Assert.Equal(0, await CountStockPositionsAsync(factory.Services, "5678901234562"));
+        Assert.Equal(positionsBeforeReads, await CountStockPositionsAsync(factory.Services));
+        Assert.Equal(operationsBeforeReads, await CountStockOperationsAsync(factory.Services));
         using var second = await client.GetAsync("/api/dashboard");
         Assert.Equal(firstBody, await second.Content.ReadAsStringAsync());
-        Assert.Equal(0, await CountStockPositionsAsync(factory.Services, "5678901234562"));
+        Assert.Equal(positionsBeforeReads, await CountStockPositionsAsync(factory.Services));
+        Assert.Equal(operationsBeforeReads, await CountStockOperationsAsync(factory.Services));
+
+        using var reopened = factory.Reopen();
+        using var reopenedClient = reopened.CreateClient();
+        using var reopenedResponse = await reopenedClient.GetAsync("/api/dashboard");
+        Assert.Equal(HttpStatusCode.OK, reopenedResponse.StatusCode);
+        Assert.Equal(firstBody, await reopenedResponse.Content.ReadAsStringAsync());
+        Assert.Equal(positionsBeforeReads, await CountStockPositionsAsync(reopened.Services));
+        Assert.Equal(operationsBeforeReads, await CountStockOperationsAsync(reopened.Services));
     }
 
     [Fact]
@@ -1430,20 +1442,47 @@ public sealed class ArticleApiTests
         return await context.StockPositions.CountAsync(position => position.Ean13 == ean13);
     }
 
+    private static async Task<int> CountStockPositionsAsync(IServiceProvider services)
+    {
+        using var scope = services.CreateScope();
+        var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>();
+        await using var context = await contextFactory.CreateDbContextAsync();
+        return await context.StockPositions.CountAsync();
+    }
+
+    private static async Task<int> CountStockOperationsAsync(IServiceProvider services)
+    {
+        using var scope = services.CreateScope();
+        var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>();
+        await using var context = await contextFactory.CreateDbContextAsync();
+        return await context.StockOperations.CountAsync();
+    }
+
     private sealed class ArticleHostFactory : WebApplicationFactory<Program>
     {
-        private readonly string databasePath = Path.Combine(Path.GetTempPath(), $"token-warehouse-article-{Guid.NewGuid():N}.db");
+        private readonly string databasePath;
+        private readonly bool ownsDatabase;
         private readonly CultureInfo? requestCulture;
         private readonly MutableClock? fixedClock;
 
-        public ArticleHostFactory(CultureInfo? requestCulture = null, DateTimeOffset? fixedNow = null)
+        public ArticleHostFactory(
+            CultureInfo? requestCulture = null,
+            DateTimeOffset? fixedNow = null,
+            string? databasePath = null,
+            bool ownsDatabase = true)
         {
+            this.databasePath = databasePath
+                ?? Path.Combine(Path.GetTempPath(), $"token-warehouse-article-{Guid.NewGuid():N}.db");
+            this.ownsDatabase = ownsDatabase;
             this.requestCulture = requestCulture;
             fixedClock = fixedNow is { } now ? new MutableClock(now) : null;
         }
 
         public void SetNow(DateTimeOffset now)
             => (fixedClock ?? throw new InvalidOperationException("A fixed clock is required.")).Now = now;
+
+        public ArticleHostFactory Reopen()
+            => new(requestCulture, fixedClock?.Now, databasePath, false);
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -1470,9 +1509,12 @@ public sealed class ArticleApiTests
             base.Dispose(disposing);
             if (disposing)
             {
-                File.Delete(databasePath);
-                File.Delete($"{databasePath}-shm");
-                File.Delete($"{databasePath}-wal");
+                if (ownsDatabase)
+                {
+                    File.Delete(databasePath);
+                    File.Delete($"{databasePath}-shm");
+                    File.Delete($"{databasePath}-wal");
+                }
             }
         }
     }

@@ -16,6 +16,7 @@ public static class SqlitePersistenceRegistration
         services.AddScoped<IArticleSellabilityBatchReader>(services =>
             (IArticleSellabilityBatchReader)services.GetRequiredService<IArticleSellabilityReader>());
         services.AddScoped<IStockReadReader, SqliteStockReadReader>();
+        services.AddScoped<ICurrentDashboardReadSource, SqliteCurrentDashboardReadSource>();
         services.AddScoped<IStockPositionReader, SqliteStockPositionReader>();
         services.AddScoped<SqliteSupplyCommitter>();
         services.AddScoped<ISupplyCommitter>(services =>

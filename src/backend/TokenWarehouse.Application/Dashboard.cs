@@ -11,7 +11,7 @@ public sealed record DashboardStockLineView(
     string Ean13,
     string Name,
     ArticleType ArticleType,
-    string LifecycleStatus,
+    ArticleLifecycleStatus LifecycleStatus,
     int PhysicalStock,
     int SellableStock,
     int NonSellableStock,
@@ -42,7 +42,12 @@ public interface IReadCurrentDashboardUseCase
     Task<DashboardReadResult> ReadAsync(CancellationToken cancellationToken = default);
 }
 
-public sealed class DashboardApplication(IStockPositionReadContract stockContract)
+public interface ICurrentDashboardReadSource
+{
+    Task<IReadOnlyList<StockPositionView>> ReadAsync(CancellationToken cancellationToken = default);
+}
+
+public sealed class DashboardApplication(ICurrentDashboardReadSource readSource)
     : IReadCurrentDashboardUseCase
 {
     public async Task<DashboardReadResult> ReadAsync(
@@ -50,13 +55,7 @@ public sealed class DashboardApplication(IStockPositionReadContract stockContrac
     {
         try
         {
-            var stock = await stockContract.ListAsync(cancellationToken);
-            if (stock.Status != StockReadStatus.Success)
-            {
-                return Failure();
-            }
-
-            var rows = stock.Positions
+            var rows = (await readSource.ReadAsync(cancellationToken))
                 .OrderBy(position => position.Ean13.Value, StringComparer.Ordinal)
                 .Select(ToLine)
                 .ToArray();
@@ -75,12 +74,11 @@ public sealed class DashboardApplication(IStockPositionReadContract stockContrac
                     physicalStock - sellableStock),
                 new DashboardAlertsView(
                     rows
-                        .Where(row => row.LifecycleStatus == "ACTIVE"
-                            && row.PhysicalStock == 0
-                            && row.SellableStock == 0)
+                        .Where(row => row.Availability == StockAvailability.OutOfStock
+                            && row.LifecycleStatus == ArticleLifecycleStatus.Active)
                         .ToArray(),
                     rows
-                        .Where(row => row.PhysicalStock > 0 && row.SellableStock == 0)
+                        .Where(row => row.Availability == StockAvailability.NotSellable)
                         .ToArray()),
                 rows);
 
@@ -114,7 +112,7 @@ public sealed class DashboardApplication(IStockPositionReadContract stockContrac
             position.Ean13.Value,
             position.Name,
             position.Type,
-            position.IsActive ? "ACTIVE" : "ARCHIVED",
+            position.IsActive ? ArticleLifecycleStatus.Active : ArticleLifecycleStatus.Archived,
             position.PhysicalQuantity,
             position.SellableQuantity,
             position.PhysicalQuantity - position.SellableQuantity,

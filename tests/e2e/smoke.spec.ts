@@ -416,66 +416,55 @@ test('consults the current Dashboard with aligned KPIs, alerts and keyboard link
   await expect(page.locator('#dashboard-panel #dashboard-kpi-physical')).toContainText('49 unités');
 });
 
-test('announces Dashboard loading, empty and error states', async ({ page }) => {
-  const dashboardState = page.locator('#dashboard-state');
-  const dashboardRoute = /\/api\/dashboard$/;
-  let releaseLoading!: () => void;
-  const loading = new Promise<void>((resolve) => {
-    releaseLoading = resolve;
-  });
-  const delayedDashboardRoute = async (route: Route) => {
-    await loading;
-    await route.continue();
-  };
+test.describe('Dashboard states', () => {
+  test.use({ e2eSeed: 'empty' });
 
-  await page.route(dashboardRoute, delayedDashboardRoute);
-  const navigation = page.goto('/');
-  await expect(dashboardState).toContainText('Chargement du Dashboard');
-  releaseLoading();
-  await navigation;
-  await expect(dashboardState).toContainText('Articles suivis');
-  await page.unroute(dashboardRoute, delayedDashboardRoute);
+  test('announces Dashboard loading, empty and error states', async ({ page }) => {
+    const dashboardState = page.locator('#dashboard-state');
+    const dashboardRoute = /\/api\/dashboard$/;
+    let releaseLoading!: () => void;
+    const loading = new Promise<void>((resolve) => {
+      releaseLoading = resolve;
+    });
+    const delayedDashboardRoute = async (route: Route) => {
+      await loading;
+      await route.continue();
+    };
 
-  let responseState: 'empty' | 'error' | 'ready' = 'empty';
-  const stateRoute = async (route: Route) => {
-    if (responseState === 'empty') {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          kpis: { physicalStock: 0, sellableStock: 0, nonSellableStock: 0 },
-          alerts: { outOfStock: [], notSellable: [] },
-          stockByArticle: [],
-        }),
-      });
-      return;
-    }
+    await page.route(dashboardRoute, delayedDashboardRoute);
+    const navigation = page.goto('/');
+    await expect(dashboardState).toContainText('Chargement du Dashboard');
+    releaseLoading();
+    await navigation;
+    await expect(dashboardState).toContainText('Aucun Article');
+    await page.unroute(dashboardRoute, delayedDashboardRoute);
 
-    if (responseState === 'error') {
+    const stateRoute = async (route: Route) => {
       await route.fulfill({
         status: 500,
         contentType: 'application/problem+json',
         body: JSON.stringify({ title: 'Le Dashboard est indisponible.', code: 'internal_error' }),
       });
-      return;
-    }
+    };
+    await page.route(dashboardRoute, stateRoute);
 
-    await route.continue();
-  };
-  await page.route(dashboardRoute, stateRoute);
+    await page.reload();
+    await expect(dashboardState.locator('[role="alert"]')).toContainText('indisponible');
+    await expect(page.locator('#dashboard-table')).toHaveCount(0);
+    await page.unroute(dashboardRoute, stateRoute);
 
-  await page.reload();
-  await expect(dashboardState).toContainText('Aucun Article');
+    await page.locator('#ean13').fill('0123456789012');
+    await page.locator('#name').fill('Article Dashboard');
+    await page.locator('#priceHtCents').fill('1000');
+    await page.locator('#dlc').fill('2030-01-15');
+    await page.locator('#consumptionModes').getByLabel('À emporter').check();
+    await page.getByRole('button', { name: 'Créer l’Article' }).click();
+    await expect(page.getByRole('heading', { name: 'Article Dashboard' })).toBeVisible();
 
-  responseState = 'error';
-  await page.reload();
-  await expect(dashboardState.locator('[role="alert"]')).toContainText('indisponible');
-  await expect(page.locator('#dashboard-table')).toHaveCount(0);
-
-  responseState = 'ready';
-  await page.getByRole('button', { name: 'Réessayer', exact: true }).click();
-  await expect(dashboardState).toContainText('Articles suivis');
-  await page.unroute(dashboardRoute, stateRoute);
+    await page.getByRole('button', { name: 'Réessayer', exact: true }).click();
+    await expect(dashboardState).toContainText('Article suivi');
+    await expect(page.locator('#dashboard-table')).toContainText('Article Dashboard');
+  });
 });
 
 test('records a unit supply and shows the committed stocks after reload', async ({ page }) => {
