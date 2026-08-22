@@ -102,6 +102,23 @@ h1 {
   margin-top: 0;
 }
 
+.dashboard-filters {
+  align-items: end;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+}
+
+.dashboard-filters button {
+  margin-top: 0;
+}
+
+.dashboard-calendar-note {
+  color: #53627b;
+  font-size: 0.9rem;
+  grid-column: 1 / -1;
+}
+
 .dashboard-kpis,
 .dashboard-alerts {
   display: grid;

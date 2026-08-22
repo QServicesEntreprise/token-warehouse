@@ -8,10 +8,21 @@ public static class DashboardEndpoints
     public static void MapDashboardEndpoints(this WebApplication app)
     {
         app.MapGet("/api/dashboard", async (
+            string? from,
+            string? to,
+            string? type,
+            string? mode,
+            string? packaging,
             IReadCurrentDashboardUseCase useCase,
             CancellationToken cancellationToken) =>
         {
-            var result = await useCase.ReadAsync(cancellationToken);
+            var parsed = DashboardQueryParser.Parse(from, to, type, mode, packaging);
+            if (!parsed.IsSuccess)
+            {
+                return ValidationProblem(parsed);
+            }
+
+            var result = await useCase.ReadAsync(parsed.Query!, cancellationToken);
             return result.Status == DashboardReadStatus.Success
                 ? Results.Ok(DashboardResponse.From(result.View!))
                 : PersistenceProblem();
@@ -25,6 +36,21 @@ public static class DashboardEndpoints
             extensions: new Dictionary<string, object?>
             {
                 ["code"] = "dashboard.persistence_failure"
+            });
+
+    private static IResult ValidationProblem(DashboardQueryParseResult parsed)
+        => Results.Problem(
+            statusCode: StatusCodes.Status400BadRequest,
+            title: "La requête du Dashboard est invalide.",
+            extensions: new Dictionary<string, object?>
+            {
+                ["code"] = parsed.ErrorCode ?? "dashboard.invalid_request",
+                ["errors"] = parsed.Errors
+                    .GroupBy(error => error.Field, StringComparer.Ordinal)
+                    .ToDictionary(
+                        group => group.Key,
+                        group => group.Select(error => error.Message).ToArray(),
+                        StringComparer.Ordinal)
             });
 }
 

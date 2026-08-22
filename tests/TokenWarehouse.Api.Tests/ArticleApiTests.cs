@@ -535,7 +535,7 @@ public sealed class ArticleApiTests
 
         var positionsBeforeReads = await CountStockPositionsAsync(factory.Services);
         var operationsBeforeReads = await CountStockOperationsAsync(factory.Services);
-        using var first = await client.GetAsync("/api/dashboard");
+        using var first = await client.GetAsync("/api/dashboard?from=2030-01-01&to=2030-01-31");
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
         Assert.Equal("application/json", first.Content.Headers.ContentType?.MediaType);
         var firstBody = await first.Content.ReadAsStringAsync();
@@ -570,14 +570,14 @@ public sealed class ArticleApiTests
 
         Assert.Equal(positionsBeforeReads, await CountStockPositionsAsync(factory.Services));
         Assert.Equal(operationsBeforeReads, await CountStockOperationsAsync(factory.Services));
-        using var second = await client.GetAsync("/api/dashboard");
+        using var second = await client.GetAsync("/api/dashboard?from=2030-01-01&to=2030-01-31");
         Assert.Equal(firstBody, await second.Content.ReadAsStringAsync());
         Assert.Equal(positionsBeforeReads, await CountStockPositionsAsync(factory.Services));
         Assert.Equal(operationsBeforeReads, await CountStockOperationsAsync(factory.Services));
 
         using var reopened = factory.Reopen();
         using var reopenedClient = reopened.CreateClient();
-        using var reopenedResponse = await reopenedClient.GetAsync("/api/dashboard");
+        using var reopenedResponse = await reopenedClient.GetAsync("/api/dashboard?from=2030-01-01&to=2030-01-31");
         Assert.Equal(HttpStatusCode.OK, reopenedResponse.StatusCode);
         Assert.Equal(firstBody, await reopenedResponse.Content.ReadAsStringAsync());
         Assert.Equal(positionsBeforeReads, await CountStockPositionsAsync(reopened.Services));
@@ -590,7 +590,7 @@ public sealed class ArticleApiTests
         using var factory = new ArticleHostFactory();
         using var client = factory.CreateClient();
 
-        using var response = await client.GetAsync("/api/dashboard");
+        using var response = await client.GetAsync("/api/dashboard?from=2030-01-01&to=2030-01-31");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
@@ -601,6 +601,144 @@ public sealed class ArticleApiTests
         Assert.Empty(root.GetProperty("alerts").GetProperty("outOfStock").EnumerateArray());
         Assert.Empty(root.GetProperty("alerts").GetProperty("notSellable").EnumerateArray());
         Assert.Empty(root.GetProperty("stockByArticle").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task Dashboard_requires_explicit_period_bounds()
+    {
+        using var factory = new ArticleHostFactory();
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync("/api/dashboard");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("dashboard.missing_period", body.RootElement.GetProperty("code").GetString());
+        Assert.True(body.RootElement.GetProperty("errors").TryGetProperty("from", out _));
+        Assert.True(body.RootElement.GetProperty("errors").TryGetProperty("to", out _));
+    }
+
+    [Theory]
+    [InlineData("/api/dashboard?from=2030-02-30&to=2030-03-31", "dashboard.invalid_date", "from")]
+    [InlineData("/api/dashboard?from=2030-04-01&to=2030-03-31", "dashboard.reversed_period", "from")]
+    [InlineData("/api/dashboard?from=2030-03-01&to=2030-03-31&type=unknown", "dashboard.unsupported_filter", "type")]
+    [InlineData("/api/dashboard?from=2030-03-01T00:00:00Z&to=2030-03-31", "dashboard.invalid_date", "from")]
+    public async Task Dashboard_rejects_structurally_invalid_periods_and_filters(
+        string path,
+        string code,
+        string field)
+    {
+        using var factory = new ArticleHostFactory();
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync(path);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(code, body.RootElement.GetProperty("code").GetString());
+        Assert.True(body.RootElement.GetProperty("errors").TryGetProperty(field, out _));
+    }
+
+    [Fact]
+    public async Task Dashboard_combines_article_dimensions_with_and_and_keeps_current_positions_across_periods()
+    {
+        var day = new DateTimeOffset(2030, 3, 15, 10, 0, 0, TimeSpan.Zero);
+        using var factory = new ArticleHostFactory(fixedNow: day);
+        using var client = factory.CreateClient();
+
+        async Task CreateArticle(object payload, string ean13, int? physicalQuantity = null)
+        {
+            using var response = await client.PostAsJsonAsync("/api/articles", payload);
+            Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+            if (physicalQuantity is not null)
+            {
+                await SeedStockPositionAsync(factory.Services, ean13, physicalQuantity.Value);
+            }
+        }
+
+        await CreateArticle(new
+        {
+            ean13 = "0123456789012",
+            type = "food",
+            name = "Alimentaire double mode",
+            priceHtCents = 100,
+            dlc = "2030-03-15",
+            consumptionModes = new[] { "takeaway", "onsite" }
+        }, "0123456789012", 5);
+        await CreateArticle(new
+        {
+            ean13 = "1234567890128",
+            type = "food",
+            name = "Alimentaire à emporter",
+            priceHtCents = 100,
+            dlc = "2030-03-14",
+            consumptionModes = new[] { "takeaway" }
+        }, "1234567890128", 7);
+        await CreateArticle(new
+        {
+            ean13 = "3456789012340",
+            type = "nonFood",
+            name = "Packaging invendable",
+            priceHtCents = 100,
+            packaging = "unsellable"
+        }, "3456789012340", 3);
+        await CreateArticle(new
+        {
+            ean13 = "4567890123456",
+            type = "nonFood",
+            name = "Packaging neuf",
+            priceHtCents = 100,
+            packaging = "new"
+        }, "4567890123456", 8);
+
+        static async Task<(JsonDocument Body, HttpResponseMessage Response)> ReadDashboardAsync(
+            HttpClient client,
+            string query)
+        {
+            var response = await client.GetAsync($"/api/dashboard?{query}");
+            var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            return (body, response);
+        }
+
+        var filtered = await ReadDashboardAsync(
+            client,
+            "from=2030-03-01&to=2030-03-31&type=food&mode=onsite");
+        using (filtered.Body)
+        using (filtered.Response)
+        {
+            Assert.Equal(HttpStatusCode.OK, filtered.Response.StatusCode);
+            var rows = filtered.Body.RootElement.GetProperty("stockByArticle").EnumerateArray().ToArray();
+            Assert.Equal(["0123456789012"], rows.Select(row => row.GetProperty("ean13").GetString()!).ToArray());
+            Assert.Equal(5, filtered.Body.RootElement.GetProperty("kpis").GetProperty("physicalStock").GetInt32());
+        }
+
+        var incompatible = await ReadDashboardAsync(
+            client,
+            "from=2030-03-01&to=2030-03-31&type=food&packaging=new");
+        using (incompatible.Body)
+        using (incompatible.Response)
+        {
+            Assert.Equal(HttpStatusCode.OK, incompatible.Response.StatusCode);
+            Assert.Empty(incompatible.Body.RootElement.GetProperty("stockByArticle").EnumerateArray());
+            Assert.Equal(0, incompatible.Body.RootElement.GetProperty("kpis").GetProperty("physicalStock").GetInt32());
+        }
+
+        var packaging = await ReadDashboardAsync(
+            client,
+            "from=2028-01-01&to=2028-01-01&packaging=new");
+        using (packaging.Body)
+        using (packaging.Response)
+        {
+            Assert.Equal(HttpStatusCode.OK, packaging.Response.StatusCode);
+            Assert.Equal(
+                ["4567890123456"],
+                packaging.Body.RootElement.GetProperty("stockByArticle")
+                    .EnumerateArray()
+                    .Select(row => row.GetProperty("ean13").GetString()!)
+                    .ToArray());
+        }
     }
 
     [Theory]
@@ -1375,7 +1513,7 @@ public sealed class ArticleApiTests
             Assert.DoesNotContain("SQLite", body, StringComparison.OrdinalIgnoreCase);
         }
 
-        using var dashboard = await client.GetAsync("/api/dashboard");
+        using var dashboard = await client.GetAsync("/api/dashboard?from=2030-01-01&to=2030-01-31");
         Assert.Equal(HttpStatusCode.InternalServerError, dashboard.StatusCode);
         Assert.Equal("application/problem+json", dashboard.Content.Headers.ContentType?.MediaType);
         using var dashboardBody = JsonDocument.Parse(await dashboard.Content.ReadAsStringAsync());

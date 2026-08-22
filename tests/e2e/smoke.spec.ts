@@ -429,12 +429,63 @@ test('consults the current Dashboard with aligned KPIs, alerts and keyboard link
   await expect(page.locator('#dashboard-panel #dashboard-kpi-physical')).toContainText('27 unités');
 });
 
+test('filters the Dashboard by explicit period and Article dimensions', async ({ page }) => {
+  const dashboard = page.locator('#dashboard-panel');
+  const dashboardResponse = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'GET' && url.pathname === '/api/dashboard';
+  });
+
+  await page.goto('/');
+  await expect(page.locator('#dashboard-from')).toHaveValue('2030-01-01');
+  await expect(page.locator('#dashboard-to')).toHaveValue('2030-01-31');
+  const initialResponse = await dashboardResponse;
+  expect(initialResponse.url()).toContain('from=2030-01-01');
+  expect(initialResponse.url()).toContain('to=2030-01-31');
+
+  const filteredResponse = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'GET'
+      && url.pathname === '/api/dashboard'
+      && url.searchParams.get('type') === 'food'
+      && url.searchParams.get('mode') === 'onsite';
+  });
+  await page.locator('#dashboard-type').selectOption('food');
+  await page.locator('#dashboard-mode').selectOption('onsite');
+  await page.getByRole('button', { name: 'Lire le Dashboard' }).click();
+  const response = await filteredResponse;
+  expect(response.status()).toBe(200);
+  expect(new URL(response.url()).searchParams.get('from')).toBe('2030-01-01');
+  expect(new URL(response.url()).searchParams.get('to')).toBe('2030-01-31');
+  await expect(dashboard.locator('#dashboard-table').getByRole('row', { name: /Alimentaire aux deux modes/ }))
+    .toBeVisible();
+  await expect(dashboard.locator('#dashboard-table').getByRole('row', { name: /Alimentaire à DLC dépassée/ }))
+    .toHaveCount(0);
+  await expect(dashboard.locator('#dashboard-kpi-physical')).toContainText('5 unités');
+
+  const packagingResponse = page.waitForResponse((candidate) => {
+    const url = new URL(candidate.url());
+    return candidate.request().method() === 'GET'
+      && url.pathname === '/api/dashboard'
+      && url.searchParams.get('type') === 'nonFood'
+      && url.searchParams.get('packaging') === 'new';
+  });
+  await page.locator('#dashboard-type').selectOption('nonFood');
+  await page.locator('#dashboard-packaging').selectOption('new');
+  await page.getByRole('button', { name: 'Lire le Dashboard' }).click();
+  expect((await packagingResponse).status()).toBe(200);
+  await expect(dashboard.locator('#dashboard-table').getByRole('row', { name: /Article archivé/ }))
+    .toBeVisible();
+  await expect(dashboard.locator('#dashboard-table').getByRole('row', { name: /Article actif vendable/ }))
+    .toBeVisible();
+});
+
 test.describe('Dashboard states', () => {
   test.use({ e2eSeed: 'empty' });
 
   test('announces Dashboard loading, empty and error states', async ({ page }) => {
     const dashboardState = page.locator('#dashboard-state');
-    const dashboardRoute = /\/api\/dashboard$/;
+    const dashboardRoute = /\/api\/dashboard(?:\?.*)?$/;
     let releaseLoading!: () => void;
     const loading = new Promise<void>((resolve) => {
       releaseLoading = resolve;

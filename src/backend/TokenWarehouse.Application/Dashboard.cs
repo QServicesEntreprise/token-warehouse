@@ -2,6 +2,46 @@ using TokenWarehouse.Domain;
 
 namespace TokenWarehouse.Application;
 
+public sealed record WarehouseDateRange(DateOnly From, DateOnly To);
+
+public sealed record DashboardArticleSelection(
+    ArticleType? Type,
+    ConsumptionMode? Mode,
+    PackagingCondition? Packaging)
+{
+    public bool Matches(StockPositionView position)
+        => (Type is null || position.Type == Type)
+            && (Mode is null
+                || (position.Type == ArticleType.Food && position.ConsumptionModes.Contains(Mode.Value)))
+            && (Packaging is null
+                || (position.Type == ArticleType.NonFood && position.Packaging == Packaging.Value));
+}
+
+public sealed record DashboardQuery(
+    WarehouseDateRange Period,
+    DashboardArticleSelection Selection);
+
+public interface IWarehouseCalendar
+{
+    DateOnly WarehouseDate { get; }
+
+    WarehouseDateRange CurrentMonth { get; }
+}
+
+public sealed class WarehouseCalendar(IClock clock) : IWarehouseCalendar
+{
+    public DateOnly WarehouseDate => clock.WarehouseDate;
+
+    public WarehouseDateRange CurrentMonth
+    {
+        get
+        {
+            var first = new DateOnly(WarehouseDate.Year, WarehouseDate.Month, 1);
+            return new(first, first.AddMonths(1).AddDays(-1));
+        }
+    }
+}
+
 public sealed record DashboardKpiView(
     int PhysicalStock,
     int SellableStock,
@@ -39,23 +79,31 @@ public sealed record DashboardReadResult(
 
 public interface IReadCurrentDashboardUseCase
 {
-    Task<DashboardReadResult> ReadAsync(CancellationToken cancellationToken = default);
+    Task<DashboardReadResult> ReadAsync(
+        DashboardQuery query,
+        CancellationToken cancellationToken = default);
 }
 
 public interface ICurrentDashboardReadSource
 {
-    Task<IReadOnlyList<StockPositionView>> ReadAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<StockPositionView>> ReadAsync(
+        DashboardQuery query,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class DashboardApplication(ICurrentDashboardReadSource readSource)
     : IReadCurrentDashboardUseCase
 {
     public async Task<DashboardReadResult> ReadAsync(
+        DashboardQuery query,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(query);
+
         try
         {
-            var rows = (await readSource.ReadAsync(cancellationToken))
+            var rows = (await readSource.ReadAsync(query, cancellationToken))
+                .Where(query.Selection.Matches)
                 .OrderBy(position => position.Ean13.Value, StringComparer.Ordinal)
                 .Select(ToLine)
                 .ToArray();
