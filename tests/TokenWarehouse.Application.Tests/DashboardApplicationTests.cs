@@ -73,6 +73,59 @@ public sealed class DashboardApplicationTests
     }
 
     [Fact]
+    public async Task Adds_signed_financial_summary_using_historical_context_and_period()
+    {
+        var rows = new[]
+        {
+            View("0123456789012", "À emporter", ArticleType.Food, true, 1, 1,
+                StockAvailability.Available, null, [ConsumptionMode.Takeaway]),
+            View("1234567890128", "Sur place", ArticleType.Food, true, 1, 1,
+                StockAvailability.Available, null, [ConsumptionMode.OnSite]),
+            View("2345678901234", "Non alimentaire", ArticleType.NonFood, true, 1, 1,
+                StockAvailability.Available, null, packaging: PackagingCondition.New)
+        };
+        var facts = new[]
+        {
+            Fact("sale-takeaway", "0123456789012", "2030-01-10T10:00:00Z", TaxRate.Takeaway,
+                SaleContext.Takeaway, 1000, 55, 1055),
+            Fact("sale-onsite", "1234567890128", "2030-01-10T11:00:00Z", TaxRate.OnSite,
+                SaleContext.OnSite, 1000, 100, 1100),
+            Fact("sale-non-food", "2345678901234", "2030-01-10T12:00:00Z", TaxRate.NonFood,
+                null, 1000, 200, 1200),
+            Fact("counter-onsite", "1234567890128", "2030-01-20T10:00:00Z", TaxRate.OnSite,
+                SaleContext.OnSite, -1000, -100, -1100, "sale-onsite")
+        };
+        var application = new DashboardApplication(
+            new FakeDashboardSource(rows, financialFacts: facts),
+            Calendar());
+
+        var all = await application.ReadAsync(AllQuery());
+        var onsite = await application.ReadAsync(
+            new DashboardQueryRequest("2030-01-01", "2030-01-31", "food", "onsite", null));
+        var correctionOnly = await application.ReadAsync(
+            new DashboardQueryRequest("2030-01-20", "2030-01-20", null, null, null));
+
+        Assert.Equal((2000, 255, 2255), (
+            all.View!.Financial.RevenueHt.Cents,
+            all.View.Financial.VatCollected.Cents,
+            all.View.Financial.RevenueTtc.Cents));
+        Assert.Equal(
+            [(1000, 55, 1055), (0, 0, 0), (1000, 200, 1200)],
+            all.View.Financial.ByTaxRate.Select(line => (
+                line.AmountHt.Cents,
+                line.Vat.Cents,
+                line.AmountTtc.Cents)));
+        Assert.Equal((0, 0, 0), (
+            onsite.View!.Financial.RevenueHt.Cents,
+            onsite.View.Financial.VatCollected.Cents,
+            onsite.View.Financial.RevenueTtc.Cents));
+        Assert.Equal((-1000, -100, -1100), (
+            correctionOnly.View!.Financial.RevenueHt.Cents,
+            correctionOnly.View.Financial.VatCollected.Cents,
+            correctionOnly.View.Financial.RevenueTtc.Cents));
+    }
+
+    [Fact]
     public async Task Rejects_an_invalid_stock_quantity_instead_of_clamping_it()
     {
         var invalid = View(
@@ -171,6 +224,10 @@ public sealed class DashboardApplicationTests
             new WarehouseDateRange(new DateOnly(2030, 4, 1), new DateOnly(2030, 4, 30)),
             calendar.CurrentMonth);
         Assert.Equal(calendar.WarehouseDate, calendar.ToWarehouseDate(instant));
+        var period = calendar.ToUtcPeriod(
+            new WarehouseDateRange(new DateOnly(2030, 4, 1), new DateOnly(2030, 4, 1)));
+        Assert.Equal(new DateTimeOffset(2030, 3, 31, 22, 0, 0, TimeSpan.Zero), period.FromUtc);
+        Assert.Equal(new DateTimeOffset(2030, 4, 1, 22, 0, 0, TimeSpan.Zero), period.ToUtc);
     }
 
     [Fact]
@@ -407,11 +464,40 @@ public sealed class DashboardApplicationTests
             reason);
     }
 
+    private static SaleFinancialFact Fact(
+        string operationId,
+        string ean13,
+        string timestamp,
+        TaxRate taxRate,
+        SaleContext? saleContext,
+        int amountHt,
+        int vat,
+        int amountTtc,
+        string? sourceOperationId = null)
+        => new(
+            operationId,
+            sourceOperationId is null ? SaleFinancialFactType.Sale : SaleFinancialFactType.CounterMovement,
+            DateTimeOffset.Parse(timestamp),
+            Ean13.TryCreate(ean13, out var parsed) ? parsed : throw new InvalidOperationException(),
+            1,
+            Money.FromCents(1000),
+            saleContext,
+            taxRate,
+            Money.FromCents(amountHt),
+            Money.FromCents(vat),
+            Money.FromCents(amountTtc),
+            sourceOperationId,
+            sourceOperationId is null ? null : "Correction");
+
     private sealed class FakeDashboardSource(
         IReadOnlyList<StockPositionView> rows,
-        IReadOnlyList<StockOperationReadView>? operations = null) : ICurrentDashboardReadSource
+        IReadOnlyList<StockOperationReadView>? operations = null,
+        IReadOnlyList<SaleFinancialFact>? financialFacts = null) : ICurrentDashboardReadSource
     {
-        private readonly DashboardReadSnapshot snapshot = new(rows, operations ?? []);
+        private readonly DashboardReadSnapshot snapshot = new(rows, operations ?? [])
+        {
+            FinancialFacts = financialFacts ?? []
+        };
 
         public int Calls { get; private set; }
 

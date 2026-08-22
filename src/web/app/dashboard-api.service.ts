@@ -44,6 +44,18 @@ export interface DashboardFlowDayResponse {
   sales: number;
 }
 
+export interface DashboardTaxRateSummaryResponse {
+  taxRate: {
+    code: 'takeaway' | 'onsite' | 'nonFood';
+    ratio: string;
+    numerator: number;
+    denominator: number;
+  };
+  amountHtCents: number;
+  vatCents: number;
+  amountTtcCents: number;
+}
+
 export interface DashboardResponse {
   kpis: {
     physicalStock: number;
@@ -56,6 +68,12 @@ export interface DashboardResponse {
   };
   stockByArticle: DashboardStockLineResponse[];
   flowsByDay: DashboardFlowDayResponse[];
+  financial: {
+    revenueHtCents: number;
+    revenueTtcCents: number;
+    vatCollectedCents: number;
+    byTaxRate: DashboardTaxRateSummaryResponse[];
+  };
 }
 
 @Injectable({ providedIn: 'root' })

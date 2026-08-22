@@ -32,7 +32,14 @@ public sealed class SqliteCurrentDashboardReadSource(
             .ThenBy(fact => fact.Operation.Id, StringComparer.Ordinal)
             .Select(StockOperationReadView.From)
             .ToArray();
+        var financialFacts = operationFacts
+            .Where(SaleFinancialFactReader.IsFinancial)
+            .Select(SaleFinancialFactReader.From)
+            .ToArray();
 
-        return new(positions, operations);
+        return new(positions, operations)
+        {
+            FinancialFacts = financialFacts
+        };
     }
 }

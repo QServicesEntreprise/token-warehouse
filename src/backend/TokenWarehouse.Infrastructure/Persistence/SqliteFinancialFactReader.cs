@@ -26,10 +26,8 @@ public sealed class SqliteFinancialFactReader(
         {
             var operations = await operationReader.ListForFinancialAsync(cancellationToken);
             var facts = operations
-                .Where(fact => fact.Operation.Type == StockOperationType.Sale
-                    || (fact.Operation.Type == StockOperationType.CounterMovement
-                        && fact.Operation.SourceOperationType == StockOperationType.Sale))
-                .Select(ToFact)
+                .Where(SaleFinancialFactReader.IsFinancial)
+                .Select(SaleFinancialFactReader.From)
                 .Where(fact => period.Contains(fact.TimestampUtc))
                 .OrderBy(fact => fact.TimestampUtc)
                 .ThenBy(fact => fact.OperationId, StringComparer.Ordinal)
@@ -52,51 +50,4 @@ public sealed class SqliteFinancialFactReader(
         }
     }
 
-    private static SaleFinancialFact ToFact(StockOperationReadFact fact)
-    {
-        var operation = fact.Operation;
-        if (operation.Type == StockOperationType.Sale)
-        {
-            if (fact.Financial is not { } financial)
-            {
-                throw new InvalidOperationException("Stored Sale financial snapshot is missing.");
-            }
-
-            return new(
-                operation.Id,
-                SaleFinancialFactType.Sale,
-                operation.TimestampUtc,
-                operation.Ean13,
-                operation.Quantity.Value,
-                financial.UnitPriceHt,
-                financial.SaleContext,
-                financial.TaxRate,
-                financial.AmountHt,
-                financial.Vat,
-                financial.AmountTtc);
-        }
-
-        if (fact.FinancialReversal is not { } reversal
-            || operation.SourceOperationId is null
-            || operation.Lines.Count != 1
-            || operation.Lines[0].InverseEffect <= 0)
-        {
-            throw new InvalidOperationException("Stored Sale financial reversal is invalid.");
-        }
-
-        return new(
-            operation.Id,
-            SaleFinancialFactType.CounterMovement,
-            operation.TimestampUtc,
-            operation.Ean13,
-            operation.Lines[0].InverseEffect,
-            reversal.UnitPriceHt,
-            reversal.SaleContext,
-            reversal.TaxRate,
-            reversal.AmountHt,
-            reversal.Vat,
-            reversal.AmountTtc,
-            operation.SourceOperationId,
-            operation.Justification);
-    }
 }
