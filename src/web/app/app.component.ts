@@ -484,7 +484,18 @@ const lastSaleIdStorageKey = 'token-warehouse.last-sale-id';
                   @if (entry.correctionOperationId) { <div><dt>Correction</dt><dd><code>{{ entry.correctionOperationId }}</code></dd></div> }
                   @if (entry.correctedByOperationId) { <div><dt>Corrigé par</dt><dd><code>{{ entry.correctedByOperationId }}</code></dd></div> }
                   @if (entry.justification) { <div><dt>Justification</dt><dd>{{ entry.justification }}</dd></div> }
+                  @if (entry.financial; as financial) {
+                    <div><dt>Prix HT unitaire historique</dt><dd>{{ financial.unitPriceHtCents }} centimes</dd></div>
+                    <div><dt>Contexte historique</dt><dd>{{ financial.context === 'takeaway' ? 'À emporter' : financial.context === 'onsite' ? 'Sur place' : 'Non alimentaire' }}</dd></div>
+                    <div><dt>Taux de TVA historique</dt><dd>{{ financial.taxRate.ratio }}</dd></div>
+                    <div><dt>Montant HT historique</dt><dd>{{ financial.amountHtCents }} centimes</dd></div>
+                    <div><dt>TVA historique</dt><dd>{{ financial.vatCents }} centimes</dd></div>
+                    <div><dt>Montant TTC historique</dt><dd>{{ financial.amountTtcCents }} centimes</dd></div>
+                  }
                   @if (entry.financialReversal; as reversal) {
+                    <div><dt>Prix HT unitaire historique</dt><dd>{{ reversal.unitPriceHtCents }} centimes</dd></div>
+                    <div><dt>Contexte historique</dt><dd>{{ formatCounterMovementFinancialContext(reversal.context) }}</dd></div>
+                    <div><dt>Taux de TVA historique</dt><dd>{{ reversal.taxRate.ratio }}</dd></div>
                     <div><dt>Inversion financière HT</dt><dd>{{ formatCounterMovementEffect(reversal.amountHtCents) }} centimes</dd></div>
                     <div><dt>Inversion financière TVA</dt><dd>{{ formatCounterMovementEffect(reversal.vatCents) }} centimes</dd></div>
                     <div><dt>Inversion financière TTC</dt><dd>{{ formatCounterMovementEffect(reversal.amountTtcCents) }} centimes</dd></div>
@@ -1221,6 +1232,12 @@ const lastSaleIdStorageKey = 'token-warehouse.last-sale-id';
                       @if (entry.sourceOperationId) { <p>Source : <code>{{ entry.sourceOperationId }}</code> ; justification : {{ entry.justification }}</p> }
                       @if (entry.correctionOperationId) { <p>Correction : <code>{{ entry.correctionOperationId }}</code></p> }
                       @if (entry.correctedByOperationId) { <p>Corrigé par : <code>{{ entry.correctedByOperationId }}</code></p> }
+                      @if (entry.financial; as financial) {
+                        <p>Prix HT unitaire historique : {{ financial.unitPriceHtCents }} centimes ; Contexte {{ formatCounterMovementFinancialContext(financial.context) }} ; Taux : {{ financial.taxRate.ratio }} ; Montant HT : {{ financial.amountHtCents }} ; TVA : {{ financial.vatCents }} ; TTC : {{ financial.amountTtcCents }}.</p>
+                      }
+                      @if (entry.financialReversal; as reversal) {
+                        <p>Inversion financière : Prix HT unitaire historique {{ reversal.unitPriceHtCents }} centimes ; Contexte {{ formatCounterMovementFinancialContext(reversal.context) }} ; Taux {{ reversal.taxRate.ratio }} ; HT {{ formatCounterMovementEffect(reversal.amountHtCents) }} ; TVA {{ formatCounterMovementEffect(reversal.vatCents) }} ; TTC {{ formatCounterMovementEffect(reversal.amountTtcCents) }} centimes.</p>
+                      }
                       @if (entry.lines.length > 0) {
                         <ul aria-label="Lignes de l’opération">
                           @for (line of entry.lines; track line.lineNumber) {
@@ -1634,6 +1651,7 @@ export class AppComponent implements OnInit {
         ? { ...current, ...receipt.position }
         : current);
       this.replaceStockPosition(receipt.position);
+      this.refreshHistoryAfterChange();
       setTimeout(() => document.getElementById('sale-result')?.focus());
     } catch (error) {
       if (requestId !== this.saleRequestId) {

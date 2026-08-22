@@ -16,6 +16,7 @@ public sealed record StockOperationLineReadView(
 public sealed record StockOperationReadFact(
     StockOperation Operation,
     SaleContext? SaleContext = null,
+    SaleFinancialSnapshot? Financial = null,
     SaleFinancialReversal? FinancialReversal = null);
 
 public sealed record StockOperationReadView(
@@ -29,6 +30,7 @@ public sealed record StockOperationReadView(
     string? Justification,
     IReadOnlyList<StockOperationLineReadView> Lines,
     SaleContext? SaleContext = null,
+    SaleFinancialSnapshot? Financial = null,
     SaleFinancialReversal? FinancialReversal = null)
 {
     public static StockOperationReadView From(StockOperationReadFact fact)
@@ -56,8 +58,9 @@ public sealed record StockOperationReadView(
                     line.ResultingPhysicalStock,
                     line.StockEffect,
                     line.InverseEffect))
-                .ToArray(),
+            .ToArray(),
             fact.SaleContext,
+            fact.Financial,
             fact.FinancialReversal ?? operation.FinancialReversal);
     }
 }

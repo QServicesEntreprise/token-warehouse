@@ -37,9 +37,14 @@ public sealed class SqliteHistoryReader(
             .Where(operation => string.Equals(operation.Type, "COUNTER_MOVEMENT", StringComparison.Ordinal)
                 && !string.IsNullOrWhiteSpace(operation.SourceOperationId))
             .ToDictionary(operation => operation.SourceOperationId!, StringComparer.Ordinal);
+        var operationsById = operations.ToDictionary(operation => operation.Id, StringComparer.Ordinal);
 
         var entries = operations
-            .Select(operation => ToOperationEntry(operation, query.Ean13, correctionsBySource))
+            .Select(operation => ToOperationEntry(
+                operation,
+                query.Ean13,
+                correctionsBySource,
+                operationsById))
             .Where(entry => entry is not null)
             .Cast<HistoryEntryView>()
             .Concat(lifecycleFacts
@@ -57,7 +62,8 @@ public sealed class SqliteHistoryReader(
     private static HistoryEntryView? ToOperationEntry(
         StockOperationEntity entity,
         Ean13? filteredEan13,
-        IReadOnlyDictionary<string, StockOperationEntity> correctionsBySource)
+        IReadOnlyDictionary<string, StockOperationEntity> correctionsBySource,
+        IReadOnlyDictionary<string, StockOperationEntity> operationsById)
     {
         if (!TryParseTimestamp(entity.TimestampUtc, out var timestampUtc)
             || !Ean13.TryCreate(entity.Ean13, out var operationEan13))
@@ -72,6 +78,25 @@ public sealed class SqliteHistoryReader(
         var lines = storedLines.Length == 0
             ? [SyntheticLine(entity, operationEan13, type)]
             : storedLines.Select(line => ToHistoryLine(line, type)).ToArray();
+        SaleFinancialReversal? financialReversal = null;
+        var hasFinancialData = entity.SaleCommitDataType is not null
+            || entity.SaleCommitDataPayload is not null;
+        if (type == HistoryEntryType.CounterMovement
+            && (string.Equals(entity.SourceOperationType, "SALE", StringComparison.OrdinalIgnoreCase)
+                || hasFinancialData))
+        {
+            if (entity.SourceOperationId is null
+                || !operationsById.TryGetValue(entity.SourceOperationId, out var sourceSale))
+            {
+                throw new InvalidOperationException("Stored Sale financial reversal data is invalid.");
+            }
+
+            financialReversal = SqliteSaleFinancialSnapshotReader.ReadReversal(
+                entity,
+                storedLines,
+                sourceSale);
+        }
+
         var selectedLines = filteredEan13 is null
             ? lines
             : lines.Where(line => line.Ean13 == filteredEan13.Value).ToArray();
@@ -86,18 +111,10 @@ public sealed class SqliteHistoryReader(
         var sourceOperationType = type == HistoryEntryType.CounterMovement
             ? ToWireOperationType(entity.SourceOperationType)
             : null;
-        SaleFinancialReversal? financialReversal = null;
-        if (type == HistoryEntryType.CounterMovement
-            && string.Equals(entity.SourceOperationType, "SALE", StringComparison.OrdinalIgnoreCase))
+        SaleFinancialSnapshot? financial = null;
+        if (type == HistoryEntryType.SaleStock)
         {
-            if (!SaleFinancialReversalSerializer.TryDeserialize(
-                    entity.SaleCommitDataType,
-                    entity.SaleCommitDataPayload,
-                    out financialReversal)
-                || financialReversal.SourceOperationId != entity.SourceOperationId)
-            {
-                throw new InvalidOperationException("Stored Sale financial reversal data is invalid.");
-            }
+            financial = SqliteSaleFinancialSnapshotReader.Read(entity, out _);
         }
         var firstLine = selectedLines[0];
         var rootLine = storedLines.Length > 1 ? null : firstLine;
@@ -114,6 +131,9 @@ public sealed class SqliteHistoryReader(
                 .ToArray(),
             Quantity = type is HistoryEntryType.Supply or HistoryEntryType.SaleStock
                 ? rootLine?.Quantity
+                : type == HistoryEntryType.CounterMovement
+                    && rootLine is { InverseEffect: > 0 }
+                    ? rootLine.InverseEffect
                 : null,
             StockEffect = type is HistoryEntryType.Supply or HistoryEntryType.SaleStock or HistoryEntryType.Inventory
                 ? rootLine?.StockEffect
@@ -136,6 +156,7 @@ public sealed class SqliteHistoryReader(
             SourceOperationId = sourceOperationId,
             SourceOperationType = sourceOperationType,
             Justification = type == HistoryEntryType.CounterMovement ? entity.Justification : null,
+            Financial = financial,
             FinancialReversal = financialReversal,
             CorrectedByOperationId = isSource ? correction!.Id : null,
             CorrectionOperationId = type == HistoryEntryType.CounterMovement ? entity.Id : null,

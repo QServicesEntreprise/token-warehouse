@@ -22,6 +22,10 @@ describe('AppComponent', () => {
     await fixture.whenStable();
 
     const component = fixture.componentInstance;
+    const initialHistory = component.loadHistory();
+    http.expectOne('/api/history').flush([]);
+    await initialHistory;
+
     component.saleArticles.set([{
       ean13: '0123456789012',
       name: 'Café à emporter ou sur place',
@@ -103,11 +107,31 @@ describe('AppComponent', () => {
       },
     });
     await submission;
+    const refreshedHistory = http.expectOne('/api/history');
+    refreshedHistory.flush([{
+      id: 'food-sale-1',
+      type: 'SALE_STOCK',
+      timestampUtc: '2030-01-15T10:00:00Z',
+      ean13: '0123456789012',
+      articles: [{ ean13: '0123456789012' }],
+      quantity: 2,
+      lines: [],
+      financial: {
+        context: 'takeaway',
+        unitPriceHtCents: 101,
+        taxRate: { code: 'takeaway', ratio: '11/200', numerator: 11, denominator: 200 },
+        amountHtCents: 202,
+        vatCents: 11,
+        amountTtcCents: 213,
+      },
+    }]);
+    await Promise.resolve();
 
     expect(component.saleState()).toBe('success');
     expect(component.saleContext()).toBe('takeaway');
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('#sale-result').textContent).toContain('213');
+    expect(fixture.nativeElement.querySelector('#history-list').textContent).toContain('food-sale-1');
     flushUnusedDashboardRequest(http);
     http.verify();
   });
@@ -418,6 +442,124 @@ describe('AppComponent', () => {
     expect(component.saleReceipt()).toBeNull();
     expect(fixture.nativeElement.querySelector('#sale-quantity').value).toBe('9');
     expect(fixture.nativeElement.querySelector('#sale-quantity')).toBe(document.activeElement);
+    flushUnusedDashboardRequest(http);
+    http.verify();
+  });
+
+  it('renders immutable sale and counter-movement financial facts in history', async () => {
+    const fixture = TestBed.configureTestingModule({
+      imports: [AppComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    }).createComponent(AppComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
+    http.expectOne('/api/stock').flush([]);
+    await fixture.whenStable();
+
+    const component = fixture.componentInstance;
+    const load = component.loadHistory();
+    const request = http.expectOne('/api/history');
+    request.flush([
+      {
+        id: 'sale-1',
+        type: 'SALE_STOCK',
+        timestampUtc: '2030-01-15T10:00:00Z',
+        ean13: '0123456789012',
+        articles: [{ ean13: '0123456789012' }],
+        quantity: 2,
+        lines: [],
+        financial: {
+          context: 'takeaway',
+          unitPriceHtCents: 100,
+          taxRate: { code: 'takeaway', ratio: '11/200', numerator: 11, denominator: 200 },
+          amountHtCents: 200,
+          vatCents: 11,
+          amountTtcCents: 211,
+        },
+      },
+      {
+        id: 'counter-1',
+        type: 'COUNTER_MOVEMENT',
+        timestampUtc: '2030-01-15T10:01:00Z',
+        ean13: '0123456789012',
+        articles: [{ ean13: '0123456789012' }],
+        quantity: 2,
+        lines: [],
+        sourceOperationId: 'sale-1',
+        justification: 'Correction',
+        financialReversal: {
+          sourceOperationId: 'sale-1',
+          context: 'takeaway',
+          unitPriceHtCents: 100,
+          taxRate: { code: 'takeaway', ratio: '11/200', numerator: 11, denominator: 200 },
+          amountHtCents: -200,
+          vatCents: -11,
+          amountTtcCents: -211,
+        },
+      },
+    ]);
+    await load;
+    fixture.detectChanges();
+
+    const history = fixture.nativeElement.querySelector('#history-list').textContent;
+    expect(history).toContain('Prix HT unitaire historique');
+    expect(history).toContain('200 centimes');
+    expect(history).toContain('211 centimes');
+    expect(history).toContain('-200 centimes');
+    expect(history).toContain('-211 centimes');
+    expect(history).toContain('Contexte historiqueÀ emporter');
+    expect(history).toContain('Taux de TVA historique11/200');
+    const historyCounter = fixture.nativeElement.querySelector('[aria-labelledby="history-entry-counter-1"]').textContent as string;
+    expect(historyCounter).toContain('Prix HT unitaire historique');
+    expect(historyCounter).toContain('100 centimes');
+
+    component.detail.set(foodArticle(100, 6, 106, 10, 110));
+    fixture.detectChanges();
+    const articleHistoryLoad = component.loadArticleHistory('0123456789012');
+    http.expectOne('/api/history?ean13=0123456789012').flush([{
+      id: 'sale-1',
+      type: 'SALE_STOCK',
+      timestampUtc: '2030-01-15T10:00:00Z',
+      ean13: '0123456789012',
+      articles: [{ ean13: '0123456789012' }],
+      quantity: 2,
+      lines: [],
+      financial: {
+        context: 'takeaway',
+        unitPriceHtCents: 100,
+        taxRate: { code: 'takeaway', ratio: '11/200', numerator: 11, denominator: 200 },
+        amountHtCents: 200,
+        vatCents: 11,
+        amountTtcCents: 211,
+      },
+    }, {
+      id: 'counter-1',
+      type: 'COUNTER_MOVEMENT',
+      timestampUtc: '2030-01-15T10:01:00Z',
+      ean13: '0123456789012',
+      articles: [{ ean13: '0123456789012' }],
+      lines: [],
+      financialReversal: {
+        sourceOperationId: 'sale-1',
+        context: 'takeaway',
+        unitPriceHtCents: 100,
+        taxRate: { code: 'takeaway', ratio: '11/200', numerator: 11, denominator: 200 },
+        amountHtCents: -200,
+        vatCents: -11,
+        amountTtcCents: -211,
+      },
+    }]);
+    await articleHistoryLoad;
+    fixture.detectChanges();
+    const articleHistory = fixture.nativeElement.querySelector('#article-history-list').textContent as string;
+    const articleSaleHistory = fixture.nativeElement.querySelector('[aria-labelledby="article-history-entry-sale-1"]').textContent as string;
+    const articleCounterHistory = fixture.nativeElement.querySelector('[aria-labelledby="article-history-entry-counter-1"]').textContent as string;
+    expect(articleSaleHistory).toContain('Contexte À emporter');
+    expect(articleCounterHistory).toContain('Prix HT unitaire historique');
+    expect(articleCounterHistory).toContain('100 centimes');
+    expect(articleHistory).toContain('Contexte À emporter');
+    expect(articleHistory).toContain('Taux 11/200');
     flushUnusedDashboardRequest(http);
     http.verify();
   });
