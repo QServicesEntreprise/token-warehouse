@@ -3,6 +3,7 @@ import { test } from './fixtures';
 
 const ean13 = '0123456789012';
 const otherEan13 = '4012345678901';
+const inventoryEan13 = '7351353713578';
 const apiBaseUrl = 'http://127.0.0.1:5100';
 
 test('consults global and Article history after real Stock operations', async ({ page }) => {
@@ -42,6 +43,28 @@ test('consults global and Article history after real Stock operations', async ({
   expect(otherSupplyResponse.status()).toBe(201);
   const otherSupply = await otherSupplyResponse.json() as { operation: { id: string } };
 
+  const otherInventoryResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'POST' && url.pathname === '/api/inventories';
+  });
+  await page.locator('#inventory-ean13').fill(otherEan13);
+  await page.locator('#inventory-countedQuantity').fill('7');
+  await page.locator('#inventory-form button[type="submit"]').click();
+  const otherInventoryResponse = await otherInventoryResponsePromise;
+  expect(otherInventoryResponse.status()).toBe(201);
+  const otherInventory = await otherInventoryResponse.json() as { operation: { id: string } };
+
+  const zeroInventoryResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'POST' && url.pathname === '/api/inventories';
+  });
+  await page.locator('#inventory-ean13').fill(inventoryEan13);
+  await page.locator('#inventory-countedQuantity').fill('8');
+  await page.locator('#inventory-form button[type="submit"]').click();
+  const zeroInventoryResponse = await zeroInventoryResponsePromise;
+  expect(zeroInventoryResponse.status()).toBe(201);
+  const zeroInventory = await zeroInventoryResponse.json() as { operation: { id: string } };
+
   await page.getByRole('link', { name: 'Contre-mouvement' }).click();
   const sourcesResponsePromise = page.waitForResponse((response) => {
     const url = new URL(response.url());
@@ -57,7 +80,37 @@ test('consults global and Article history after real Stock operations', async ({
     return response.request().method() === 'POST' && url.pathname === '/api/stock/counter-movements';
   });
   await page.locator('#counter-movement-submit').click();
-  expect((await counterResponsePromise).status()).toBe(201);
+  const counterResponse = await counterResponsePromise;
+  expect(counterResponse.status()).toBe(201);
+  await expect(counterResponse.json()).resolves.toMatchObject({
+    counterMovement: { lines: [{ inverseEffect: -2 }] },
+  });
+
+  const otherCounterResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'POST' && url.pathname === '/api/stock/counter-movements';
+  });
+  await page.locator('#counter-movement-source').selectOption(otherInventory.operation.id);
+  await page.locator('#counter-movement-justification').fill('Correction positive Historique');
+  await page.locator('#counter-movement-submit').click();
+  const otherCounterResponse = await otherCounterResponsePromise;
+  expect(otherCounterResponse.status()).toBe(201);
+  await expect(otherCounterResponse.json()).resolves.toMatchObject({
+    counterMovement: { lines: [{ inverseEffect: 1 }] },
+  });
+
+  const zeroCounterResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'POST' && url.pathname === '/api/stock/counter-movements';
+  });
+  await page.locator('#counter-movement-source').selectOption(zeroInventory.operation.id);
+  await page.locator('#counter-movement-justification').fill('Correction nulle Historique');
+  await page.locator('#counter-movement-submit').click();
+  const zeroCounterResponse = await zeroCounterResponsePromise;
+  expect(zeroCounterResponse.status()).toBe(201);
+  await expect(zeroCounterResponse.json()).resolves.toMatchObject({
+    counterMovement: { lines: [{ inverseEffect: 0 }] },
+  });
 
   await page.getByRole('link', { name: 'Historique' }).click();
   const globalHistoryPromise = page.waitForResponse((response) => {
@@ -101,6 +154,8 @@ test('consults global and Article history after real Stock operations', async ({
   await expect(page.locator('#history-ean13')).toHaveValue('');
   await expect(page.locator('#history-list')).toContainText(otherSupply.operation.id);
   await expect(page.locator('#history-list')).toContainText('effet inverse -2');
+  await expect(page.locator('#history-list')).toContainText('effet inverse +1');
+  await expect(page.locator('#history-list')).toContainText('effet inverse 0');
 
   const articleResponsePromise = page.waitForResponse((response) => {
     const url = new URL(response.url());
@@ -122,6 +177,40 @@ test('consults global and Article history after real Stock operations', async ({
   await expect(page.locator('#article-history-list')).toContainText('Inventaire');
   await expect(page.locator('#article-history-list')).toContainText('10');
   await expect(page.locator('#article-history-list')).toContainText('effet inverse -2');
+
+  const otherArticleResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'GET' && url.pathname === `/api/articles/${otherEan13}`;
+  });
+  await page.locator('#lookupEan13').fill(otherEan13);
+  await page.locator('section[aria-labelledby="lookup-title"]').getByRole('button', { name: 'Consulter', exact: true }).click();
+  expect((await otherArticleResponsePromise).status()).toBe(200);
+  const otherArticleHistoryPromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'GET'
+      && url.pathname === '/api/history'
+      && url.searchParams.get('ean13') === otherEan13;
+  });
+  await page.getByRole('button', { name: 'Consulter l’Historique de cet Article', exact: true }).click();
+  expect((await otherArticleHistoryPromise).status()).toBe(200);
+  await expect(page.locator('#article-history-list')).toContainText('effet inverse +1');
+
+  const inventoryArticleResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'GET' && url.pathname === `/api/articles/${inventoryEan13}`;
+  });
+  await page.locator('#lookupEan13').fill(inventoryEan13);
+  await page.locator('section[aria-labelledby="lookup-title"]').getByRole('button', { name: 'Consulter', exact: true }).click();
+  expect((await inventoryArticleResponsePromise).status()).toBe(200);
+  const inventoryArticleHistoryPromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'GET'
+      && url.pathname === '/api/history'
+      && url.searchParams.get('ean13') === inventoryEan13;
+  });
+  await page.getByRole('button', { name: 'Consulter l’Historique de cet Article', exact: true }).click();
+  expect((await inventoryArticleHistoryPromise).status()).toBe(200);
+  await expect(page.locator('#article-history-list')).toContainText('effet inverse 0');
 
   await page.reload();
   await page.getByRole('link', { name: 'Historique' }).click();

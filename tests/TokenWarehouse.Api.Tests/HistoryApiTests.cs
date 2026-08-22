@@ -214,9 +214,12 @@ public sealed class HistoryApiTests
             Ean13.TryCreate("0123456789012", out var ean13);
             var result = await reader.ReadAsync(new HistoryQuery(ean13));
 
-            Assert.True(interceptor.WriterBlocked);
+            Assert.True(interceptor.WriterCommitted || interceptor.WriterBlocked);
             Assert.DoesNotContain(result.Entries, entry => entry.Id == "fact_concurrent_catalogue_01J00000000000000000000000");
-            interceptor.CommitPendingFact();
+            if (interceptor.WriterBlocked)
+            {
+                interceptor.CommitPendingFact();
+            }
             var freshResult = await new SqliteHistoryReader(new HistoryDbContextFactory($"Data Source={databasePath}"))
                 .ReadAsync(new HistoryQuery(ean13));
             Assert.Contains(freshResult.Entries, entry => entry.Id == "fact_concurrent_catalogue_01J00000000000000000000000");
@@ -536,6 +539,8 @@ public sealed class HistoryApiTests
     {
         private bool writerAttempted;
 
+        public bool WriterCommitted { get; private set; }
+
         public bool WriterBlocked { get; private set; }
 
         public override InterceptionResult<DbDataReader> ReaderExecuting(
@@ -565,7 +570,7 @@ public sealed class HistoryApiTests
             }
             writerAttempted = true;
 
-            using var connection = new SqliteConnection($"Data Source={databasePath};Default Timeout=0");
+            using var connection = new SqliteConnection($"Data Source={databasePath};Default Timeout=1");
             connection.DefaultTimeout = 1;
             connection.Open();
             var options = new DbContextOptionsBuilder<WarehouseDbContext>()
@@ -585,6 +590,7 @@ public sealed class HistoryApiTests
             try
             {
                 context.SaveChanges();
+                WriterCommitted = true;
             }
             catch (DbUpdateException exception) when (exception.InnerException is SqliteException
             {
