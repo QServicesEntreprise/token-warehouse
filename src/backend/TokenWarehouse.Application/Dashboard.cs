@@ -75,10 +75,14 @@ public sealed class DashboardApplication(ICurrentDashboardReadSource readSource)
                 new DashboardAlertsView(
                     rows
                         .Where(row => row.Availability == StockAvailability.OutOfStock
-                            && row.LifecycleStatus == ArticleLifecycleStatus.Active)
+                            && row.LifecycleStatus == ArticleLifecycleStatus.Active
+                            && row.PhysicalStock == 0
+                            && row.SellableStock == 0)
                         .ToArray(),
                     rows
-                        .Where(row => row.Availability == StockAvailability.NotSellable)
+                        .Where(row => row.Availability == StockAvailability.NotSellable
+                            && row.PhysicalStock > 0
+                            && row.SellableStock == 0)
                         .ToArray()),
                 rows);
 
@@ -103,7 +107,14 @@ public sealed class DashboardApplication(ICurrentDashboardReadSource readSource)
             || (position.PhysicalQuantity > 0
                 && position.SellableQuantity == 0
                 && position.Reason is null)
-            || (position.SellableQuantity > 0 && position.Reason is not null))
+            || (position.SellableQuantity > 0 && position.Reason is not null)
+            || (position.PhysicalQuantity == 0
+                && position.Availability != StockAvailability.OutOfStock)
+            || (position.SellableQuantity > 0
+                && position.Availability != StockAvailability.Available)
+            || (position.PhysicalQuantity > 0
+                && position.SellableQuantity == 0
+                && position.Availability != StockAvailability.NotSellable))
         {
             throw new InvalidOperationException("The Stock read contract returned incompatible quantities.");
         }
