@@ -217,6 +217,9 @@ public sealed class StockSaleContractTests
         Assert.Equal("SALE_STOCK", saleHistory.GetProperty("type").GetString());
         Assert.Equal(2, saleHistory.GetProperty("quantity").GetInt32());
         Assert.Equal(-2, saleHistory.GetProperty("stockEffect").GetInt32());
+        var historyLine = saleHistory.GetProperty("lines")[0];
+        Assert.Equal(5, historyLine.GetProperty("previousPhysicalStock").GetInt32());
+        Assert.Equal(3, historyLine.GetProperty("resultingPhysicalStock").GetInt32());
     }
 
     [Fact]

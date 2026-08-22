@@ -312,7 +312,8 @@ public sealed class SqliteStockMutationCommitter(
                 return StockMutationCommitResult.Conflict();
             }
 
-            var resultingPhysicalStock = (long)currentPosition.PhysicalQuantity
+            var previousPhysicalStock = currentPosition.PhysicalQuantity;
+            var resultingPhysicalStock = (long)previousPhysicalStock
                 + plan.Operation.Lines[0].StockEffect;
             if (resultingPhysicalStock < 0 || resultingPhysicalStock > int.MaxValue
                 || plan.Position.PhysicalQuantity != resultingPhysicalStock)
@@ -326,7 +327,11 @@ public sealed class SqliteStockMutationCommitter(
             var operationEntity = ToEntity(plan.Operation);
             context.StockOperations.Add(operationEntity);
             context.StockOperationLines.AddRange(
-                plan.Operation.Lines.Select(line => ToEntity(plan.Operation, line)));
+                plan.Operation.Lines.Select(line => ToEntity(
+                    plan.Operation,
+                    line,
+                    previousPhysicalStock,
+                    (int)resultingPhysicalStock)));
             await context.SaveChangesAsync(cancellationToken);
             var committedPosition = new StockPosition(
                 plan.Position.Ean13,
@@ -396,7 +401,9 @@ public sealed class SqliteStockMutationCommitter(
 
     private static StockOperationLineEntity ToEntity(
         StockOperation operation,
-        StockOperationLine line)
+        StockOperationLine line,
+        int? previousPhysicalStock = null,
+        int? resultingPhysicalStock = null)
         => new()
         {
             OperationId = operation.Id,
@@ -409,10 +416,10 @@ public sealed class SqliteStockMutationCommitter(
                     : operation.Type == StockOperationType.Supply
                         ? "supply"
                         : "INVENTORY",
-            PreviousPhysicalStock = line.PreviousPhysicalStock,
+            PreviousPhysicalStock = previousPhysicalStock ?? line.PreviousPhysicalStock,
             CountedQuantity = line.CountedQuantity,
             InventoryDifference = line.InventoryDifference,
-            ResultingPhysicalStock = line.ResultingPhysicalStock,
+            ResultingPhysicalStock = resultingPhysicalStock ?? line.ResultingPhysicalStock,
             Quantity = operation.Type is StockOperationType.Supply or StockOperationType.Sale
                 ? line.Quantity.Value
                 : 0,
