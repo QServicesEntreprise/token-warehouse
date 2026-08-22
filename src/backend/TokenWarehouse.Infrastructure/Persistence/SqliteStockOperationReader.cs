@@ -27,7 +27,7 @@ public sealed class SqliteStockOperationReader(
             .Where(line => line.OperationId == id)
             .OrderBy(line => line.LineNumber)
             .ToListAsync(cancellationToken);
-        return ToDomain(entity, lines);
+        return ReadOperation(entity, lines).Operation;
     }
 
     public async ValueTask<StockOperation?> FindCounterMovementBySourceIdAsync(
@@ -52,7 +52,7 @@ public sealed class SqliteStockOperationReader(
             .Where(line => line.OperationId == entity.Id)
             .OrderBy(line => line.LineNumber)
             .ToListAsync(cancellationToken);
-        return ToDomain(entity, lines);
+        return ReadOperation(entity, lines).Operation;
     }
 
     public async ValueTask<IReadOnlyList<StockOperation>> ListAsync(
@@ -65,9 +65,9 @@ public sealed class SqliteStockOperationReader(
             .ToListAsync(cancellationToken);
 
         return entities
-            .Select(entity => ToDomain(
+            .Select(entity => ReadOperation(
                 entity,
-                entity.Lines.OrderBy(line => line.LineNumber).ToArray()))
+                entity.Lines.OrderBy(line => line.LineNumber).ToArray()).Operation)
             .OrderBy(operation => operation.TimestampUtc)
             .ThenBy(operation => operation.Id, StringComparer.Ordinal)
             .ToArray();
@@ -113,9 +113,11 @@ public sealed class SqliteStockOperationReader(
             .ToListAsync(cancellationToken);
 
         return entities
-            .Select(entity => new StockOperationReadFact(
-                ToDomain(entity, entity.Lines.OrderBy(line => line.LineNumber).ToArray()),
-                ReadSaleFinancialSnapshot(entity)?.SaleContext))
+            .Select(entity =>
+            {
+                var read = ReadOperation(entity, entity.Lines.OrderBy(line => line.LineNumber).ToArray());
+                return new StockOperationReadFact(read.Operation, read.Financial?.SaleContext);
+            })
             .OrderBy(fact => fact.Operation.TimestampUtc)
             .ThenBy(fact => fact.Operation.Id, StringComparer.Ordinal)
             .ToArray();
@@ -123,16 +125,12 @@ public sealed class SqliteStockOperationReader(
 
     private static StockOperationReadFact ToFinancialReadFact(StockOperationEntity entity)
     {
-        var lines = entity.Lines.OrderBy(line => line.LineNumber).ToArray();
-        var operation = ToDomain(entity, lines);
-        var financial = operation.Type == StockOperationType.Sale
-            ? ReadSaleFinancialSnapshot(entity)
-            : null;
+        var read = ReadOperation(entity, entity.Lines.OrderBy(line => line.LineNumber).ToArray());
         return new(
-            operation,
-            financial?.SaleContext,
-            financial,
-            operation.FinancialReversal);
+            read.Operation,
+            read.Financial?.SaleContext,
+            read.Financial,
+            read.Operation.FinancialReversal);
     }
 
     public async ValueTask<IReadOnlyList<StockOperation>> ListCorrectableAsync(
@@ -153,10 +151,21 @@ public sealed class SqliteStockOperationReader(
             .ToListAsync(cancellationToken);
 
         return entities
-            .Select(entity => ToDomain(
+            .Select(entity => ReadOperation(
                 entity,
-                entity.Lines.OrderBy(line => line.LineNumber).ToArray()))
+                entity.Lines.OrderBy(line => line.LineNumber).ToArray()).Operation)
             .ToArray();
+    }
+
+    private static (StockOperation Operation, SaleFinancialSnapshot? Financial) ReadOperation(
+        StockOperationEntity entity,
+        IReadOnlyList<StockOperationLineEntity> lineEntities)
+    {
+        var operation = ToDomain(entity, lineEntities);
+        var financial = operation.Type == StockOperationType.Sale
+            ? SqliteSaleFinancialSnapshotReader.Read(entity, out _)
+            : null;
+        return (operation, financial);
     }
 
     private static StockOperation ToDomain(
@@ -324,13 +333,4 @@ public sealed class SqliteStockOperationReader(
         return StockOperation.CreateInventory(entity.Id, inventoryLines, timestampUtc);
     }
 
-    private static SaleFinancialSnapshot? ReadSaleFinancialSnapshot(StockOperationEntity entity)
-    {
-        if (!string.Equals(entity.Type, "SALE", StringComparison.OrdinalIgnoreCase))
-        {
-            return null;
-        }
-
-        return SqliteSaleFinancialSnapshotReader.Read(entity, out _);
-    }
 }

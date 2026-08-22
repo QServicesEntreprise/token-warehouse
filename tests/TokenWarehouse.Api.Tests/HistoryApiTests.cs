@@ -450,9 +450,16 @@ public sealed class HistoryApiTests
         var summary = await scope.ServiceProvider
             .GetRequiredService<IReadFinancialSummaryUseCase>()
             .ReadAsync(new FinancialPeriod(DateTimeOffset.MinValue, DateTimeOffset.MaxValue));
+        var operationReader = scope.ServiceProvider.GetRequiredService<IStockOperationReader>();
 
         Assert.Equal(FinancialSummaryReadStatus.PersistenceFailed, summary.Status);
         Assert.Equal("FINANCIAL_READ_FAILURE", Assert.Single(summary.Errors).Code);
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => operationReader.FindByIdAsync("sale-incoherent-financial-0001").AsTask());
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => operationReader.ListAsync().AsTask());
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => operationReader.ListCorrectableAsync().AsTask());
     }
 
     [Fact]
