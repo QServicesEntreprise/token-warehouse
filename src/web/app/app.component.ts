@@ -34,6 +34,7 @@ import {
   BulkSupplyPayload,
   SupplyPayload,
 } from './stock-api.service';
+import { DashboardComponent } from './dashboard.component';
 import {
   InventoryApiService,
   BulkInventoryResponse,
@@ -127,7 +128,7 @@ const lastInventoryIdStorageKey = 'token-warehouse.last-inventory-id';
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [FormField, FormRoot],
+  imports: [DashboardComponent, FormField, FormRoot],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <main aria-labelledby="page-title">
@@ -138,6 +139,7 @@ const lastInventoryIdStorageKey = 'token-warehouse.last-inventory-id';
       </header>
 
       <nav class="main-nav" aria-label="Navigation principale">
+        <a href="#dashboard-panel">Dashboard</a>
         <a href="#stock-panel">Stock</a>
         <a href="#supply-panel">Approvisionnement</a>
         <a href="#inventory-title">Inventaire</a>
@@ -145,6 +147,8 @@ const lastInventoryIdStorageKey = 'token-warehouse.last-inventory-id';
         <a href="#history-panel">Historique</a>
         <a href="#catalog-title">Catalogue</a>
       </nav>
+
+      <app-dashboard />
 
       <section id="stock-panel" class="panel" aria-labelledby="stock-title">
         <div>

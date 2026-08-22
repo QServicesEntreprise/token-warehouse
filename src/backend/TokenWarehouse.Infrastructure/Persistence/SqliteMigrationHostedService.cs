@@ -28,7 +28,6 @@ public sealed class SqliteMigrationHostedService(
                 "true",
                 StringComparison.OrdinalIgnoreCase))
         {
-            await SeedArchivedArticlesAsync(context, cancellationToken);
             await SeedE2eStockArticlesAsync(context, clock.WarehouseDate, cancellationToken);
         }
     }
@@ -56,101 +55,30 @@ public sealed class SqliteMigrationHostedService(
         await context.SaveChangesAsync(cancellationToken);
     }
 
-    private static async Task SeedArchivedArticlesAsync(
-        WarehouseDbContext context,
-        CancellationToken cancellationToken)
-    {
-        if (await context.Articles.AnyAsync(article => !article.IsActive, cancellationToken))
-        {
-            return;
-        }
-
-        context.Articles.AddRange(
-            new ArticleEntity
-            {
-                Ean13 = "5901234123457",
-                Type = "food",
-                Name = "Biscuit historique",
-                NameSearchKey = ArticleNameSearchKey.From("Biscuit historique"),
-                PriceHtCents = 299,
-                IsActive = false,
-                Dlc = "2026-12-31",
-                ConsumptionModes = "takeaway"
-            },
-            new ArticleEntity
-            {
-                Ean13 = "5012345678900",
-                Type = "nonFood",
-                Name = "Lampe historique",
-                NameSearchKey = ArticleNameSearchKey.From("Lampe historique"),
-                PriceHtCents = 2900,
-                IsActive = false,
-                Packaging = "refurbished"
-            });
-        await context.SaveChangesAsync(cancellationToken);
-    }
-
     private static async Task SeedE2eStockArticlesAsync(
         WarehouseDbContext context,
         DateOnly today,
         CancellationToken cancellationToken)
     {
-        const string foodEan = "0123456789012";
-        const string nonFoodEan = "4012345678901";
-        const string inventoryEan = "7351353713578";
-
-        if (!await context.Articles.AnyAsync(article => article.Ean13 == foodEan, cancellationToken))
+        var fixtureArticles = new[]
         {
-            context.Articles.Add(new ArticleEntity
+            new ArticleEntity
             {
-                Ean13 = foodEan,
+                Ean13 = "0123456789012",
                 Type = "food",
-                Name = "DLC de démonstration",
-                NameSearchKey = ArticleNameSearchKey.From("DLC de démonstration"),
+                Name = "Alimentaire aux deux modes",
+                NameSearchKey = ArticleNameSearchKey.From("Alimentaire aux deux modes"),
                 PriceHtCents = 100,
                 IsActive = true,
                 Dlc = today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
                 ConsumptionModes = "takeaway,onsite"
-            });
-        }
-
-        if (!await context.Articles.AnyAsync(article => article.Ean13 == nonFoodEan, cancellationToken))
-        {
-            context.Articles.Add(new ArticleEntity
-            {
-                Ean13 = nonFoodEan,
-                Type = "nonFood",
-                Name = "Packaging de démonstration",
-                NameSearchKey = ArticleNameSearchKey.From("Packaging de démonstration"),
-                PriceHtCents = 200,
-                IsActive = true,
-                Packaging = "new"
-            });
-        }
-
-        if (!await context.Articles.AnyAsync(article => article.Ean13 == inventoryEan, cancellationToken))
-        {
-            context.Articles.Add(new ArticleEntity
-            {
-                Ean13 = inventoryEan,
-                Type = "food",
-                Name = "Inventaire de démonstration",
-                NameSearchKey = ArticleNameSearchKey.From("Inventaire de démonstration"),
-                PriceHtCents = 100,
-                IsActive = true,
-                Dlc = today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-                ConsumptionModes = "takeaway"
-            });
-        }
-
-        var stockFixtureArticles = new[]
-        {
+            },
             new ArticleEntity
             {
                 Ean13 = "1234567890128",
                 Type = "food",
-                Name = "Alimentaire expiré",
-                NameSearchKey = ArticleNameSearchKey.From("Alimentaire expiré"),
+                Name = "Alimentaire à DLC dépassée",
+                NameSearchKey = ArticleNameSearchKey.From("Alimentaire à DLC dépassée"),
                 PriceHtCents = 100,
                 IsActive = true,
                 Dlc = "2020-01-14",
@@ -158,117 +86,74 @@ public sealed class SqliteMigrationHostedService(
             },
             new ArticleEntity
             {
-                Ean13 = "0360002914522",
-                Type = "food",
-                Name = "Article sans position",
-                NameSearchKey = ArticleNameSearchKey.From("Article sans position"),
+                Ean13 = "2345678901234",
+                Type = "nonFood",
+                Name = "Article archivé",
+                NameSearchKey = ArticleNameSearchKey.From("Article archivé"),
                 PriceHtCents = 100,
-                IsActive = true,
-                Dlc = "2099-01-15",
-                ConsumptionModes = "takeaway"
+                IsActive = false,
+                Packaging = "new"
             },
             new ArticleEntity
             {
-                Ean13 = "9876543210982",
+                Ean13 = "3456789012340",
                 Type = "nonFood",
-                Name = "Article vendable",
-                NameSearchKey = ArticleNameSearchKey.From("Article vendable"),
+                Name = "Non alimentaire au Packaging Invendable",
+                NameSearchKey = ArticleNameSearchKey.From("Non alimentaire au Packaging Invendable"),
+                PriceHtCents = 100,
+                IsActive = true,
+                Packaging = "unsellable"
+            },
+            new ArticleEntity
+            {
+                Ean13 = "4567890123456",
+                Type = "nonFood",
+                Name = "Article actif vendable",
+                NameSearchKey = ArticleNameSearchKey.From("Article actif vendable"),
                 PriceHtCents = 100,
                 IsActive = true,
                 Packaging = "new"
             },
             new ArticleEntity
             {
-                Ean13 = "1111111111116",
-                Type = "nonFood",
-                Name = "Packaging invendable",
-                NameSearchKey = ArticleNameSearchKey.From("Packaging invendable"),
+                Ean13 = "5678901234562",
+                Type = "food",
+                Name = "Article actif sans position",
+                NameSearchKey = ArticleNameSearchKey.From("Article actif sans position"),
                 PriceHtCents = 100,
                 IsActive = true,
-                Packaging = "unsellable"
+                Dlc = today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                ConsumptionModes = "takeaway"
             }
         };
 
-        foreach (var article in stockFixtureArticles)
+        foreach (var article in fixtureArticles)
         {
             if (!await context.Articles.AnyAsync(existing => existing.Ean13 == article.Ean13, cancellationToken))
             {
                 context.Articles.Add(article);
             }
         }
+        await context.SaveChangesAsync(cancellationToken);
 
-        if (await context.Articles.AnyAsync(article => article.Ean13 == "5901234123457", cancellationToken)
-            && !await context.StockPositions.AnyAsync(position => position.Ean13 == "5901234123457", cancellationToken))
+        var physicalQuantities = new Dictionary<string, int>
         {
-            context.StockPositions.Add(new StockPositionEntity
-            {
-                Ean13 = "5901234123457",
-                PhysicalQuantity = 4
-            });
-        }
-
-        if (await context.Articles.AnyAsync(article => article.Ean13 == "5012345678900", cancellationToken)
-            && !await context.StockPositions.AnyAsync(position => position.Ean13 == "5012345678900", cancellationToken))
+            ["0123456789012"] = 5,
+            ["1234567890128"] = 7,
+            ["2345678901234"] = 4,
+            ["3456789012340"] = 3,
+            ["4567890123456"] = 8
+        };
+        foreach (var (ean13, physicalQuantity) in physicalQuantities)
         {
-            context.StockPositions.Add(new StockPositionEntity
+            if (!await context.StockPositions.AnyAsync(position => position.Ean13 == ean13, cancellationToken))
             {
-                Ean13 = "5012345678900",
-                PhysicalQuantity = 4
-            });
-        }
-
-        if (!await context.StockPositions.AnyAsync(position => position.Ean13 == "1234567890128", cancellationToken))
-        {
-            context.StockPositions.Add(new StockPositionEntity
-            {
-                Ean13 = "1234567890128",
-                PhysicalQuantity = 7
-            });
-        }
-
-        if (!await context.StockPositions.AnyAsync(position => position.Ean13 == "9876543210982", cancellationToken))
-        {
-            context.StockPositions.Add(new StockPositionEntity
-            {
-                Ean13 = "9876543210982",
-                PhysicalQuantity = 8
-            });
-        }
-
-        if (!await context.StockPositions.AnyAsync(position => position.Ean13 == "1111111111116", cancellationToken))
-        {
-            context.StockPositions.Add(new StockPositionEntity
-            {
-                Ean13 = "1111111111116",
-                PhysicalQuantity = 3
-            });
-        }
-
-        if (!await context.StockPositions.AnyAsync(position => position.Ean13 == foodEan, cancellationToken))
-        {
-            context.StockPositions.Add(new StockPositionEntity
-            {
-                Ean13 = foodEan,
-                PhysicalQuantity = 8
-            });
-        }
-
-        if (!await context.StockPositions.AnyAsync(position => position.Ean13 == nonFoodEan, cancellationToken))
-        {
-            context.StockPositions.Add(new StockPositionEntity
-            {
-                Ean13 = nonFoodEan,
-                PhysicalQuantity = 7
-            });
-        }
-
-        if (!await context.StockPositions.AnyAsync(position => position.Ean13 == inventoryEan, cancellationToken))
-        {
-            context.StockPositions.Add(new StockPositionEntity
-            {
-                Ean13 = inventoryEan,
-                PhysicalQuantity = 8
-            });
+                context.StockPositions.Add(new StockPositionEntity
+                {
+                    Ean13 = ean13,
+                    PhysicalQuantity = physicalQuantity
+                });
+            }
         }
 
         await context.SaveChangesAsync(cancellationToken);

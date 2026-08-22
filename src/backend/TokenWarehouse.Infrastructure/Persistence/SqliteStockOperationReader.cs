@@ -55,6 +55,24 @@ public sealed class SqliteStockOperationReader(
         return ToDomain(entity, lines);
     }
 
+    public async ValueTask<IReadOnlyList<StockOperation>> ListAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+        var entities = await context.StockOperations
+            .AsNoTracking()
+            .Include(operation => operation.Lines)
+            .ToListAsync(cancellationToken);
+
+        return entities
+            .Select(entity => ToDomain(
+                entity,
+                entity.Lines.OrderBy(line => line.LineNumber).ToArray()))
+            .OrderBy(operation => operation.TimestampUtc)
+            .ThenBy(operation => operation.Id, StringComparer.Ordinal)
+            .ToArray();
+    }
+
     public async ValueTask<IReadOnlyList<StockOperation>> ListCorrectableAsync(
         CancellationToken cancellationToken = default)
     {

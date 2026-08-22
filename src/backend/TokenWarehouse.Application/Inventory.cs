@@ -132,6 +132,17 @@ public interface IStockMutationCommitter
         CounterMovementCommitPlan plan,
         CancellationToken cancellationToken = default)
         => throw new NotSupportedException("This committer does not support counter-movements.");
+
+    ValueTask<StockMutationCommitResult> CommitAsync(
+        StockSaleCommitPlan plan,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("This committer does not support Stock sales.");
+
+    ValueTask<StockMutationCommitResult> CommitAsync(
+        StockSaleCommitPlan plan,
+        IStockSaleCommitParticipant participant,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("This committer does not support Stock sale participants.");
 }
 
 public interface IStockOperationReader
@@ -144,6 +155,10 @@ public interface IStockOperationReader
         string sourceOperationId,
         CancellationToken cancellationToken = default)
         => ValueTask.FromResult<StockOperation?>(null);
+
+    ValueTask<IReadOnlyList<StockOperation>> ListAsync(
+        CancellationToken cancellationToken = default)
+        => ValueTask.FromResult<IReadOnlyList<StockOperation>>([]);
 
     ValueTask<IReadOnlyList<StockOperation>> ListCorrectableAsync(
         CancellationToken cancellationToken = default)

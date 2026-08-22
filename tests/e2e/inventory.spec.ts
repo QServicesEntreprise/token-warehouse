@@ -3,7 +3,7 @@ import { test } from './fixtures';
 import type { Page, Route } from '@playwright/test';
 
 const canonicalEan = '0123456789012';
-const archivedEan = '5012345678900';
+const archivedEan = '2345678901234';
 const unknownEan = '4006381333931';
 const timestamp = '2030-01-15T10:00:00+00:00';
 const apiBaseUrl = 'http://127.0.0.1:5100';
@@ -42,8 +42,8 @@ const openInventory = async (page: Page) => {
   await page.goto('/');
   await expect(page.locator('#stock-table')).toBeVisible();
   await expect(
-    page.locator('#stock-table').getByRole('row', { name: /DLC de démonstration/ }),
-  ).toContainText('8 unités');
+    page.locator('#stock-table').getByRole('row', { name: /Alimentaire aux deux modes/ }),
+  ).toContainText('5 unités');
   await page.locator('#inventory-ean13').focus();
   await page.keyboard.press('Tab');
   await expect(page.locator('#inventory-countedQuantity')).toBeFocused();
@@ -91,12 +91,12 @@ const expectIndependentReceipt = async (
   await expectReceipt(page, expected);
 };
 
-test('reconciles the canonical stock from 8 to 11 with a positive difference', async ({ page }) => {
+test('reconciles the canonical stock from 5 to 11 with a positive difference', async ({ page }) => {
   await expectIndependentReceipt(page, {
     ean13: canonicalEan,
-    previous: 8,
+    previous: 5,
     counted: 11,
-    difference: '+3',
+    difference: '+6',
     resulting: 11,
     sellable: 11,
     availability: 'Disponible',
@@ -104,14 +104,14 @@ test('reconciles the canonical stock from 8 to 11 with a positive difference', a
   });
 });
 
-test('reconciles the canonical stock from 8 to 5 with a negative difference', async ({ page }) => {
+test('reconciles the canonical stock from 5 to 2 with a negative difference', async ({ page }) => {
   await expectIndependentReceipt(page, {
     ean13: canonicalEan,
-    previous: 8,
-    counted: 5,
+    previous: 5,
+    counted: 2,
     difference: '-3',
-    resulting: 5,
-    sellable: 5,
+    resulting: 2,
+    sellable: 2,
     availability: 'Disponible',
     reason: '—',
   });
@@ -123,9 +123,9 @@ test('reconciles several Articles through one bulk operation and keeps the resul
   await page.locator('#inventory-add-line').click();
   await page.locator('#inventory-ean13').fill(canonicalEan);
   await page.locator('#inventory-countedQuantity').fill('11');
-  await page.locator('#inventory-ean13-1').fill('7351353713578');
+  await page.locator('#inventory-ean13-1').fill('4567890123456');
   await page.locator('#inventory-countedQuantity-1').fill('5');
-  await page.locator('#inventory-ean13-2').fill('0360002914522');
+  await page.locator('#inventory-ean13-2').fill('5678901234562');
   await page.locator('#inventory-countedQuantity-2').fill('0');
 
   const responsePromise = page.waitForResponse((response) => {
@@ -137,15 +137,15 @@ test('reconciles several Articles through one bulk operation and keeps the resul
   expect(response.status()).toBe(201);
   await expect(page.locator('#inventory-result')).toBeVisible();
   await expect(page.locator('#inventory-result .inventory-result-line')).toHaveCount(3);
-  await expect(page.locator('#inventory-result')).toContainText('+3');
+  await expect(page.locator('#inventory-result')).toContainText('+6');
   await expect(page.locator('#inventory-result')).toContainText('-3');
   await expect(page.locator('#inventory-result')).toContainText('Écart d’inventaire0');
-  await expect(page.locator('#stock-table').getByRole('row', { name: /DLC de démonstration/ })).toContainText('11 unités');
+  await expect(page.locator('#stock-table').getByRole('row', { name: /Alimentaire aux deux modes/ })).toContainText('11 unités');
 
   await page.reload();
   await expect(page.locator('#inventory-result')).toBeVisible();
   await expect(page.locator('#inventory-result .inventory-result-line')).toHaveCount(3);
-  await expect(page.locator('#inventory-result')).toContainText('+3');
+  await expect(page.locator('#inventory-result')).toContainText('+6');
   await expect(page.locator('#inventory-result')).toContainText('-3');
   await expect(page.locator('#inventory-result')).toContainText('Écart d’inventaire0');
 });
@@ -175,17 +175,17 @@ test('rejects a duplicate bulk line without reconciling any Article', async ({ p
 
   const stock = await page.request.get(`${apiBaseUrl}/api/stock/${canonicalEan}`);
   expect(stock.status()).toBe(200);
-  await expect(stock.json()).resolves.toMatchObject({ physicalQuantity: 8 });
+  await expect(stock.json()).resolves.toMatchObject({ physicalQuantity: 5 });
 });
 
 test('keeps an equal canonical count as a visible zero-difference fact', async ({ page }) => {
   await expectIndependentReceipt(page, {
     ean13: canonicalEan,
-    previous: 8,
-    counted: 8,
+    previous: 5,
+    counted: 5,
     difference: '0',
-    resulting: 8,
-    sellable: 8,
+    resulting: 5,
+    sellable: 5,
     availability: 'Disponible',
     reason: '—',
   });
@@ -194,9 +194,9 @@ test('keeps an equal canonical count as a visible zero-difference fact', async (
 test('accepts a zero canonical count and establishes an empty position', async ({ page }) => {
   await expectIndependentReceipt(page, {
     ean13: canonicalEan,
-    previous: 8,
+    previous: 5,
     counted: 0,
-    difference: '-8',
+    difference: '-5',
     resulting: 0,
     sellable: 0,
     availability: 'Rupture',

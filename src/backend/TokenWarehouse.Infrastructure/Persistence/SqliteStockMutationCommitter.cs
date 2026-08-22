@@ -243,6 +243,123 @@ public sealed class SqliteStockMutationCommitter(
         }
     }
 
+    public ValueTask<StockMutationCommitResult> CommitAsync(
+        StockSaleCommitPlan plan,
+        CancellationToken cancellationToken = default)
+        => CommitSaleAsync(plan, null, cancellationToken);
+
+    public ValueTask<StockMutationCommitResult> CommitAsync(
+        StockSaleCommitPlan plan,
+        IStockSaleCommitParticipant participant,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(participant);
+        return CommitSaleAsync(plan, participant, cancellationToken);
+    }
+
+    private async ValueTask<StockMutationCommitResult> CommitSaleAsync(
+        StockSaleCommitPlan plan,
+        IStockSaleCommitParticipant? participant,
+        CancellationToken cancellationToken)
+    {
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+
+        try
+        {
+            if (plan.Operation.Type != StockOperationType.Sale
+                || plan.Operation.Lines.Count != 1
+                || plan.Operation.Lines[0].Ean13 != plan.Position.Ean13
+                || plan.Operation.Lines[0].StockEffect != -plan.Operation.Quantity.Value
+                || plan.Position.Ean13 != plan.ArticleSnapshot.Ean13)
+            {
+                return StockMutationCommitResult.Conflict();
+            }
+
+            var article = await context.Articles
+                .SingleOrDefaultAsync(
+                    candidate => candidate.Ean13 == plan.ArticleSnapshot.Ean13.Value,
+                    cancellationToken);
+            var currentPosition = await context.StockPositions
+                .SingleOrDefaultAsync(
+                    candidate => candidate.Ean13 == plan.ArticleSnapshot.Ean13.Value,
+                    cancellationToken);
+            if (article is null
+                || !article.IsActive
+                || article.Version != plan.ArticleSnapshot.Version
+                || currentPosition is null
+                || plan.CurrentPosition is null
+                || currentPosition.PhysicalQuantity != plan.CurrentPosition.PhysicalQuantity
+                || currentPosition.Version != plan.CurrentPosition.Version)
+            {
+                return StockMutationCommitResult.Conflict();
+            }
+
+            var currentArticle = SqliteArticleSellabilityReader.ToSnapshot(article);
+            var decision = SellabilityPolicy.Decide(
+                currentArticle,
+                currentPosition.PhysicalQuantity,
+                plan.WarehouseDate);
+            if (decision.Availability != StockAvailability.Available
+                || plan.Operation.Quantity.Value > decision.SellableQuantity)
+            {
+                return StockMutationCommitResult.Conflict();
+            }
+
+            var resultingPhysicalStock = (long)currentPosition.PhysicalQuantity
+                + plan.Operation.Lines[0].StockEffect;
+            if (resultingPhysicalStock < 0 || resultingPhysicalStock > int.MaxValue
+                || plan.Position.PhysicalQuantity != resultingPhysicalStock)
+            {
+                return StockMutationCommitResult.Conflict();
+            }
+
+            context.Entry(article).Property(candidate => candidate.Version).IsModified = true;
+            currentPosition.PhysicalQuantity = (int)resultingPhysicalStock;
+            currentPosition.Version++;
+            var operationEntity = ToEntity(plan.Operation);
+            context.StockOperations.Add(operationEntity);
+            context.StockOperationLines.AddRange(
+                plan.Operation.Lines.Select(line => ToEntity(plan.Operation, line)));
+            await context.SaveChangesAsync(cancellationToken);
+            if (participant is not null)
+            {
+                await participant.PrepareAsync(
+                    new SqliteStockSaleTransaction(context, operationEntity),
+                    plan.Operation,
+                    cancellationToken);
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+
+            return StockMutationCommitResult.Committed(
+                new StockPosition(
+                    plan.Position.Ean13,
+                    currentPosition.PhysicalQuantity,
+                    currentPosition.Version));
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return StockMutationCommitResult.Conflict();
+        }
+        catch (DbUpdateException exception) when (IsConflict(exception))
+        {
+            return StockMutationCommitResult.Conflict();
+        }
+        catch (SqliteException exception) when (exception.SqliteErrorCode is 5 or 6)
+        {
+            return StockMutationCommitResult.Conflict();
+        }
+        catch (Exception) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            return StockMutationCommitResult.Failed();
+        }
+    }
+
     private static StockOperationEntity ToEntity(StockOperation operation)
         => new()
         {
@@ -255,7 +372,9 @@ public sealed class SqliteStockMutationCommitter(
                 _ => "INVENTORY"
             },
             Ean13 = operation.Ean13.Value,
-            Quantity = operation.Type == StockOperationType.Supply ? operation.Quantity.Value : 0,
+            Quantity = operation.Type is StockOperationType.Supply or StockOperationType.Sale
+                ? operation.Quantity.Value
+                : 0,
             OccurredAt = operation.TimestampUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
             PreviousPhysicalStock = operation.PreviousPhysicalStock,
             CountedQuantity = operation.CountedQuantity,
@@ -310,4 +429,26 @@ public sealed class SqliteStockMutationCommitter(
         && (message.Contains("StockPositions", StringComparison.OrdinalIgnoreCase)
             || message.Contains("SourceOperationId", StringComparison.OrdinalIgnoreCase)
             || message.Contains("StockOperationLines", StringComparison.OrdinalIgnoreCase));
+}
+
+internal sealed class SqliteStockSaleTransaction(
+    WarehouseDbContext context,
+    StockOperationEntity operation) : IStockSaleTransaction
+{
+    public async ValueTask StageAsync(
+        StockSaleCommitData data,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ArgumentNullException.ThrowIfNull(data);
+        if (operation.SaleCommitDataType is not null
+            || operation.SaleCommitDataPayload is not null)
+        {
+            throw new InvalidOperationException("Sale commit data was already staged.");
+        }
+
+        operation.SaleCommitDataType = data.Type;
+        operation.SaleCommitDataPayload = data.Payload;
+        await context.SaveChangesAsync(cancellationToken);
+    }
 }

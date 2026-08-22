@@ -28,5 +28,9 @@ public sealed class StockOperationEntity
 
     public string? Justification { get; set; }
 
+    public string? SaleCommitDataType { get; set; }
+
+    public string? SaleCommitDataPayload { get; set; }
+
     public ICollection<StockOperationLineEntity> Lines { get; set; } = [];
 }
