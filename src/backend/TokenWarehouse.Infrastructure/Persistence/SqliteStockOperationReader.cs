@@ -125,7 +125,10 @@ public sealed class SqliteStockOperationReader(
 
     private static StockOperationReadFact ToFinancialReadFact(StockOperationEntity entity)
     {
-        var read = ReadOperation(entity, entity.Lines.OrderBy(line => line.LineNumber).ToArray());
+        var read = ReadOperation(
+            entity,
+            entity.Lines.OrderBy(line => line.LineNumber).ToArray(),
+            requireFinancial: true);
         return new(
             read.Operation,
             read.Financial?.SaleContext,
@@ -159,13 +162,39 @@ public sealed class SqliteStockOperationReader(
 
     private static (StockOperation Operation, SaleFinancialSnapshot? Financial) ReadOperation(
         StockOperationEntity entity,
-        IReadOnlyList<StockOperationLineEntity> lineEntities)
+        IReadOnlyList<StockOperationLineEntity> lineEntities,
+        bool requireFinancial = false)
     {
         var operation = ToDomain(entity, lineEntities);
         var financial = operation.Type == StockOperationType.Sale
-            ? SqliteSaleFinancialSnapshotReader.Read(entity, out _)
+            ? ReadSaleFinancialSnapshot(entity, requireFinancial)
             : null;
         return (operation, financial);
+    }
+
+    private static SaleFinancialSnapshot? ReadSaleFinancialSnapshot(
+        StockOperationEntity entity,
+        bool required)
+    {
+        if (!string.Equals(entity.Type, "SALE", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        if (!string.Equals(
+                entity.SaleCommitDataType,
+                SaleFinancialSnapshotSerializer.Type,
+                StringComparison.Ordinal))
+        {
+            if (required)
+            {
+                throw new InvalidOperationException("Stored Sale financial snapshot is invalid.");
+            }
+
+            return null;
+        }
+
+        return SqliteSaleFinancialSnapshotReader.Read(entity, out _);
     }
 
     private static StockOperation ToDomain(
