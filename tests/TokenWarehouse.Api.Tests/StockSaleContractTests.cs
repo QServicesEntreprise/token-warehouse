@@ -241,6 +241,12 @@ public sealed class StockSaleContractTests
 
         using var beforeResponse = await client.GetAsync($"/api/sales/{operationId}");
         var before = await beforeResponse.Content.ReadFromJsonAsync<JsonElement>();
+        using var beforeHistoryResponse = await client.GetAsync("/api/history?ean13=7351353713578");
+        Assert.Equal(HttpStatusCode.OK, beforeHistoryResponse.StatusCode);
+        var beforeHistory = await beforeHistoryResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var beforeSaleHistory = beforeHistory.EnumerateArray()
+            .Single(entry => entry.GetProperty("id").GetString() == operationId);
+        var beforeHistoryLine = beforeSaleHistory.GetProperty("lines")[0];
         foreach (var method in new[] { HttpMethod.Patch, HttpMethod.Put, HttpMethod.Delete })
         {
             using var request = new HttpRequestMessage(method, $"/api/sales/{operationId}");
@@ -273,17 +279,57 @@ public sealed class StockSaleContractTests
             return true;
         }));
 
-        using var afterResponse = await client.GetAsync($"/api/sales/{operationId}");
+        await Assert.ThrowsAsync<DbUpdateException>(() => factory.ReadFreshAsync(async context =>
+        {
+            var line = await context.StockOperationLines
+                .SingleAsync(candidate => candidate.OperationId == operationId);
+            line.Quantity++;
+            await context.SaveChangesAsync();
+            return true;
+        }));
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => factory.ReadFreshAsync(async context =>
+        {
+            var line = await context.StockOperationLines
+                .SingleAsync(candidate => candidate.OperationId == operationId);
+            context.StockOperationLines.Remove(line);
+            await context.SaveChangesAsync();
+            return true;
+        }));
+
+        using var reloadedClient = factory.CreateClient();
+        using var afterResponse = await reloadedClient.GetAsync($"/api/sales/{operationId}");
         var after = await afterResponse.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(
             before.GetProperty("operation").GetProperty("id").GetString(),
             after.GetProperty("operation").GetProperty("id").GetString());
         Assert.Equal(
+            before.GetProperty("operation").GetProperty("ean13").GetString(),
+            after.GetProperty("operation").GetProperty("ean13").GetString());
+        Assert.Equal(
+            before.GetProperty("operation").GetProperty("quantity").GetInt32(),
+            after.GetProperty("operation").GetProperty("quantity").GetInt32());
+        Assert.Equal(
             before.GetProperty("operation").GetProperty("occurredAt").GetDateTimeOffset(),
             after.GetProperty("operation").GetProperty("occurredAt").GetDateTimeOffset());
         Assert.Equal(
+            before.GetProperty("financial").GetProperty("context").ValueKind,
+            after.GetProperty("financial").GetProperty("context").ValueKind);
+        Assert.Equal(
             before.GetProperty("financial").GetProperty("unitPriceHtCents").GetInt32(),
             after.GetProperty("financial").GetProperty("unitPriceHtCents").GetInt32());
+        foreach (var property in new[] { "code", "ratio" })
+        {
+            Assert.Equal(
+                before.GetProperty("financial").GetProperty("taxRate").GetProperty(property).GetString(),
+                after.GetProperty("financial").GetProperty("taxRate").GetProperty(property).GetString());
+        }
+        foreach (var property in new[] { "numerator", "denominator" })
+        {
+            Assert.Equal(
+                before.GetProperty("financial").GetProperty("taxRate").GetProperty(property).GetInt32(),
+                after.GetProperty("financial").GetProperty("taxRate").GetProperty(property).GetInt32());
+        }
         Assert.Equal(
             before.GetProperty("financial").GetProperty("amountHtCents").GetInt32(),
             after.GetProperty("financial").GetProperty("amountHtCents").GetInt32());
@@ -296,6 +342,46 @@ public sealed class StockSaleContractTests
         Assert.Equal(
             before.GetProperty("position").GetProperty("physicalQuantity").GetInt32(),
             after.GetProperty("position").GetProperty("physicalQuantity").GetInt32());
+        Assert.Equal(
+            before.GetProperty("position").GetProperty("sellableQuantity").GetInt32(),
+            after.GetProperty("position").GetProperty("sellableQuantity").GetInt32());
+
+        using var afterHistoryResponse = await reloadedClient.GetAsync("/api/history?ean13=7351353713578");
+        Assert.Equal(HttpStatusCode.OK, afterHistoryResponse.StatusCode);
+        var afterHistory = await afterHistoryResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var afterSaleHistory = afterHistory.EnumerateArray()
+            .Single(entry => entry.GetProperty("id").GetString() == operationId);
+        var afterHistoryLine = afterSaleHistory.GetProperty("lines")[0];
+        foreach (var property in new[] { "type", "ean13" })
+        {
+            Assert.Equal(
+                beforeSaleHistory.GetProperty(property).GetString(),
+                afterSaleHistory.GetProperty(property).GetString());
+        }
+        foreach (var property in new[] { "timestampUtc", "occurredAt" })
+        {
+            Assert.Equal(
+                beforeSaleHistory.GetProperty(property).GetDateTimeOffset(),
+                afterSaleHistory.GetProperty(property).GetDateTimeOffset());
+        }
+        Assert.Equal(
+            beforeSaleHistory.GetProperty("quantity").GetInt32(),
+            afterSaleHistory.GetProperty("quantity").GetInt32());
+        Assert.Equal(
+            beforeSaleHistory.GetProperty("stockEffect").GetInt32(),
+            afterSaleHistory.GetProperty("stockEffect").GetInt32());
+        Assert.Equal(
+            beforeHistoryLine.GetProperty("lineNumber").GetInt32(),
+            afterHistoryLine.GetProperty("lineNumber").GetInt32());
+        Assert.Equal(
+            beforeHistoryLine.GetProperty("ean13").GetString(),
+            afterHistoryLine.GetProperty("ean13").GetString());
+        Assert.Equal(
+            beforeHistoryLine.GetProperty("quantity").GetInt32(),
+            afterHistoryLine.GetProperty("quantity").GetInt32());
+        Assert.Equal(
+            beforeHistoryLine.GetProperty("stockEffect").GetInt32(),
+            afterHistoryLine.GetProperty("stockEffect").GetInt32());
     }
 
     [Fact]

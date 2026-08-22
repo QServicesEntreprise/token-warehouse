@@ -8,7 +8,7 @@ namespace TokenWarehouse.Api.Tests;
 public sealed class SqliteMigrationTests
 {
     [Fact]
-    public async Task Sale_snapshot_constraints_are_materialized_by_the_applied_migration()
+    public async Task Sale_snapshot_constraints_and_line_immutability_are_materialized_by_the_applied_migrations()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
         await connection.OpenAsync();
@@ -17,10 +17,14 @@ public sealed class SqliteMigrationTests
             .Options;
 
         await using var context = new WarehouseDbContext(options);
+        await context.Database.MigrateAsync("20260822140000_SaleFinancialSnapshot");
+        await using var legacyTriggerCommand = connection.CreateCommand();
+        legacyTriggerCommand.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger' AND name = 'TR_StockOperationLines_Sale_Immutable_Update'";
+        Assert.Equal(0L, await legacyTriggerCommand.ExecuteScalarAsync());
         await context.Database.MigrateAsync();
 
         await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'TR_StockOperations_SaleFinancialSnapshot_%' ORDER BY name";
+        command.CommandText = "SELECT name FROM sqlite_master WHERE type = 'trigger' ORDER BY name";
         await using var reader = await command.ExecuteReaderAsync();
         var triggerNames = new List<string>();
         while (await reader.ReadAsync())
@@ -33,7 +37,10 @@ public sealed class SqliteMigrationTests
             "TR_StockOperations_SaleFinancialSnapshot_Constraints_Insert",
             "TR_StockOperations_SaleFinancialSnapshot_Constraints_Update",
             "TR_StockOperations_SaleFinancialSnapshot_Immutable",
-            "TR_StockOperations_SaleFinancialSnapshot_Delete"
+            "TR_StockOperations_SaleFinancialSnapshot_Delete",
+            "TR_StockOperationLines_Sale_Immutable_Insert",
+            "TR_StockOperationLines_Sale_Immutable_Update",
+            "TR_StockOperationLines_Sale_Immutable_Delete"
         })
         {
             Assert.Contains(trigger, triggerNames);
@@ -62,6 +69,107 @@ public sealed class SqliteMigrationTests
             SaleCommitDataPayload = "{}"
         });
         await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+    }
+
+    [Fact]
+    public async Task Sale_operation_lines_are_immutable_after_migration()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<WarehouseDbContext>()
+            .UseSqlite(connection)
+            .Options;
+
+        await using (var context = new WarehouseDbContext(options))
+        {
+            await context.Database.MigrateAsync();
+            context.Articles.Add(new ArticleEntity
+            {
+                Ean13 = "0123456789012",
+                Type = "food",
+                Name = "Article vendu",
+                NameSearchKey = "ARTICLE VENDU",
+                PriceHtCents = 99,
+                IsActive = true,
+                Dlc = "2030-01-15",
+                ConsumptionModes = "takeaway"
+            });
+            context.Articles.Add(new ArticleEntity
+            {
+                Ean13 = "7351353713578",
+                Type = "nonFood",
+                Name = "Article secondaire",
+                NameSearchKey = "ARTICLE SECONDAIRE",
+                PriceHtCents = 100,
+                IsActive = true,
+                Packaging = "new"
+            });
+            context.StockOperations.Add(new StockOperationEntity
+            {
+                Id = "immutable-sale",
+                Type = "SALE",
+                Ean13 = "0123456789012",
+                Quantity = 2,
+                OccurredAt = "2030-01-15T10:00:00.0000000+00:00",
+                TimestampUtc = "2030-01-15T10:00:00.0000000+00:00",
+                SaleCommitDataType = "sale.financial.v1",
+                SaleCommitDataPayload = "{}",
+                SaleFinancialContext = "takeaway",
+                SaleFinancialUnitPriceHtCents = 99,
+                SaleFinancialTaxRateCode = "takeaway",
+                SaleFinancialTaxRateNumerator = 11,
+                SaleFinancialTaxRateDenominator = 200,
+                SaleFinancialAmountHtCents = 198,
+                SaleFinancialVatCents = 11,
+                SaleFinancialAmountTtcCents = 209
+            });
+            context.StockOperationLines.Add(new StockOperationLineEntity
+            {
+                OperationId = "immutable-sale",
+                LineNumber = 1,
+                Ean13 = "0123456789012",
+                OperationType = "SALE",
+                Quantity = 2,
+                SourceEffect = -2,
+                InverseEffect = 0
+            });
+            await context.SaveChangesAsync();
+        }
+
+        await using (var updateContext = new WarehouseDbContext(options))
+        {
+            var line = await updateContext.StockOperationLines.SingleAsync();
+            line.Quantity = 3;
+            await Assert.ThrowsAsync<DbUpdateException>(() => updateContext.SaveChangesAsync());
+        }
+
+        await using (var deleteContext = new WarehouseDbContext(options))
+        {
+            var line = await deleteContext.StockOperationLines.SingleAsync();
+            deleteContext.StockOperationLines.Remove(line);
+            await Assert.ThrowsAsync<DbUpdateException>(() => deleteContext.SaveChangesAsync());
+        }
+
+        await using (var insertContext = new WarehouseDbContext(options))
+        {
+            insertContext.StockOperationLines.Add(new StockOperationLineEntity
+            {
+                OperationId = "immutable-sale",
+                LineNumber = 2,
+                Ean13 = "7351353713578",
+                OperationType = "SALE",
+                Quantity = 1,
+                SourceEffect = -1,
+                InverseEffect = 0
+            });
+            await Assert.ThrowsAsync<DbUpdateException>(() => insertContext.SaveChangesAsync());
+        }
+
+        await using var readContext = new WarehouseDbContext(options);
+        var persistedLine = await readContext.StockOperationLines.SingleAsync();
+        Assert.Equal(2, persistedLine.Quantity);
+        Assert.Equal(-2, persistedLine.SourceEffect);
+        Assert.Equal(1, await readContext.StockOperations.CountAsync());
     }
 
     [Fact]

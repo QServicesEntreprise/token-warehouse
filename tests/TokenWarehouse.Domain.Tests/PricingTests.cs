@@ -144,6 +144,27 @@ public sealed class PricingTests
     }
 
     [Fact]
+    public void Keeps_a_sale_snapshot_unchanged_when_the_article_and_a_copy_change()
+    {
+        var article = CreateFood(101, "takeaway");
+        var snapshot = Assert.IsType<SaleFinancialSnapshot>(
+            PricingPolicy.CalculateSale(article, new Quantity(2)).Snapshot);
+        var copy = snapshot with { };
+
+        article.ChangePriceHt(Money.FromCents(999));
+
+        foreach (var current in new[] { snapshot, copy })
+        {
+            Assert.Equal(SaleContext.Takeaway, current.SaleContext);
+            Assert.Equal(101, current.UnitPriceHt.Cents);
+            Assert.Equal(new TaxRate("takeaway", 11, 200), current.TaxRate);
+            Assert.Equal(202, current.AmountHt.Cents);
+            Assert.Equal(11, current.Vat.Cents);
+            Assert.Equal(213, current.AmountTtc.Cents);
+        }
+    }
+
+    [Fact]
     public void Converts_quote_overflow_into_a_pricing_validation_error()
     {
         var result = PricingPolicy.CalculateSale(CreateNonFood(int.MaxValue), new Quantity(1));

@@ -322,6 +322,7 @@ public partial class SaleFinancialSnapshot : Migration
                 SELECT RAISE(ABORT, 'Sale financial snapshot is immutable.');
             END;
             """);
+
     }
 
     protected override void Down(MigrationBuilder migrationBuilder)
