@@ -100,12 +100,16 @@ public sealed class SqliteHistoryReader(
             }
         }
         SaleFinancialSnapshot? financial = null;
-        if (type == HistoryEntryType.SaleStock
-            && SaleFinancialSnapshotSerializer.TryDeserialize(
-                entity.SaleCommitDataType,
-                entity.SaleCommitDataPayload,
-                out var saleFinancial))
+        if (type == HistoryEntryType.SaleStock)
         {
+            if (!SaleFinancialSnapshotSerializer.TryDeserialize(
+                    entity.SaleCommitDataType,
+                    entity.SaleCommitDataPayload,
+                    out var saleFinancial))
+            {
+                throw new InvalidOperationException("Stored Sale financial snapshot is invalid.");
+            }
+
             financial = saleFinancial;
         }
         var firstLine = selectedLines[0];

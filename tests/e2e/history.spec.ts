@@ -21,6 +21,21 @@ type BrowserHistoryEntry = {
   previousStatus?: string;
   nextStatus?: string;
   changes?: Array<{ field: string; before?: string; after?: string }>;
+  financial?: {
+    context: string | null;
+    taxRate: { ratio: string };
+    amountHtCents: number;
+    vatCents: number;
+    amountTtcCents: number;
+  };
+  financialReversal?: {
+    sourceOperationId: string;
+    context: string | null;
+    taxRate: { ratio: string };
+    amountHtCents: number;
+    vatCents: number;
+    amountTtcCents: number;
+  };
   lines: Array<{
     lineNumber: number;
     ean13: string;
@@ -537,6 +552,15 @@ test('keeps a committed Sale and its financial correction separately in History'
   await page.goto('/');
   await expect(page.locator('#stock-table').getByRole('row', { name: /Alimentaire aux deux modes/ })).toBeVisible();
 
+  await page.getByRole('link', { name: 'Historique' }).click();
+  const initialHistoryPromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'GET' && url.pathname === '/api/history' && !url.search;
+  });
+  await page.getByRole('button', { name: 'Historique global', exact: true }).click();
+  expect((await initialHistoryPromise).status()).toBe(200);
+  await page.getByRole('link', { name: 'Vente', exact: true }).click();
+
   const saleSearchPromise = page.waitForResponse((response) => {
     const url = new URL(response.url());
     return response.request().method() === 'GET' && url.pathname === '/api/sales/articles';
@@ -552,6 +576,10 @@ test('keeps a committed Sale and its financial correction separately in History'
     const url = new URL(response.url());
     return response.request().method() === 'POST' && url.pathname === '/api/sales';
   });
+  const saleHistoryRefreshPromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'GET' && url.pathname === '/api/history' && !url.search;
+  });
   await page.locator('#sale-submit').click();
   const saleResponse = await saleResponsePromise;
   expect(saleResponse.status()).toBe(201);
@@ -560,6 +588,9 @@ test('keeps a committed Sale and its financial correction separately in History'
     financial: { amountHtCents: number; vatCents: number; amountTtcCents: number };
   };
   expect(sale.financial).toMatchObject({ amountHtCents: 200, vatCents: 11, amountTtcCents: 211 });
+  const saleHistoryRefresh = await saleHistoryRefreshPromise;
+  expect(saleHistoryRefresh.status()).toBe(200);
+  await expect(page.locator('#history-list')).toContainText(sale.operation.id);
 
   await page.getByRole('link', { name: 'Contre-mouvement' }).click();
   const sourcesPromise = page.waitForResponse((response) => {
@@ -595,12 +626,20 @@ test('keeps a committed Sale and its financial correction separately in History'
   const saleEntry = entries.find((entry) => entry.id === sale.operation.id);
   expect(saleEntry).toMatchObject({
     type: 'SALE_STOCK',
-    financial: { amountHtCents: 200, vatCents: 11, amountTtcCents: 211 },
+    financial: {
+      context: 'takeaway',
+      taxRate: { ratio: '11/200' },
+      amountHtCents: 200,
+      vatCents: 11,
+      amountTtcCents: 211,
+    },
   });
   const correctionEntry = entries.find((entry) => entry.type === 'COUNTER_MOVEMENT' && entry.financialReversal);
   expect(correctionEntry).toMatchObject({
     financialReversal: {
       sourceOperationId: sale.operation.id,
+      context: 'takeaway',
+      taxRate: { ratio: '11/200' },
       amountHtCents: -200,
       vatCents: -11,
       amountTtcCents: -211,
@@ -608,6 +647,26 @@ test('keeps a committed Sale and its financial correction separately in History'
   });
   await expect(page.locator(`[aria-labelledby="history-entry-${sale.operation.id}"]`)).toContainText('200 centimes');
   await expect(page.locator('#history-list')).toContainText('-211 centimes');
+  await expect(page.locator(`[aria-labelledby="history-entry-${sale.operation.id}"]`)).toContainText('11/200');
+  await expect(page.locator('#history-list')).toContainText('À emporter');
+
+  const articleResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'GET' && url.pathname === `/api/articles/${ean13}`;
+  });
+  await page.locator('#lookupEan13').fill(ean13);
+  await page.locator('section[aria-labelledby="lookup-title"]').getByRole('button', { name: 'Consulter', exact: true }).click();
+  expect((await articleResponsePromise).status()).toBe(200);
+  const articleHistoryPromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'GET'
+      && url.pathname === '/api/history'
+      && url.searchParams.get('ean13') === ean13;
+  });
+  await page.getByRole('button', { name: 'Consulter l’Historique de cet Article', exact: true }).click();
+  expect((await articleHistoryPromise).status()).toBe(200);
+  await expect(page.locator('#article-history-list')).toContainText('À emporter');
+  await expect(page.locator('#article-history-list')).toContainText('11/200');
 });
 
 test.describe('history read failure runtime seam', () => {

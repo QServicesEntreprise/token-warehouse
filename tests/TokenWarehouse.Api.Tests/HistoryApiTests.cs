@@ -233,6 +233,40 @@ public sealed class HistoryApiTests
     }
 
     [Fact]
+    public async Task Reads_financial_period_boundaries_and_signed_corrections_from_sqlite()
+    {
+        using var factory = new HistoryHostFactory();
+        using var client = factory.CreateClient();
+        await factory.SeedFinancialPeriodFactsAsync();
+
+        using var scope = factory.Services.CreateScope();
+        var useCase = scope.ServiceProvider.GetRequiredService<IReadFinancialSummaryUseCase>();
+        var period = new FinancialPeriod(
+            new DateTimeOffset(2030, 1, 1, 0, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2030, 2, 1, 0, 0, 0, TimeSpan.Zero));
+
+        var result = await useCase.ReadAsync(period);
+
+        Assert.Equal(FinancialSummaryReadStatus.Success, result.Status);
+        Assert.Equal(0, result.Summary!.RevenueHt.Cents);
+        Assert.Equal(-14, result.Summary.VatCollected.Cents);
+        Assert.Equal(-14, result.Summary.RevenueTtc.Cents);
+        Assert.Equal(
+            [(100, 6, 106), (0, 0, 0), (-100, -20, -120)],
+            result.Summary.ByTaxRate.Select(line => (
+                line.AmountHt.Cents,
+                line.Vat.Cents,
+                line.AmountTtc.Cents)));
+
+        var reader = scope.ServiceProvider.GetRequiredService<IFinancialFactReader>();
+        var facts = await reader.ReadAsync(period);
+        Assert.Equal(FinancialFactReadStatus.Success, facts.Status);
+        Assert.Equal(
+            ["sale-at-from", "counter-in-period"],
+            facts.Facts.Select(fact => fact.OperationId));
+    }
+
+    [Fact]
     public async Task Reads_the_three_tax_rates_from_persisted_sale_snapshots()
     {
         using var factory = new HistoryHostFactory();
@@ -367,6 +401,22 @@ public sealed class HistoryApiTests
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.Equal("HISTORY_READ_FAILURE", body.RootElement.GetProperty("code").GetString());
         Assert.DoesNotContain("SQL", body.RootElement.GetRawText(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Returns_history_read_failure_for_a_sale_without_financial_snapshot()
+    {
+        using var factory = new HistoryHostFactory();
+        using var client = factory.CreateClient();
+        await factory.SeedSaleWithoutFinancialSnapshotAsync();
+
+        using var response = await client.GetAsync("/api/history");
+
+        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("HISTORY_READ_FAILURE", body.RootElement.GetProperty("code").GetString());
+        Assert.DoesNotContain("Sale financial", body.RootElement.GetRawText(), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -548,11 +598,17 @@ public sealed class HistoryApiTests
                     countedQuantity: 4,
                     inventoryDifference: 0,
                     resultingPhysicalStock: 4),
-                Operation(
+                FinancialSale(
                     "sale-0005",
-                    "SALE",
                     "0123456789012",
                     "2030-01-15T10:00:00Z",
+                    new SaleFinancialSnapshot(
+                        SaleContext.Takeaway,
+                        Money.FromCents(100),
+                        TaxRate.Takeaway,
+                        Money.FromCents(300),
+                        Money.FromCents(17),
+                        Money.FromCents(317)),
                     previousPhysicalStock: 10,
                     resultingPhysicalStock: 7,
                     quantity: 3));
@@ -586,15 +642,12 @@ public sealed class HistoryApiTests
                 countedQuantity: 4,
                 resultingPhysicalStock: 4,
                 sourceEffect: 0));
-            context.StockOperationLines.Add(Line(
+            context.StockOperationLines.Add(FinancialSaleLine(
                 "sale-0005",
-                1,
                 "0123456789012",
-                "SALE",
-                3,
                 previousPhysicalStock: 10,
                 resultingPhysicalStock: 7,
-                sourceEffect: -3));
+                quantity: 3));
             context.ArticleLifecycleHistory.AddRange(
                 new ArticleLifecycleHistoryEntity
                 {
@@ -636,6 +689,80 @@ public sealed class HistoryApiTests
             var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>();
             await using var context = await contextFactory.CreateDbContextAsync();
             context.Articles.Add(Article(ean13, true));
+            await context.SaveChangesAsync();
+        }
+
+        public async Task SeedSaleWithoutFinancialSnapshotAsync()
+        {
+            using var scope = Services.CreateScope();
+            var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>();
+            await using var context = await contextFactory.CreateDbContextAsync();
+            context.Articles.Add(Article("0123456789012", true));
+            context.StockOperations.Add(Operation(
+                "sale-missing-financial-0001",
+                "SALE",
+                "0123456789012",
+                "2030-01-15T10:00:00Z",
+                quantity: 1));
+            context.StockOperationLines.Add(Line(
+                "sale-missing-financial-0001",
+                1,
+                "0123456789012",
+                "SALE",
+                1,
+                sourceEffect: -1));
+            await context.SaveChangesAsync();
+        }
+
+        public async Task SeedFinancialPeriodFactsAsync()
+        {
+            await SeedFinancialArticlesAsync();
+
+            using var scope = Services.CreateScope();
+            var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>();
+            await using var context = await contextFactory.CreateDbContextAsync();
+            var takeaway = Snapshot(SaleContext.Takeaway, TaxRate.Takeaway, 6);
+            var onsite = Snapshot(SaleContext.OnSite, TaxRate.OnSite, 10);
+            var nonFood = Snapshot(null, TaxRate.NonFood, 20);
+
+            context.StockOperations.AddRange(
+                FinancialSale(
+                    "sale-at-from",
+                    "0123456789012",
+                    "2030-01-01T00:00:00Z",
+                    takeaway),
+                FinancialSale(
+                    "sale-at-to",
+                    "1234567890128",
+                    "2030-02-01T00:00:00Z",
+                    onsite),
+                FinancialSale(
+                    "sale-outside",
+                    "2345678901234",
+                    "2029-12-31T23:59:59Z",
+                    nonFood));
+            context.StockOperationLines.AddRange(
+                FinancialSaleLine("sale-at-from", "0123456789012"),
+                FinancialSaleLine("sale-at-to", "1234567890128"),
+                FinancialSaleLine("sale-outside", "2345678901234"));
+            await context.SaveChangesAsync();
+
+            var reversal = SaleFinancialReversalPolicy.Create("sale-outside", nonFood);
+            context.StockOperations.Add(FinancialCounterMovement(
+                "counter-in-period",
+                "2345678901234",
+                "2030-01-15T12:00:00Z",
+                "sale-outside",
+                reversal));
+            context.StockOperationLines.Add(new StockOperationLineEntity
+            {
+                OperationId = "counter-in-period",
+                LineNumber = 1,
+                Ean13 = "2345678901234",
+                OperationType = "COUNTER_MOVEMENT",
+                SourceEffect = -1,
+                InverseEffect = 1
+            });
             await context.SaveChangesAsync();
         }
 
@@ -768,6 +895,93 @@ public sealed class HistoryApiTests
                 SourceOperationType = sourceOperationType,
                 Justification = justification
             };
+
+        private static StockOperationEntity FinancialSale(
+            string id,
+            string ean13,
+            string timestampUtc,
+            SaleFinancialSnapshot snapshot,
+            int previousPhysicalStock = 0,
+            int resultingPhysicalStock = 0,
+            int quantity = 1)
+        {
+            return new()
+            {
+                Id = id,
+                Type = "SALE",
+                Ean13 = ean13,
+                Quantity = quantity,
+                OccurredAt = timestampUtc,
+                TimestampUtc = timestampUtc,
+                PreviousPhysicalStock = previousPhysicalStock,
+                ResultingPhysicalStock = resultingPhysicalStock,
+                SaleCommitDataType = SaleFinancialSnapshotSerializer.Type,
+                SaleCommitDataPayload = SaleFinancialSnapshotSerializer.Serialize(snapshot),
+                SaleFinancialContext = snapshot.SaleContext switch
+                {
+                    SaleContext.Takeaway => "takeaway",
+                    SaleContext.OnSite => "onsite",
+                    _ => null
+                },
+                SaleFinancialUnitPriceHtCents = snapshot.UnitPriceHt.Cents,
+                SaleFinancialTaxRateCode = snapshot.TaxRate.Code,
+                SaleFinancialTaxRateNumerator = snapshot.TaxRate.Numerator,
+                SaleFinancialTaxRateDenominator = snapshot.TaxRate.Denominator,
+                SaleFinancialAmountHtCents = snapshot.AmountHt.Cents,
+                SaleFinancialVatCents = snapshot.Vat.Cents,
+                SaleFinancialAmountTtcCents = snapshot.AmountTtc.Cents
+            };
+        }
+
+        private static StockOperationEntity FinancialCounterMovement(
+            string id,
+            string ean13,
+            string timestampUtc,
+            string sourceOperationId,
+            SaleFinancialReversal reversal)
+            => new()
+            {
+                Id = id,
+                Type = "COUNTER_MOVEMENT",
+                Ean13 = ean13,
+                OccurredAt = timestampUtc,
+                TimestampUtc = timestampUtc,
+                SourceOperationId = sourceOperationId,
+                SourceOperationType = "SALE",
+                Justification = "Période financière",
+                SaleCommitDataType = SaleFinancialReversalSerializer.Type,
+                SaleCommitDataPayload = SaleFinancialReversalSerializer.Serialize(reversal)
+            };
+
+        private static StockOperationLineEntity FinancialSaleLine(
+            string operationId,
+            string ean13,
+            int previousPhysicalStock = 0,
+            int resultingPhysicalStock = 0,
+            int quantity = 1)
+            => new()
+            {
+                OperationId = operationId,
+                LineNumber = 1,
+                Ean13 = ean13,
+                OperationType = "SALE",
+                Quantity = quantity,
+                PreviousPhysicalStock = previousPhysicalStock,
+                ResultingPhysicalStock = resultingPhysicalStock,
+                SourceEffect = -quantity
+            };
+
+        private static SaleFinancialSnapshot Snapshot(
+            SaleContext? context,
+            TaxRate taxRate,
+            int vatCents)
+            => new(
+                context,
+                Money.FromCents(100),
+                taxRate,
+                Money.FromCents(100),
+                Money.FromCents(vatCents),
+                Money.FromCents(100 + vatCents));
 
         private static StockOperationLineEntity Line(
             string operationId,

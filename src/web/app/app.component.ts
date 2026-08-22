@@ -493,6 +493,8 @@ const lastSaleIdStorageKey = 'token-warehouse.last-sale-id';
                     <div><dt>Montant TTC historique</dt><dd>{{ financial.amountTtcCents }} centimes</dd></div>
                   }
                   @if (entry.financialReversal; as reversal) {
+                    <div><dt>Contexte historique</dt><dd>{{ formatCounterMovementFinancialContext(reversal.context) }}</dd></div>
+                    <div><dt>Taux de TVA historique</dt><dd>{{ reversal.taxRate.ratio }}</dd></div>
                     <div><dt>Inversion financière HT</dt><dd>{{ formatCounterMovementEffect(reversal.amountHtCents) }} centimes</dd></div>
                     <div><dt>Inversion financière TVA</dt><dd>{{ formatCounterMovementEffect(reversal.vatCents) }} centimes</dd></div>
                     <div><dt>Inversion financière TTC</dt><dd>{{ formatCounterMovementEffect(reversal.amountTtcCents) }} centimes</dd></div>
@@ -1233,7 +1235,7 @@ const lastSaleIdStorageKey = 'token-warehouse.last-sale-id';
                         <p>Prix HT unitaire historique : {{ financial.unitPriceHtCents }} centimes ; Taux : {{ financial.taxRate.ratio }} ; Montant HT : {{ financial.amountHtCents }} ; TVA : {{ financial.vatCents }} ; TTC : {{ financial.amountTtcCents }}.</p>
                       }
                       @if (entry.financialReversal; as reversal) {
-                        <p>Inversion financière : HT {{ formatCounterMovementEffect(reversal.amountHtCents) }} ; TVA {{ formatCounterMovementEffect(reversal.vatCents) }} ; TTC {{ formatCounterMovementEffect(reversal.amountTtcCents) }} centimes.</p>
+                        <p>Inversion financière : Contexte {{ formatCounterMovementFinancialContext(reversal.context) }} ; Taux {{ reversal.taxRate.ratio }} ; HT {{ formatCounterMovementEffect(reversal.amountHtCents) }} ; TVA {{ formatCounterMovementEffect(reversal.vatCents) }} ; TTC {{ formatCounterMovementEffect(reversal.amountTtcCents) }} centimes.</p>
                       }
                       @if (entry.lines.length > 0) {
                         <ul aria-label="Lignes de l’opération">
@@ -1648,6 +1650,7 @@ export class AppComponent implements OnInit {
         ? { ...current, ...receipt.position }
         : current);
       this.replaceStockPosition(receipt.position);
+      this.refreshHistoryAfterChange();
       setTimeout(() => document.getElementById('sale-result')?.focus());
     } catch (error) {
       if (requestId !== this.saleRequestId) {

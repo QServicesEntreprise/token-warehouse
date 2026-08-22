@@ -22,6 +22,10 @@ describe('AppComponent', () => {
     await fixture.whenStable();
 
     const component = fixture.componentInstance;
+    const initialHistory = component.loadHistory();
+    http.expectOne('/api/history').flush([]);
+    await initialHistory;
+
     component.saleArticles.set([{
       ean13: '0123456789012',
       name: 'Café à emporter ou sur place',
@@ -103,11 +107,31 @@ describe('AppComponent', () => {
       },
     });
     await submission;
+    const refreshedHistory = http.expectOne('/api/history');
+    refreshedHistory.flush([{
+      id: 'food-sale-1',
+      type: 'SALE_STOCK',
+      timestampUtc: '2030-01-15T10:00:00Z',
+      ean13: '0123456789012',
+      articles: [{ ean13: '0123456789012' }],
+      quantity: 2,
+      lines: [],
+      financial: {
+        context: 'takeaway',
+        unitPriceHtCents: 101,
+        taxRate: { code: 'takeaway', ratio: '11/200', numerator: 11, denominator: 200 },
+        amountHtCents: 202,
+        vatCents: 11,
+        amountTtcCents: 213,
+      },
+    }]);
+    await Promise.resolve();
 
     expect(component.saleState()).toBe('success');
     expect(component.saleContext()).toBe('takeaway');
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('#sale-result').textContent).toContain('213');
+    expect(fixture.nativeElement.querySelector('#history-list').textContent).toContain('food-sale-1');
     flushUnusedDashboardRequest(http);
     http.verify();
   });
@@ -484,6 +508,34 @@ describe('AppComponent', () => {
     expect(history).toContain('211 centimes');
     expect(history).toContain('-200 centimes');
     expect(history).toContain('-211 centimes');
+    expect(history).toContain('Contexte historiqueÀ emporter');
+    expect(history).toContain('Taux de TVA historique11/200');
+
+    component.detail.set(foodArticle(100, 6, 106, 10, 110));
+    fixture.detectChanges();
+    const articleHistoryLoad = component.loadArticleHistory('0123456789012');
+    http.expectOne('/api/history?ean13=0123456789012').flush([{
+      id: 'counter-1',
+      type: 'COUNTER_MOVEMENT',
+      timestampUtc: '2030-01-15T10:01:00Z',
+      ean13: '0123456789012',
+      articles: [{ ean13: '0123456789012' }],
+      lines: [],
+      financialReversal: {
+        sourceOperationId: 'sale-1',
+        context: 'takeaway',
+        unitPriceHtCents: 100,
+        taxRate: { code: 'takeaway', ratio: '11/200', numerator: 11, denominator: 200 },
+        amountHtCents: -200,
+        vatCents: -11,
+        amountTtcCents: -211,
+      },
+    }]);
+    await articleHistoryLoad;
+    fixture.detectChanges();
+    const articleHistory = fixture.nativeElement.querySelector('#article-history-list').textContent as string;
+    expect(articleHistory).toContain('Contexte À emporter');
+    expect(articleHistory).toContain('Taux 11/200');
     flushUnusedDashboardRequest(http);
     http.verify();
   });
