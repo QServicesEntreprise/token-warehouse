@@ -115,7 +115,7 @@ public sealed class SqliteStockOperationReader(
         return entities
             .Select(entity => new StockOperationReadFact(
                 ToDomain(entity, entity.Lines.OrderBy(line => line.LineNumber).ToArray()),
-                ReadSaleFinancialSnapshot(entity, required: false)?.SaleContext))
+                ReadSaleFinancialSnapshot(entity)?.SaleContext))
             .OrderBy(fact => fact.Operation.TimestampUtc)
             .ThenBy(fact => fact.Operation.Id, StringComparer.Ordinal)
             .ToArray();
@@ -126,7 +126,7 @@ public sealed class SqliteStockOperationReader(
         var lines = entity.Lines.OrderBy(line => line.LineNumber).ToArray();
         var operation = ToDomain(entity, lines);
         var financial = operation.Type == StockOperationType.Sale
-            ? ReadSaleFinancialSnapshot(entity, required: true)
+            ? ReadSaleFinancialSnapshot(entity)
             : null;
         return new(
             operation,
@@ -324,28 +324,13 @@ public sealed class SqliteStockOperationReader(
         return StockOperation.CreateInventory(entity.Id, inventoryLines, timestampUtc);
     }
 
-    private static SaleFinancialSnapshot? ReadSaleFinancialSnapshot(
-        StockOperationEntity entity,
-        bool required)
+    private static SaleFinancialSnapshot? ReadSaleFinancialSnapshot(StockOperationEntity entity)
     {
         if (!string.Equals(entity.Type, "SALE", StringComparison.OrdinalIgnoreCase))
         {
             return null;
         }
 
-        if (SaleFinancialSnapshotSerializer.TryDeserialize(
-                entity.SaleCommitDataType,
-                entity.SaleCommitDataPayload,
-                out var financial))
-        {
-            return financial;
-        }
-
-        if (required)
-        {
-            throw new InvalidOperationException("Stored Sale financial snapshot is invalid.");
-        }
-
-        return null;
+        return SqliteSaleFinancialSnapshotReader.Read(entity, out _);
     }
 }

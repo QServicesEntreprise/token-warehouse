@@ -102,15 +102,7 @@ public sealed class SqliteHistoryReader(
         SaleFinancialSnapshot? financial = null;
         if (type == HistoryEntryType.SaleStock)
         {
-            if (!SaleFinancialSnapshotSerializer.TryDeserialize(
-                    entity.SaleCommitDataType,
-                    entity.SaleCommitDataPayload,
-                    out var saleFinancial))
-            {
-                throw new InvalidOperationException("Stored Sale financial snapshot is invalid.");
-            }
-
-            financial = saleFinancial;
+            financial = SqliteSaleFinancialSnapshotReader.Read(entity, out _);
         }
         var firstLine = selectedLines[0];
         var rootLine = storedLines.Length > 1 ? null : firstLine;

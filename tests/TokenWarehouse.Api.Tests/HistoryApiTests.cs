@@ -420,6 +420,70 @@ public sealed class HistoryApiTests
     }
 
     [Fact]
+    public async Task Returns_read_failures_for_a_sale_with_mismatched_persisted_financial_representations()
+    {
+        using var factory = new HistoryHostFactory();
+        using var client = factory.CreateClient();
+        await factory.SeedSaleWithFinancialSnapshotsAsync(
+            new SaleFinancialSnapshot(
+                SaleContext.Takeaway,
+                Money.FromCents(100),
+                TaxRate.Takeaway,
+                Money.FromCents(200),
+                Money.FromCents(11),
+                Money.FromCents(211)),
+            new SaleFinancialSnapshot(
+                SaleContext.Takeaway,
+                Money.FromCents(101),
+                TaxRate.Takeaway,
+                Money.FromCents(202),
+                Money.FromCents(11),
+                Money.FromCents(213)));
+
+        using var history = await client.GetAsync("/api/history");
+
+        Assert.Equal(HttpStatusCode.InternalServerError, history.StatusCode);
+        using var historyBody = JsonDocument.Parse(await history.Content.ReadAsStringAsync());
+        Assert.Equal("HISTORY_READ_FAILURE", historyBody.RootElement.GetProperty("code").GetString());
+
+        using var scope = factory.Services.CreateScope();
+        var summary = await scope.ServiceProvider
+            .GetRequiredService<IReadFinancialSummaryUseCase>()
+            .ReadAsync(new FinancialPeriod(DateTimeOffset.MinValue, DateTimeOffset.MaxValue));
+
+        Assert.Equal(FinancialSummaryReadStatus.PersistenceFailed, summary.Status);
+        Assert.Equal("FINANCIAL_READ_FAILURE", Assert.Single(summary.Errors).Code);
+    }
+
+    [Fact]
+    public async Task Returns_read_failures_for_a_sale_with_incoherent_financial_payload()
+    {
+        using var factory = new HistoryHostFactory();
+        using var client = factory.CreateClient();
+        await factory.SeedSaleWithFinancialSnapshotsAsync(
+            new SaleFinancialSnapshot(
+                SaleContext.Takeaway,
+                Money.FromCents(100),
+                TaxRate.Takeaway,
+                Money.FromCents(200),
+                Money.FromCents(11),
+                Money.FromCents(211)),
+            new SaleFinancialSnapshot(
+                SaleContext.Takeaway,
+                Money.FromCents(100),
+                TaxRate.Takeaway,
+                Money.FromCents(199),
+                Money.FromCents(11),
+                Money.FromCents(210)));
+
+        using var response = await client.GetAsync("/api/history");
+
+        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("HISTORY_READ_FAILURE", body.RootElement.GetProperty("code").GetString());
+    }
+
+    [Fact]
     public async Task Reads_history_from_one_sqlite_snapshot_when_catalogue_changes_between_queries()
     {
         var databasePath = Path.Combine(Path.GetTempPath(), $"token-warehouse-history-snapshot-{Guid.NewGuid():N}.db");
@@ -714,6 +778,29 @@ public sealed class HistoryApiTests
             await context.SaveChangesAsync();
         }
 
+        public async Task SeedSaleWithFinancialSnapshotsAsync(
+            SaleFinancialSnapshot persistedSnapshot,
+            SaleFinancialSnapshot payloadSnapshot)
+        {
+            await SeedFinancialArticlesAsync();
+
+            using var scope = Services.CreateScope();
+            var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>();
+            await using var context = await contextFactory.CreateDbContextAsync();
+            context.StockOperations.Add(FinancialSale(
+                "sale-incoherent-financial-0001",
+                "0123456789012",
+                "2030-01-15T10:00:00Z",
+                persistedSnapshot,
+                quantity: 2,
+                payloadSnapshot: payloadSnapshot));
+            context.StockOperationLines.Add(FinancialSaleLine(
+                "sale-incoherent-financial-0001",
+                "0123456789012",
+                quantity: 2));
+            await context.SaveChangesAsync();
+        }
+
         public async Task SeedFinancialPeriodFactsAsync()
         {
             await SeedFinancialArticlesAsync();
@@ -903,7 +990,8 @@ public sealed class HistoryApiTests
             SaleFinancialSnapshot snapshot,
             int previousPhysicalStock = 0,
             int resultingPhysicalStock = 0,
-            int quantity = 1)
+            int quantity = 1,
+            SaleFinancialSnapshot? payloadSnapshot = null)
         {
             return new()
             {
@@ -916,7 +1004,7 @@ public sealed class HistoryApiTests
                 PreviousPhysicalStock = previousPhysicalStock,
                 ResultingPhysicalStock = resultingPhysicalStock,
                 SaleCommitDataType = SaleFinancialSnapshotSerializer.Type,
-                SaleCommitDataPayload = SaleFinancialSnapshotSerializer.Serialize(snapshot),
+                SaleCommitDataPayload = SaleFinancialSnapshotSerializer.Serialize(payloadSnapshot ?? snapshot),
                 SaleFinancialContext = snapshot.SaleContext switch
                 {
                     SaleContext.Takeaway => "takeaway",

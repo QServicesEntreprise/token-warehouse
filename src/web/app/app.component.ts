@@ -1232,7 +1232,7 @@ const lastSaleIdStorageKey = 'token-warehouse.last-sale-id';
                       @if (entry.correctionOperationId) { <p>Correction : <code>{{ entry.correctionOperationId }}</code></p> }
                       @if (entry.correctedByOperationId) { <p>Corrigé par : <code>{{ entry.correctedByOperationId }}</code></p> }
                       @if (entry.financial; as financial) {
-                        <p>Prix HT unitaire historique : {{ financial.unitPriceHtCents }} centimes ; Taux : {{ financial.taxRate.ratio }} ; Montant HT : {{ financial.amountHtCents }} ; TVA : {{ financial.vatCents }} ; TTC : {{ financial.amountTtcCents }}.</p>
+                        <p>Prix HT unitaire historique : {{ financial.unitPriceHtCents }} centimes ; Contexte {{ formatCounterMovementFinancialContext(financial.context) }} ; Taux : {{ financial.taxRate.ratio }} ; Montant HT : {{ financial.amountHtCents }} ; TVA : {{ financial.vatCents }} ; TTC : {{ financial.amountTtcCents }}.</p>
                       }
                       @if (entry.financialReversal; as reversal) {
                         <p>Inversion financière : Contexte {{ formatCounterMovementFinancialContext(reversal.context) }} ; Taux {{ reversal.taxRate.ratio }} ; HT {{ formatCounterMovementEffect(reversal.amountHtCents) }} ; TVA {{ formatCounterMovementEffect(reversal.vatCents) }} ; TTC {{ formatCounterMovementEffect(reversal.amountTtcCents) }} centimes.</p>

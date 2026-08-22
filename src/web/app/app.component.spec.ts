@@ -515,6 +515,22 @@ describe('AppComponent', () => {
     fixture.detectChanges();
     const articleHistoryLoad = component.loadArticleHistory('0123456789012');
     http.expectOne('/api/history?ean13=0123456789012').flush([{
+      id: 'sale-1',
+      type: 'SALE_STOCK',
+      timestampUtc: '2030-01-15T10:00:00Z',
+      ean13: '0123456789012',
+      articles: [{ ean13: '0123456789012' }],
+      quantity: 2,
+      lines: [],
+      financial: {
+        context: 'takeaway',
+        unitPriceHtCents: 100,
+        taxRate: { code: 'takeaway', ratio: '11/200', numerator: 11, denominator: 200 },
+        amountHtCents: 200,
+        vatCents: 11,
+        amountTtcCents: 211,
+      },
+    }, {
       id: 'counter-1',
       type: 'COUNTER_MOVEMENT',
       timestampUtc: '2030-01-15T10:01:00Z',
@@ -534,6 +550,8 @@ describe('AppComponent', () => {
     await articleHistoryLoad;
     fixture.detectChanges();
     const articleHistory = fixture.nativeElement.querySelector('#article-history-list').textContent as string;
+    const articleSaleHistory = fixture.nativeElement.querySelector('[aria-labelledby="article-history-entry-sale-1"]').textContent as string;
+    expect(articleSaleHistory).toContain('Contexte À emporter');
     expect(articleHistory).toContain('Contexte À emporter');
     expect(articleHistory).toContain('Taux 11/200');
     flushUnusedDashboardRequest(http);

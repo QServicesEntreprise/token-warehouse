@@ -665,6 +665,8 @@ test('keeps a committed Sale and its financial correction separately in History'
   });
   await page.getByRole('button', { name: 'Consulter l’Historique de cet Article', exact: true }).click();
   expect((await articleHistoryPromise).status()).toBe(200);
+  const articleSaleCard = page.locator(`[aria-labelledby="article-history-entry-${sale.operation.id}"]`);
+  await expect(articleSaleCard).toContainText('Contexte À emporter');
   await expect(page.locator('#article-history-list')).toContainText('À emporter');
   await expect(page.locator('#article-history-list')).toContainText('11/200');
 });
