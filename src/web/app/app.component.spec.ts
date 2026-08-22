@@ -1394,10 +1394,11 @@ describe('AppComponent', () => {
       timestampUtc: '2030-01-15T10:00:00Z',
       ean13: '0123456789012',
       articles: [{ ean13: '0123456789012' }],
+      previousPhysicalStock: 0,
       lines: [
-        { lineNumber: 1, ean13: '0123456789012', inverseEffect: -3 },
-        { lineNumber: 2, ean13: '0123456789012', inverseEffect: 4 },
-        { lineNumber: 3, ean13: '0123456789012', inverseEffect: 0 },
+        { lineNumber: 1, ean13: '0123456789012', previousPhysicalStock: 0, inverseEffect: -3 },
+        { lineNumber: 2, ean13: '0123456789012', previousPhysicalStock: 0, inverseEffect: 4 },
+        { lineNumber: 3, ean13: '0123456789012', previousPhysicalStock: 0, inverseEffect: 0 },
       ],
       sourceOperationId: 'source-01',
       sourceOperationType: 'SUPPLY',
@@ -1442,10 +1443,11 @@ describe('AppComponent', () => {
       timestampUtc: '2030-01-15T10:00:00Z',
       ean13: '0123456789012',
       articles: [{ ean13: '0123456789012' }],
+      previousPhysicalStock: 0,
       lines: [
-        { lineNumber: 1, ean13: '0123456789012', inverseEffect: -3 },
-        { lineNumber: 2, ean13: '0123456789012', inverseEffect: 4 },
-        { lineNumber: 3, ean13: '0123456789012', inverseEffect: 0 },
+        { lineNumber: 1, ean13: '0123456789012', previousPhysicalStock: 0, inverseEffect: -3 },
+        { lineNumber: 2, ean13: '0123456789012', previousPhysicalStock: 0, inverseEffect: 4 },
+        { lineNumber: 3, ean13: '0123456789012', previousPhysicalStock: 0, inverseEffect: 0 },
       ],
       sourceOperationId: 'source-01',
       sourceOperationType: 'SUPPLY',
@@ -1472,6 +1474,9 @@ describe('AppComponent', () => {
     expect(globalText).toContain('effet inverse -3');
     expect(globalText).toContain('effet inverse +4');
     expect(globalText).toContain('effet inverse 0');
+    const globalCounterText = fixture.nativeElement.querySelector('[aria-labelledby="history-entry-counter-01"]').textContent as string;
+    expect(globalCounterText).not.toContain('Stock physique précédent');
+    expect(globalCounterText).not.toContain('précédent');
 
     const article = foodArticle(1000, 55, 1055, 100, 1100);
     component.detail.set(article);
@@ -1502,10 +1507,11 @@ describe('AppComponent', () => {
       timestampUtc: '2030-01-15T10:00:00Z',
       ean13: article.ean13,
       articles: [{ ean13: article.ean13 }],
+      previousPhysicalStock: 0,
       lines: [
-        { lineNumber: 1, ean13: article.ean13, inverseEffect: -3 },
-        { lineNumber: 2, ean13: article.ean13, inverseEffect: 4 },
-        { lineNumber: 3, ean13: article.ean13, inverseEffect: 0 },
+        { lineNumber: 1, ean13: article.ean13, previousPhysicalStock: 0, inverseEffect: -3 },
+        { lineNumber: 2, ean13: article.ean13, previousPhysicalStock: 0, inverseEffect: 4 },
+        { lineNumber: 3, ean13: article.ean13, previousPhysicalStock: 0, inverseEffect: 0 },
       ],
       sourceOperationId: 'source-01',
       sourceOperationType: 'SUPPLY',
@@ -1524,6 +1530,8 @@ describe('AppComponent', () => {
     expect(articleText).toContain('effet inverse -3');
     expect(articleText).toContain('effet inverse +4');
     expect(articleText).toContain('effet inverse 0');
+    const articleCounterText = fixture.nativeElement.querySelector('[aria-labelledby="article-history-entry-counter-01"]').textContent as string;
+    expect(articleCounterText).not.toContain('précédent');
     http.verify();
   });
 

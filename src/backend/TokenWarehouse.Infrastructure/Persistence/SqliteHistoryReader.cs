@@ -105,7 +105,9 @@ public sealed class SqliteHistoryReader(
             StockEffect = type is HistoryEntryType.Supply or HistoryEntryType.SaleStock or HistoryEntryType.Inventory
                 ? rootLine?.StockEffect
                 : null,
-            PreviousPhysicalStock = rootLine?.PreviousPhysicalStock,
+            PreviousPhysicalStock = type == HistoryEntryType.CounterMovement
+                ? null
+                : rootLine?.PreviousPhysicalStock,
             CountedQuantity = type == HistoryEntryType.Inventory
                 ? rootLine?.CountedQuantity
                 : null,
@@ -215,7 +217,9 @@ public sealed class SqliteHistoryReader(
             Quantity = type is HistoryEntryType.Supply or HistoryEntryType.SaleStock
                 ? entity.Quantity
                 : null,
-            PreviousPhysicalStock = entity.PreviousPhysicalStock,
+            PreviousPhysicalStock = type == HistoryEntryType.CounterMovement
+                ? null
+                : entity.PreviousPhysicalStock,
             CountedQuantity = type == HistoryEntryType.Inventory ? entity.CountedQuantity : null,
             Difference = type == HistoryEntryType.Inventory ? entity.InventoryDifference : null,
             StockEffect = type is HistoryEntryType.Supply or HistoryEntryType.SaleStock or HistoryEntryType.Inventory or HistoryEntryType.CounterMovement
@@ -237,7 +241,9 @@ public sealed class SqliteHistoryReader(
             LineNumber = 1,
             Ean13 = ean13,
             Quantity = type is HistoryEntryType.Supply or HistoryEntryType.SaleStock ? entity.Quantity : null,
-            PreviousPhysicalStock = entity.PreviousPhysicalStock,
+            PreviousPhysicalStock = type == HistoryEntryType.CounterMovement
+                ? null
+                : entity.PreviousPhysicalStock,
             CountedQuantity = type == HistoryEntryType.Inventory ? entity.CountedQuantity : null,
             Difference = type == HistoryEntryType.Inventory ? entity.InventoryDifference : null,
             StockEffect = type switch

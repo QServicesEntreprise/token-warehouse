@@ -276,7 +276,7 @@ const lastInventoryIdStorageKey = 'token-warehouse.last-inventory-id';
                   <div><dt>Article(s)</dt><dd>{{ formatHistoryArticles(entry) }}</dd></div>
                   @if (entry.quantity !== undefined) { <div><dt>Quantité utile</dt><dd>{{ entry.quantity }} unités</dd></div> }
                   @if (entry.stockEffect !== undefined) { <div><dt>Effet Stock</dt><dd>{{ formatHistoryEffect(entry.stockEffect) }}</dd></div> }
-                  @if (entry.previousPhysicalStock !== undefined) { <div><dt>Stock physique précédent</dt><dd>{{ entry.previousPhysicalStock }} unités</dd></div> }
+                  @if (entry.type !== 'COUNTER_MOVEMENT' && entry.previousPhysicalStock !== undefined) { <div><dt>Stock physique précédent</dt><dd>{{ entry.previousPhysicalStock }} unités</dd></div> }
                   @if (entry.countedQuantity !== undefined) { <div><dt>Quantité comptée</dt><dd>{{ entry.countedQuantity }} unités</dd></div> }
                   @if (entry.difference !== undefined) { <div><dt>Écart</dt><dd>{{ formatHistoryEffect(entry.difference) }}</dd></div> }
                   @if (entry.resultingPhysicalStock !== undefined) { <div><dt>Stock physique résultant</dt><dd>{{ entry.resultingPhysicalStock }} unités</dd></div> }
@@ -1003,7 +1003,7 @@ const lastInventoryIdStorageKey = 'token-warehouse.last-inventory-id';
                               @if (line.quantity !== undefined) { · {{ line.quantity }} unités }
                               @if (line.stockEffect !== undefined) { · effet {{ formatHistoryEffect(line.stockEffect) }} }
                               @if (line.inverseEffect !== undefined) { · effet inverse {{ formatHistoryEffect(line.inverseEffect) }} }
-                              @if (line.previousPhysicalStock !== undefined) { · précédent {{ line.previousPhysicalStock }} }
+                              @if (entry.type !== 'COUNTER_MOVEMENT' && line.previousPhysicalStock !== undefined) { · précédent {{ line.previousPhysicalStock }} }
                               @if (line.countedQuantity !== undefined) { · comptée {{ line.countedQuantity }} }
                               @if (line.difference !== undefined) { · écart {{ formatHistoryEffect(line.difference) }} }
                               @if (line.resultingPhysicalStock !== undefined) { · résultat {{ line.resultingPhysicalStock }} }

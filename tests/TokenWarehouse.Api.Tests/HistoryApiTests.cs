@@ -36,6 +36,8 @@ public sealed class HistoryApiTests
         Assert.Equal("counter-0004", body.RootElement[0].GetProperty("id").GetString());
         Assert.Equal("bulk-0002", body.RootElement[0].GetProperty("sourceOperationId").GetString());
         Assert.Equal("Correction de contrôle", body.RootElement[0].GetProperty("justification").GetString());
+        Assert.False(body.RootElement[0].TryGetProperty("previousPhysicalStock", out _));
+        Assert.False(body.RootElement[0].GetProperty("lines")[0].TryGetProperty("previousPhysicalStock", out _));
         Assert.Equal("CATALOG_ARCHIVE", body.RootElement[1].GetProperty("type").GetString());
         Assert.Equal("fact_catalog_archive_01J00000000000000000000000", body.RootElement[1].GetProperty("id").GetString());
         Assert.Equal("INVENTORY", body.RootElement[2].GetProperty("type").GetString());
@@ -100,6 +102,24 @@ public sealed class HistoryApiTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.Empty(body.RootElement.EnumerateArray());
+    }
+
+    [Fact]
+    public async Task Omits_previous_stock_for_a_synthetic_counter_movement_line()
+    {
+        using var factory = new HistoryHostFactory();
+        using var client = factory.CreateClient();
+        await factory.SeedSyntheticCounterMovementAsync();
+
+        using var response = await client.GetAsync("/api/history?ean13=0123456789012");
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var entry = Assert.Single(
+            body.RootElement.EnumerateArray(),
+            item => item.GetProperty("type").GetString() == "COUNTER_MOVEMENT");
+
+        Assert.Equal("COUNTER_MOVEMENT", entry.GetProperty("type").GetString());
+        Assert.False(entry.TryGetProperty("previousPhysicalStock", out _));
+        Assert.False(entry.GetProperty("lines")[0].TryGetProperty("previousPhysicalStock", out _));
     }
 
     [Fact]
@@ -291,6 +311,25 @@ public sealed class HistoryApiTests
             context.StockOperations.AddRange(
                 Operation("operation-0001", "supply", "0123456789012", "2030-01-15T10:00:00Z"),
                 Operation("operation-0002", "supply", "0123456789012", "2030-01-15T10:00:00Z"));
+            await context.SaveChangesAsync();
+        }
+
+        public async Task SeedSyntheticCounterMovementAsync()
+        {
+            using var scope = Services.CreateScope();
+            var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>();
+            await using var context = await contextFactory.CreateDbContextAsync();
+            context.Articles.Add(Article("0123456789012", true));
+            context.StockOperations.AddRange(
+                Operation("source-synthetic-0001", "supply", "0123456789012", "2030-01-15T09:00:00Z", quantity: 2),
+                Operation(
+                    "counter-synthetic-0002",
+                    "COUNTER_MOVEMENT",
+                    "0123456789012",
+                    "2030-01-15T10:00:00Z",
+                    sourceOperationId: "source-synthetic-0001",
+                    sourceOperationType: "SUPPLY",
+                    justification: "Correction synthétique"));
             await context.SaveChangesAsync();
         }
 

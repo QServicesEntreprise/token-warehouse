@@ -22,6 +22,7 @@ type BrowserHistoryEntry = {
     lineNumber: number;
     ean13: string;
     quantity?: number;
+    previousPhysicalStock?: number;
     stockEffect?: number;
     resultingPhysicalStock?: number;
   }>;
@@ -137,7 +138,8 @@ test('consults global and Article history after real Stock operations', async ({
   await page.locator('#counter-movement-submit').click();
   const otherCounterResponse = await otherCounterResponsePromise;
   expect(otherCounterResponse.status()).toBe(201);
-  await expect(otherCounterResponse.json()).resolves.toMatchObject({
+  const otherCounter = await otherCounterResponse.json() as { counterMovement: { id: string; lines: Array<{ inverseEffect: number }> } };
+  expect(otherCounter).toMatchObject({
     counterMovement: { lines: [{ inverseEffect: 1 }] },
   });
 
@@ -150,7 +152,8 @@ test('consults global and Article history after real Stock operations', async ({
   await page.locator('#counter-movement-submit').click();
   const zeroCounterResponse = await zeroCounterResponsePromise;
   expect(zeroCounterResponse.status()).toBe(201);
-  await expect(zeroCounterResponse.json()).resolves.toMatchObject({
+  const zeroCounter = await zeroCounterResponse.json() as { counterMovement: { id: string; lines: Array<{ inverseEffect: number }> } };
+  expect(zeroCounter).toMatchObject({
     counterMovement: { lines: [{ inverseEffect: 0 }] },
   });
 
@@ -229,6 +232,21 @@ test('consults global and Article history after real Stock operations', async ({
   await expect(page.locator('#history-list')).toContainText('effet inverse -2');
   await expect(page.locator('#history-list')).toContainText('effet inverse +1');
   await expect(page.locator('#history-list')).toContainText('effet inverse 0');
+
+  for (const { id, inverseEffect } of [
+    { id: counter.counterMovement.id, inverseEffect: -2 },
+    { id: otherCounter.counterMovement.id, inverseEffect: 1 },
+    { id: zeroCounter.counterMovement.id, inverseEffect: 0 },
+  ]) {
+    const history = globalEntries.find((entry) => entry.id === id);
+    expect(history).toBeDefined();
+    expect(history?.previousPhysicalStock).toBeUndefined();
+    expect(history?.lines.every((line) => line.previousPhysicalStock === undefined)).toBe(true);
+    const card = page.locator(`[aria-labelledby="history-entry-${id}"]`);
+    await expect(card).toContainText(`effet inverse ${inverseEffect > 0 ? '+' : ''}${inverseEffect}`);
+    await expect(card).not.toContainText('Stock physique précédent');
+    await expect(card).not.toContainText('précédent');
+  }
 
   const filteredBulkHistoryPromise = page.waitForResponse((response) => {
     const url = new URL(response.url());
@@ -325,6 +343,9 @@ test('consults global and Article history after real Stock operations', async ({
   await expect(page.locator('#article-history-panel')).toBeFocused();
   await expect(page.locator('#article-history-list')).toContainText('Archivage Catalogue');
   await expect(page.locator('#article-history-list')).toContainText('Réactivation Catalogue');
+  const articleCounterCard = page.locator(`[aria-labelledby="article-history-entry-${counter.counterMovement.id}"]`);
+  await expect(articleCounterCard).toContainText('effet inverse -2');
+  await expect(articleCounterCard).not.toContainText('précédent');
 
   const otherArticleResponsePromise = page.waitForResponse((response) => {
     const url = new URL(response.url());
@@ -342,6 +363,9 @@ test('consults global and Article history after real Stock operations', async ({
   await page.getByRole('button', { name: 'Consulter l’Historique de cet Article', exact: true }).click();
   expect((await otherArticleHistoryPromise).status()).toBe(200);
   await expect(page.locator('#article-history-list')).toContainText('effet inverse +1');
+  const otherArticleCounterCard = page.locator(`[aria-labelledby="article-history-entry-${otherCounter.counterMovement.id}"]`);
+  await expect(otherArticleCounterCard).toContainText('effet inverse +1');
+  await expect(otherArticleCounterCard).not.toContainText('précédent');
 
   const inventoryArticleResponsePromise = page.waitForResponse((response) => {
     const url = new URL(response.url());
@@ -359,6 +383,9 @@ test('consults global and Article history after real Stock operations', async ({
   await page.getByRole('button', { name: 'Consulter l’Historique de cet Article', exact: true }).click();
   expect((await inventoryArticleHistoryPromise).status()).toBe(200);
   await expect(page.locator('#article-history-list')).toContainText('effet inverse 0');
+  const zeroArticleCounterCard = page.locator(`[aria-labelledby="article-history-entry-${zeroCounter.counterMovement.id}"]`);
+  await expect(zeroArticleCounterCard).toContainText('effet inverse 0');
+  await expect(zeroArticleCounterCard).not.toContainText('précédent');
 
   await page.reload();
   await page.getByRole('link', { name: 'Historique' }).click();
