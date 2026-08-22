@@ -284,13 +284,13 @@ public sealed class DashboardApplication(
                 .GroupBy(position => position.Ean13.Value, StringComparer.Ordinal)
                 .ToDictionary(group => group.Key, group => group.Single(), StringComparer.Ordinal);
             var financialPeriod = warehouseCalendar.ToUtcPeriod(query.Period);
-            FinancialSummary? financial = rows.Length == 0
+            var financialFacts = snapshot.FinancialFacts.Where(fact =>
+                financialPeriod.Contains(fact.TimestampUtc)
+                && articles.TryGetValue(fact.Ean13.Value, out var article)
+                && query.Selection.MatchesFinancial(article, fact.SaleContext)).ToArray();
+            FinancialSummary? financial = rows.Length == 0 && financialFacts.Length == 0
                 ? null
-                : FinancialSummary.Calculate(
-                    snapshot.FinancialFacts.Where(fact =>
-                        financialPeriod.Contains(fact.TimestampUtc)
-                        && articles.TryGetValue(fact.Ean13.Value, out var article)
-                        && query.Selection.MatchesFinancial(article, fact.SaleContext)));
+                : FinancialSummary.Calculate(financialFacts);
 
             var physicalStock = rows.Sum(row => row.PhysicalStock);
             var sellableStock = rows.Sum(row => row.SellableStock);

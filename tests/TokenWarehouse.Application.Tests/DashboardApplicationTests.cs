@@ -127,6 +127,70 @@ public sealed class DashboardApplicationTests
     }
 
     [Fact]
+    public async Task Uses_historical_financial_mode_when_current_article_modes_changed()
+    {
+        var changedModeArticle = View(
+            "0123456789012",
+            "Mode actuel à emporter",
+            ArticleType.Food,
+            true,
+            1,
+            1,
+            StockAvailability.Available,
+            null,
+            [ConsumptionMode.Takeaway]);
+        var historicalFact = Fact(
+            "sale-historical-onsite",
+            "0123456789012",
+            "2030-01-10T10:00:00Z",
+            TaxRate.OnSite,
+            SaleContext.OnSite,
+            1000,
+            100,
+            1100);
+        var query = new DashboardQueryRequest(
+            "2030-01-01",
+            "2030-01-31",
+            "food",
+            "onsite",
+            null);
+
+        var alone = await new DashboardApplication(
+            new FakeDashboardSource([changedModeArticle], financialFacts: [historicalFact]),
+            Calendar()).ReadAsync(query);
+
+        Assert.Equal(DashboardReadStatus.Success, alone.Status);
+        Assert.Empty(alone.View!.StockByArticle);
+        Assert.Equal((1000, 100, 1100), (
+            alone.View.Financial!.RevenueHt.Cents,
+            alone.View.Financial.VatCollected.Cents,
+            alone.View.Financial.RevenueTtc.Cents));
+
+        var currentlyOnsiteArticle = View(
+            "1234567890128",
+            "Mode actuel sur place",
+            ArticleType.Food,
+            true,
+            1,
+            1,
+            StockAvailability.Available,
+            null,
+            [ConsumptionMode.OnSite]);
+        var alongside = await new DashboardApplication(
+            new FakeDashboardSource(
+                [changedModeArticle, currentlyOnsiteArticle],
+                financialFacts: [historicalFact]),
+            Calendar()).ReadAsync(query);
+
+        Assert.Equal(DashboardReadStatus.Success, alongside.Status);
+        Assert.Equal(["1234567890128"], alongside.View!.StockByArticle.Select(row => row.Ean13));
+        Assert.Equal((1000, 100, 1100), (
+            alongside.View.Financial!.RevenueHt.Cents,
+            alongside.View.Financial.VatCollected.Cents,
+            alongside.View.Financial.RevenueTtc.Cents));
+    }
+
+    [Fact]
     public async Task Rejects_an_invalid_stock_quantity_instead_of_clamping_it()
     {
         var invalid = View(

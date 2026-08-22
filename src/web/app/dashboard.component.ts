@@ -149,7 +149,11 @@ const initialFilters: DashboardFilters = {
             <p>Chargement du Dashboard…</p>
           }
           @case ('ready') {
-            <p>{{ dashboard()?.stockByArticle?.length ?? 0 }} Article{{ (dashboard()?.stockByArticle?.length ?? 0) > 1 ? 's' : '' }} suivi{{ (dashboard()?.stockByArticle?.length ?? 0) > 1 ? 's' : '' }}.</p>
+            @if ((dashboard()?.stockByArticle?.length ?? 0) > 0) {
+              <p>{{ dashboard()?.stockByArticle?.length ?? 0 }} Article{{ (dashboard()?.stockByArticle?.length ?? 0) > 1 ? 's' : '' }} suivi{{ (dashboard()?.stockByArticle?.length ?? 0) > 1 ? 's' : '' }}.</p>
+            } @else {
+              <p>Indicateurs financiers disponibles pour la sélection.</p>
+            }
           }
           @case ('empty') {
             <p>Aucun Article ne correspond aux sélections.</p>
@@ -480,7 +484,8 @@ export class DashboardComponent implements OnInit {
       }
 
       this.dashboard.set(dashboard);
-      this.dashboardState.set(dashboard.stockByArticle.length > 0 ? 'ready' : 'empty');
+      this.dashboardState.set(
+        dashboard.stockByArticle.length > 0 || Boolean(dashboard.financial) ? 'ready' : 'empty');
     } catch (error) {
       if (requestId !== this.requestId) {
         return;

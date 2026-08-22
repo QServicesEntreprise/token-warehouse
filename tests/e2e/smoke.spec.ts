@@ -698,6 +698,74 @@ test.describe('Dashboard daily flow calendar boundary', () => {
 test.describe('Dashboard financial indicators', () => {
   test.use({ e2eSeed: 'financial', timezoneId: 'America/Los_Angeles' });
 
+  test('keeps historical mode facts when current food modes change', async ({ page }) => {
+    const dashboard = page.locator('#dashboard-panel');
+    const patchModes = async (ean13: string, modes: string[]) => {
+      const response = await page.request.patch(
+        `http://127.0.0.1:5100/api/articles/${ean13}`,
+        { data: { consumptionModes: modes } });
+      expect(response.status()).toBe(200);
+    };
+
+    await page.goto('/');
+    await expect(page.locator('#dashboard-from')).toHaveValue('2030-01-01');
+    await patchModes('1234567890128', ['onsite']);
+    await patchModes('1234567890128', ['takeaway']);
+    await patchModes('0123456789012', ['takeaway']);
+    await patchModes('5678901234562', ['takeaway']);
+
+    await page.locator('#dashboard-from').fill('2030-01-10');
+    await page.locator('#dashboard-to').fill('2030-01-10');
+    await page.locator('#dashboard-type').selectOption('food');
+    await page.locator('#dashboard-mode').selectOption('onsite');
+    const aloneResponsePromise = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return response.request().method() === 'GET'
+        && url.pathname === '/api/dashboard'
+        && url.searchParams.get('from') === '2030-01-10'
+        && url.searchParams.get('to') === '2030-01-10'
+        && url.searchParams.get('type') === 'food'
+        && url.searchParams.get('mode') === 'onsite';
+    });
+    await page.getByRole('button', { name: 'Lire le Dashboard' }).click();
+    const aloneResponse = await aloneResponsePromise;
+    expect(aloneResponse.status()).toBe(200);
+    const aloneView = await aloneResponse.json();
+    expect(aloneView.stockByArticle).toEqual([]);
+    expect(aloneView.financial).toMatchObject({
+      revenueHtCents: 1000,
+      revenueTtcCents: 1100,
+      vatCollectedCents: 100,
+    });
+    await expect(dashboard.locator('#dashboard-state'))
+      .toContainText('Indicateurs financiers disponibles');
+    await expect(dashboard.locator('#dashboard-financial')).toBeVisible();
+    await expect(dashboard.locator('#dashboard-financial-revenue-ht')).toContainText('10,00');
+
+    await patchModes('0123456789012', ['onsite']);
+    const alongsideResponsePromise = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return response.request().method() === 'GET'
+        && url.pathname === '/api/dashboard'
+        && url.searchParams.get('from') === '2030-01-10'
+        && url.searchParams.get('to') === '2030-01-10'
+        && url.searchParams.get('type') === 'food'
+        && url.searchParams.get('mode') === 'onsite';
+    });
+    await page.getByRole('button', { name: 'Lire le Dashboard' }).click();
+    const alongsideResponse = await alongsideResponsePromise;
+    expect(alongsideResponse.status()).toBe(200);
+    const alongsideView = await alongsideResponse.json();
+    expect(alongsideView.stockByArticle.map((row: { ean13: string }) => row.ean13))
+      .toEqual(['0123456789012']);
+    expect(alongsideView.financial).toMatchObject({
+      revenueHtCents: 1000,
+      revenueTtcCents: 1100,
+      vatCollectedCents: 100,
+    });
+    await expect(dashboard.locator('#dashboard-financial')).toBeVisible();
+  });
+
   test('renders historical amounts by VAT rate and applies correction dates', async ({ page }) => {
     const dashboard = page.locator('#dashboard-panel');
     const initialResponsePromise = page.waitForResponse((response) => {

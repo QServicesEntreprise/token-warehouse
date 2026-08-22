@@ -10,6 +10,61 @@ namespace TokenWarehouse.Api.Tests;
 public sealed class DashboardFinancialApiTests
 {
     [Fact]
+    public async Task Keeps_historical_financial_facts_when_current_food_modes_change()
+    {
+        using var factory = new HostFactory();
+        using var client = factory.CreateClient();
+        var calendar = await client.GetFromJsonAsync<CalendarResponse>("/health");
+        const string changedModeEan = "0123456789012";
+
+        await CreateFoodArticleAsync(client, changedModeEan, "Vente historique sur place", "onsite");
+        using (var supply = await client.PostAsJsonAsync(
+            "/api/supplies",
+            new { ean13 = changedModeEan, quantity = 1 }))
+        {
+            Assert.Equal(HttpStatusCode.Created, supply.StatusCode);
+        }
+
+        using (var sale = await client.PostAsJsonAsync(
+            "/api/sales",
+            new { ean13 = changedModeEan, quantity = 1 }))
+        {
+            Assert.Equal(HttpStatusCode.Created, sale.StatusCode);
+        }
+
+        using (var patch = await client.PatchAsJsonAsync(
+            $"/api/articles/{changedModeEan}",
+            new { consumptionModes = new[] { "takeaway" } }))
+        {
+            Assert.Equal(HttpStatusCode.OK, patch.StatusCode);
+        }
+
+        var query = $"/api/dashboard?from={calendar!.CurrentMonth.From}&to={calendar.CurrentMonth.To}&type=food&mode=onsite";
+        using var alone = await client.GetAsync(query);
+        Assert.Equal(HttpStatusCode.OK, alone.StatusCode);
+        using var alonePayload = JsonDocument.Parse(await alone.Content.ReadAsStringAsync());
+        Assert.Empty(alonePayload.RootElement.GetProperty("stockByArticle").EnumerateArray());
+        Assert.Equal(1000, alonePayload.RootElement.GetProperty("financial").GetProperty("revenueHtCents").GetInt32());
+        Assert.Equal(100, alonePayload.RootElement.GetProperty("financial").GetProperty("vatCollectedCents").GetInt32());
+        Assert.Equal(1100, alonePayload.RootElement.GetProperty("financial").GetProperty("revenueTtcCents").GetInt32());
+
+        await CreateFoodArticleAsync(client, "1234567890128", "Article actuel sur place", "onsite");
+
+        using var alongside = await client.GetAsync(query);
+        Assert.Equal(HttpStatusCode.OK, alongside.StatusCode);
+        using var alongsidePayload = JsonDocument.Parse(await alongside.Content.ReadAsStringAsync());
+        Assert.Equal(
+            new[] { "1234567890128" },
+            alongsidePayload.RootElement.GetProperty("stockByArticle")
+                .EnumerateArray()
+                .Select(row => row.GetProperty("ean13").GetString())
+                .ToArray());
+        Assert.Equal(1000, alongsidePayload.RootElement.GetProperty("financial").GetProperty("revenueHtCents").GetInt32());
+        Assert.Equal(100, alongsidePayload.RootElement.GetProperty("financial").GetProperty("vatCollectedCents").GetInt32());
+        Assert.Equal(1100, alongsidePayload.RootElement.GetProperty("financial").GetProperty("revenueTtcCents").GetInt32());
+    }
+
+    [Fact]
     public async Task Exposes_signed_financial_totals_and_applies_dashboard_dimensions()
     {
         using var factory = new HostFactory();
