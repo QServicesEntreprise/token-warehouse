@@ -1314,6 +1314,65 @@ describe('AppComponent', () => {
     expect(component.counterMovementSourceId()).toBe('');
     http.verify();
   });
+
+  it('loads filtered history through the server contract and renders a zero difference', async () => {
+    const fixture = TestBed.configureTestingModule({
+      imports: [AppComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    }).createComponent(AppComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
+    http.expectOne('/api/stock').flush([]);
+    await fixture.whenStable();
+
+    const component = fixture.componentInstance;
+    component.historyFilterEan.set('0123456789012');
+    const historyPromise = component.loadHistory();
+    const request = http.expectOne((candidate) =>
+      candidate.method === 'GET' && candidate.urlWithParams === '/api/history?ean13=0123456789012');
+    request.flush([{
+      id: 'inventory-01',
+      type: 'INVENTORY',
+      timestampUtc: '2030-01-15T10:00:00Z',
+      ean13: '0123456789012',
+      articles: [{ ean13: '0123456789012' }],
+      countedQuantity: 5,
+      difference: 0,
+      resultingPhysicalStock: 5,
+      lines: [{ lineNumber: 1, ean13: '0123456789012', countedQuantity: 5, difference: 0, resultingPhysicalStock: 5 }],
+    }]);
+    await historyPromise;
+    fixture.detectChanges();
+
+    expect(component.historyState()).toBe('ready');
+    expect(fixture.nativeElement.querySelector('#history-state').textContent).toContain('1 fait trouvé');
+    expect(fixture.nativeElement.querySelector('#history-list').textContent).toContain('Écart0');
+    expect(fixture.nativeElement.querySelector('#history-list').textContent).toContain('0123456789012');
+
+    const article = foodArticle(1000, 55, 1055, 100, 1100);
+    component.detail.set(article);
+    fixture.detectChanges();
+    const articleHistoryPromise = component.loadArticleHistory(article.ean13);
+    const articleHistoryRequest = http.expectOne('/api/history?ean13=0123456789012');
+    articleHistoryRequest.flush([{
+      id: 'archive-01',
+      type: 'CATALOG_ARCHIVE',
+      timestampUtc: '2030-01-15T11:00:00Z',
+      ean13: article.ean13,
+      articles: [{ ean13: article.ean13 }],
+      lines: [],
+      previousStatus: 'active',
+      nextStatus: 'archived',
+    }]);
+    await articleHistoryPromise;
+    fixture.detectChanges();
+
+    expect(component.articleHistoryState()).toBe('ready');
+    expect(fixture.nativeElement.querySelector('#article-history-list').textContent).toContain('Archivage Catalogue');
+    expect(fixture.nativeElement.querySelector('#article-history-list').textContent).toContain('active');
+    http.verify();
+  });
 });
 
 function foodArticle(

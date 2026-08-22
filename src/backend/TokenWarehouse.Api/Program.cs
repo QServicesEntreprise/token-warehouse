@@ -34,6 +34,8 @@ builder.Services.AddScoped<IUpdateArticleAttributesUseCase>(services => services
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddScoped<IChangeArticleLifecycleUseCase>(services => services.GetRequiredService<ArticleApplication>());
 builder.Services.AddScoped<IGetArticleHistoryUseCase>(services => services.GetRequiredService<ArticleApplication>());
+builder.Services.AddScoped<HistoryApplication>();
+builder.Services.AddScoped<IReadHistoryUseCase>(services => services.GetRequiredService<HistoryApplication>());
 
 builder.Services.AddSingleton<RuntimeReadiness>();
 
@@ -70,6 +72,7 @@ app.MapStockEndpoints();
 app.MapSupplyEndpoints();
 app.MapInventoryEndpoints();
 app.MapCounterMovementEndpoints();
+app.MapHistoryEndpoints();
 
 app.Run();
 

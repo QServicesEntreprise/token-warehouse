@@ -996,8 +996,10 @@ public sealed class ArticleApiTests
         using var secondHistory = await client.GetAsync($"/api/history?ean13={ean13}");
         using var secondHistoryBody = JsonDocument.Parse(await secondHistory.Content.ReadAsStringAsync());
         Assert.Equal(2, secondHistoryBody.RootElement.GetArrayLength());
-        Assert.Equal("archived", secondHistoryBody.RootElement[1].GetProperty("previousStatus").GetString());
-        Assert.Equal("active", secondHistoryBody.RootElement[1].GetProperty("nextStatus").GetString());
+        Assert.Equal("archived", secondHistoryBody.RootElement[0].GetProperty("previousStatus").GetString());
+        Assert.Equal("active", secondHistoryBody.RootElement[0].GetProperty("nextStatus").GetString());
+        Assert.Equal("active", secondHistoryBody.RootElement[1].GetProperty("previousStatus").GetString());
+        Assert.Equal("archived", secondHistoryBody.RootElement[1].GetProperty("nextStatus").GetString());
 
         using var repeated = await client.PostAsync($"/api/articles/{ean13}/reactivate", null);
         Assert.Equal(HttpStatusCode.Conflict, repeated.StatusCode);

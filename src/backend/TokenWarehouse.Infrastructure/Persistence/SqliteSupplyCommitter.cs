@@ -118,7 +118,8 @@ public sealed class SqliteSupplyCommitter(
                 }
             }
 
-            context.StockOperations.Add(ToEntity(request.Operation));
+            var committedLineByNumber = request.Lines.ToDictionary(line => line.OperationLine.LineNumber);
+            context.StockOperations.Add(ToEntity(request.Operation, request.Lines));
             context.StockOperationLines.AddRange(request.Operation.Lines.Select(line => new StockOperationLineEntity
             {
                 OperationId = request.Operation.Id,
@@ -126,6 +127,8 @@ public sealed class SqliteSupplyCommitter(
                 Ean13 = line.Ean13.Value,
                 OperationType = "supply",
                 Quantity = line.Quantity.Value,
+                PreviousPhysicalStock = committedLineByNumber[line.LineNumber].CurrentPosition?.PhysicalQuantity ?? 0,
+                ResultingPhysicalStock = committedLineByNumber[line.LineNumber].Position.PhysicalQuantity,
                 SourceEffect = line.StockEffect,
                 InverseEffect = line.InverseEffect
             }));
@@ -158,20 +161,25 @@ public sealed class SqliteSupplyCommitter(
         }
     }
 
-    private static StockOperationEntity ToEntity(StockOperation operation)
-        => new()
+    private static StockOperationEntity ToEntity(
+        StockOperation operation,
+        IReadOnlyList<BulkSupplyCommitLine> lines)
+    {
+        var singleLine = lines.Count == 1 ? lines[0] : null;
+        return new()
         {
             Id = operation.Id,
             Type = "supply",
             Ean13 = operation.Ean13.Value,
             Quantity = operation.Quantity.Value,
             OccurredAt = operation.OccurredAt.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
-            PreviousPhysicalStock = 0,
+            PreviousPhysicalStock = singleLine?.CurrentPosition?.PhysicalQuantity ?? 0,
             CountedQuantity = 0,
             InventoryDifference = 0,
-            ResultingPhysicalStock = 0,
+            ResultingPhysicalStock = singleLine?.Position.PhysicalQuantity ?? 0,
             TimestampUtc = operation.OccurredAt.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture)
         };
+    }
 
     private static bool IsConflict(DbUpdateException exception)
         => exception.InnerException is SqliteException
