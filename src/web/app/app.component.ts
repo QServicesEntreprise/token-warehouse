@@ -51,6 +51,7 @@ import {
 } from './counter-movement-api.service';
 import {
   SaleArticleResponse,
+  SalePayload,
   SaleResponse,
   SalesApiService,
 } from './sales-api.service';
@@ -340,6 +341,50 @@ const lastSaleIdStorageKey = 'token-warehouse.last-sale-id';
               <div><dt>Stock physique</dt><dd>{{ article.physicalQuantity }} unités</dd></div>
               <div><dt>Stock vendable</dt><dd>{{ article.sellableQuantity }} unités</dd></div>
             </dl>
+
+            @if (article.type === 'food' && (article.consumptionModes?.length ?? 0) > 1) {
+              <fieldset
+                id="sale-context"
+                aria-describedby="sale-context-error"
+                [attr.aria-invalid]="saleFieldError('context') ? 'true' : null">
+                <legend>Contexte de Vente</legend>
+                @for (mode of article.consumptionModes ?? []; track mode) {
+                  <label [attr.for]="'sale-context-' + mode">
+                    <input
+                      [id]="'sale-context-' + mode"
+                      type="radio"
+                      name="sale-context"
+                      [value]="mode"
+                      [checked]="saleContext() === mode"
+                      (change)="setSaleContext($event)" />
+                    {{ mode === 'takeaway' ? 'À emporter' : 'Sur place' }}
+                  </label>
+                }
+                <span id="sale-context-error" class="field-error">{{ saleFieldError('context') }}</span>
+              </fieldset>
+            } @else if (article.type === 'food' && (article.consumptionModes?.length ?? 0) === 1) {
+              <p id="sale-context-derived" role="status">
+                Contexte déduit : {{ article.consumptionModes?.[0] === 'takeaway' ? 'À emporter' : 'Sur place' }}.
+              </p>
+            } @else {
+              <p id="sale-context-none">Aucun Contexte de Vente — TVA non alimentaire.</p>
+            }
+
+            <section id="sale-pricing-preview" aria-labelledby="sale-pricing-preview-title">
+              <h4 id="sale-pricing-preview-title">Devis tarifaire serveur</h4>
+              @for (quote of article.priceQuotes ?? []; track quote.saleContext ?? quote.taxRate.code) {
+                <dl class="price-quote">
+                  @if (quote.saleContext) {
+                    <div>
+                      <dt>Contexte</dt>
+                      <dd>{{ quote.saleContext === 'takeaway' ? 'À emporter' : 'Sur place' }}</dd>
+                    </div>
+                  }
+                  <div><dt>Taux de TVA</dt><dd>{{ quote.taxRate.ratio }}</dd></div>
+                  <div><dt>Prix TTC unitaire</dt><dd>{{ quote.priceTtcCents }} centimes</dd></div>
+                </dl>
+              }
+            </section>
 
             <form id="sale-form" class="lookup" novalidate (submit)="onSaleSubmit($event)">
               <label for="sale-quantity">
@@ -1272,6 +1317,7 @@ export class AppComponent implements OnInit {
   readonly saleSearchState = signal<SaleSearchState>('idle');
   readonly saleSearchError = signal('');
   readonly selectedSaleArticle = signal<SaleArticleResponse | null>(null);
+  readonly saleContext = signal<ConsumptionMode | ''>('');
   readonly saleQuantity = signal('');
   readonly saleState = signal<SaleState>('ready');
   readonly saleFieldErrors = signal<Record<string, string>>({});
@@ -1461,9 +1507,29 @@ export class AppComponent implements OnInit {
   selectSaleArticle(article: SaleArticleResponse): void {
     this.nextSaleRequestId();
     this.selectedSaleArticle.set(article);
+    this.saleContext.set(
+      article.type === 'food' && article.consumptionModes?.length === 1
+        ? article.consumptionModes[0]
+        : '',
+    );
     this.saleFieldErrors.set({});
     this.saleStatusMessage.set('');
     this.saleState.set('ready');
+  }
+
+  setSaleContext(event: Event): void {
+    const value = (event.target as HTMLInputElement).value;
+    if (value !== 'takeaway' && value !== 'onsite') {
+      return;
+    }
+
+    this.nextSaleRequestId();
+    this.saleContext.set(value);
+    this.saleFieldErrors.update((errors) => {
+      const next = { ...errors };
+      delete next['context'];
+      return next;
+    });
   }
 
   setSaleQuantity(event: Event): void {
@@ -1485,6 +1551,10 @@ export class AppComponent implements OnInit {
     const article = this.selectedSaleArticle();
     const rawQuantity = this.saleQuantity().trim();
     const quantity = Number(rawQuantity);
+    const modes = article?.consumptionModes ?? [];
+    const context = article?.type === 'food' && modes.length === 1
+      ? modes[0]
+      : this.saleContext();
     this.saleFieldErrors.set({});
     this.saleStatusMessage.set('');
     this.saleReceipt.set(null);
@@ -1507,16 +1577,29 @@ export class AppComponent implements OnInit {
       return;
     }
 
+    if (article.type === 'food' && modes.length > 1 && !modes.includes(context as ConsumptionMode)) {
+      this.saleState.set('validation');
+      this.saleFieldErrors.set({ context: 'Choisissez un Contexte de Vente.' });
+      this.saleStatusMessage.set('Choisissez un Contexte de Vente avant de continuer.');
+      setTimeout(() => this.focusSaleError());
+      return;
+    }
+
     this.saleState.set('loading');
     this.saleStatusMessage.set('Validation de la Vente…');
     this.saleSubmitting.set(true);
     try {
-      const receipt = await firstValueFrom(this.salesApi.record({ ean13: article.ean13, quantity }));
+      const payload: SalePayload = { ean13: article.ean13, quantity };
+      if (article.type === 'food' && context) {
+        payload.context = context;
+      }
+      const receipt = await firstValueFrom(this.salesApi.record(payload));
       if (requestId !== this.saleRequestId) {
         return;
       }
 
       this.saleReceipt.set(receipt);
+      this.saleContext.set(receipt.financial.context ?? '');
       this.saleState.set('success');
       this.saleStatusMessage.set(`Vente ${receipt.operation.id} enregistrée.`);
       sessionStorage.setItem(lastSaleIdStorageKey, receipt.operation.id);
@@ -1562,8 +1645,22 @@ export class AppComponent implements OnInit {
         return;
       }
 
+      let selectedArticle = this.saleArticleFromReceipt(receipt);
+      try {
+        const articles = await firstValueFrom(this.salesApi.searchArticles(receipt.position.ean13));
+        if (requestId === this.saleRequestId) {
+          selectedArticle = articles.find((article) => article.ean13 === receipt.position.ean13) ?? selectedArticle;
+        }
+      } catch {
+        // The committed receipt remains usable when the optional quote refresh fails.
+      }
+      if (requestId !== this.saleRequestId) {
+        return;
+      }
+
       this.saleReceipt.set(receipt);
-      this.selectedSaleArticle.set(this.saleArticleFromReceipt(receipt));
+      this.selectedSaleArticle.set(selectedArticle);
+      this.saleContext.set(receipt.financial.context ?? '');
       this.saleQuantity.set(String(receipt.operation.quantity));
       this.saleState.set('success');
       this.saleStatusMessage.set(`Vente ${receipt.operation.id} rechargée.`);
@@ -2802,7 +2899,9 @@ export class AppComponent implements OnInit {
     const field = Object.keys(this.saleFieldErrors())[0];
     const target = field === 'quantity'
       ? document.getElementById('sale-quantity')
-      : document.getElementById('sale-status');
+      : field === 'context'
+        ? document.querySelector<HTMLElement>('#sale-context input')
+        : document.getElementById('sale-status');
     target?.focus();
   }
 

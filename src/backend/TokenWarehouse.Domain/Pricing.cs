@@ -118,9 +118,14 @@ public static class PricingPolicy
             return MissingContext();
         }
 
+        if (article.Type == ArticleType.NonFood)
+        {
+            return ContextNotAllowed();
+        }
+
         var quote = quotes.SingleOrDefault(candidate => candidate.SaleContext == saleContext);
         return quote is null
-            ? UnsupportedContext()
+            ? IncompatibleContext()
             : new([quote], []);
     }
 
@@ -193,11 +198,19 @@ public static class PricingPolicy
                 "saleContext",
                 "Le Contexte de Vente est requis lorsque les deux modes sont disponibles.")]);
 
-    private static PricingResult UnsupportedContext()
+    private static PricingResult IncompatibleContext()
         => new(
             [],
             [new(
-                "pricing.saleContext.not_applicable",
+                "pricing.saleContext.incompatible",
                 "saleContext",
-                "Le Contexte de Vente ne s’applique pas à cet Article.")]);
+                "Le Contexte de Vente ne correspond pas aux modes disponibles pour cet Article.")]);
+
+    private static PricingResult ContextNotAllowed()
+        => new(
+            [],
+            [new(
+                "pricing.saleContext.not_allowed",
+                "saleContext",
+                "Le Contexte de Vente ne s’applique pas à un Article non alimentaire.")]);
 }

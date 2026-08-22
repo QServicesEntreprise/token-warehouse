@@ -10,6 +10,108 @@ import { ArticleResponse } from './article-api.service';
 describe('AppComponent', () => {
   afterEach(() => sessionStorage.clear());
 
+  it('renders the two allowed contexts and sends only the selected context', async () => {
+    const fixture = TestBed.configureTestingModule({
+      imports: [AppComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    }).createComponent(AppComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
+    http.expectOne('/api/stock').flush([]);
+    await fixture.whenStable();
+
+    const component = fixture.componentInstance;
+    component.saleArticles.set([{
+      ean13: '0123456789012',
+      name: 'Café à emporter ou sur place',
+      type: 'food',
+      isActive: true,
+      status: 'active',
+      priceHtCents: 101,
+      physicalQuantity: 8,
+      sellableQuantity: 8,
+      availability: 'AVAILABLE',
+      reason: null,
+      dlc: '2030-01-15',
+      consumptionModes: ['takeaway', 'onsite'],
+      priceQuotes: [
+        {
+          saleContext: 'takeaway',
+          taxRate: { code: 'takeaway', ratio: '11/200', numerator: 11, denominator: 200 },
+          vatCents: 6,
+          priceTtcCents: 107,
+        },
+        {
+          saleContext: 'onsite',
+          taxRate: { code: 'onsite', ratio: '1/10', numerator: 1, denominator: 10 },
+          vatCents: 10,
+          priceTtcCents: 111,
+        },
+      ],
+    }]);
+    component.selectSaleArticle(component.saleArticles()[0]);
+    component.saleQuantity.set('2');
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelectorAll('#sale-context input')).toHaveLength(2);
+    expect(fixture.nativeElement.querySelector('#sale-pricing-preview').textContent).toContain('11/200');
+    expect(fixture.nativeElement.querySelector('#sale-pricing-preview').textContent).toContain('111');
+
+    const missingContext = component.onSaleSubmit(new Event('submit'));
+    await missingContext;
+    expect(component.saleState()).toBe('validation');
+    expect(component.saleFieldError('context')).toContain('Contexte');
+    http.expectNone('/api/sales');
+
+    component.setSaleContext({ target: { value: 'takeaway' } } as unknown as Event);
+    const submission = component.onSaleSubmit(new Event('submit'));
+    const request = http.expectOne('/api/sales');
+    expect(request.request.body).toEqual({
+      ean13: '0123456789012',
+      quantity: 2,
+      context: 'takeaway',
+    });
+    request.flush({
+      operation: {
+        id: 'food-sale-1',
+        type: 'SALE',
+        ean13: '0123456789012',
+        quantity: 2,
+        occurredAt: '2030-01-15T10:00:00+00:00',
+      },
+      financial: {
+        context: 'takeaway',
+        unitPriceHtCents: 101,
+        taxRate: { code: 'takeaway', ratio: '11/200', numerator: 11, denominator: 200 },
+        amountHtCents: 202,
+        vatCents: 11,
+        amountTtcCents: 213,
+      },
+      position: {
+        ean13: '0123456789012',
+        name: 'Café à emporter ou sur place',
+        type: 'food',
+        isActive: true,
+        status: 'active',
+        physicalQuantity: 6,
+        sellableQuantity: 6,
+        availability: 'AVAILABLE',
+        reason: null,
+        dlc: '2030-01-15',
+        consumptionModes: ['takeaway', 'onsite'],
+      },
+    });
+    await submission;
+
+    expect(component.saleState()).toBe('success');
+    expect(component.saleContext()).toBe('takeaway');
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('#sale-result').textContent).toContain('213');
+    flushUnusedDashboardRequest(http);
+    http.verify();
+  });
+
   it('searches Articles on the server and renders only the committed sale result', async () => {
     const fixture = TestBed.configureTestingModule({
       imports: [AppComponent],

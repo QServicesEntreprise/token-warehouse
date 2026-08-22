@@ -269,6 +269,44 @@ public sealed class StockSaleContractTests
     }
 
     [Fact]
+    public async Task Maps_unexpected_sale_failures_to_sanitized_internal_errors()
+    {
+        using var factory = new HostFactory(Now);
+        using var client = factory.CreateClient();
+        await factory.SeedArticleAsync(
+            "7351353713578",
+            "Batterie industrielle",
+            type: "nonFood",
+            packaging: "new",
+            physicalQuantity: 8,
+            priceHtCents: 101);
+        await factory.FailSaleOperationInsertsAsync();
+
+        using var response = await client.PostAsJsonAsync(
+            "/api/sales",
+            new { ean13 = "7351353713578", quantity = 1 });
+
+        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        var body = await response.Content.ReadAsStringAsync();
+        using var problem = JsonDocument.Parse(body);
+        Assert.Equal("INTERNAL_ERROR", problem.RootElement.GetProperty("code").GetString());
+        Assert.DoesNotContain("SQLite", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("EntityFramework", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(nameof(InvalidOperationException), body);
+        Assert.DoesNotContain("stack trace", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(
+            0,
+            await factory.ReadFreshAsync(context => context.StockOperations.CountAsync(operation => operation.Type == "SALE")));
+        Assert.Equal(
+            8,
+            await factory.ReadFreshAsync(context => context.StockPositions
+                .Where(position => position.Ean13 == "7351353713578")
+                .Select(position => position.PhysicalQuantity)
+                .SingleAsync()));
+    }
+
+    [Fact]
     public async Task Searches_articles_with_price_and_both_stock_quantities()
     {
         using var factory = new HostFactory(Now);
@@ -300,6 +338,118 @@ public sealed class StockSaleContractTests
     }
 
     [Fact]
+    public async Task Sells_a_single_mode_food_article_with_an_inferred_takeaway_context()
+    {
+        using var factory = new HostFactory(Now);
+        using var client = factory.CreateClient();
+        await factory.SeedArticleAsync(
+            "0123456789012",
+            "Café à emporter",
+            type: "food",
+            dlc: "2030-01-15",
+            physicalQuantity: 8,
+            priceHtCents: 101,
+            consumptionModes: "takeaway");
+
+        using var response = await client.PostAsJsonAsync(
+            "/api/sales",
+            new { ean13 = "0123456789012", quantity = 2 });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("takeaway", body.GetProperty("financial").GetProperty("context").GetString());
+        Assert.Equal("takeaway", body.GetProperty("financial").GetProperty("taxRate").GetProperty("code").GetString());
+        Assert.Equal(202, body.GetProperty("financial").GetProperty("amountHtCents").GetInt32());
+        Assert.Equal(11, body.GetProperty("financial").GetProperty("vatCents").GetInt32());
+        Assert.Equal(213, body.GetProperty("financial").GetProperty("amountTtcCents").GetInt32());
+    }
+
+    [Fact]
+    public async Task Requires_and_preserves_one_context_for_a_two_mode_food_article()
+    {
+        using var factory = new HostFactory(Now);
+        using var client = factory.CreateClient();
+        await factory.SeedArticleAsync(
+            "0123456789012",
+            "Café sur place ou à emporter",
+            type: "food",
+            dlc: "2030-01-15",
+            physicalQuantity: 8,
+            priceHtCents: 101,
+            consumptionModes: "takeaway,onsite");
+
+        using var search = await client.GetAsync("/api/sales/articles?search=0123456789012");
+        var article = Assert.Single((await search.Content.ReadFromJsonAsync<JsonElement>()).EnumerateArray());
+        Assert.Equal(2, article.GetProperty("consumptionModes").GetArrayLength());
+        Assert.Equal(2, article.GetProperty("priceQuotes").GetArrayLength());
+
+        using var missing = await client.PostAsJsonAsync(
+            "/api/sales",
+            new { ean13 = "0123456789012", quantity = 1 });
+        Assert.Equal(HttpStatusCode.Conflict, missing.StatusCode);
+        var missingBody = await missing.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("CONTEXT_REQUIRED", missingBody.GetProperty("code").GetString());
+        Assert.True(missingBody.GetProperty("errors").GetProperty("context").GetArrayLength() > 0);
+
+        using var takeaway = await client.PostAsJsonAsync(
+            "/api/sales",
+            new { ean13 = "0123456789012", quantity = 1, context = "takeaway" });
+        Assert.Equal(HttpStatusCode.Created, takeaway.StatusCode);
+        var takeawayBody = await takeaway.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("takeaway", takeawayBody.GetProperty("financial").GetProperty("context").GetString());
+        Assert.Equal(7, takeawayBody.GetProperty("position").GetProperty("physicalQuantity").GetInt32());
+
+        using var onsite = await client.PostAsJsonAsync(
+            "/api/sales",
+            new { ean13 = "0123456789012", quantity = 1, context = "onsite" });
+        Assert.Equal(HttpStatusCode.Created, onsite.StatusCode);
+        var onsiteBody = await onsite.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("onsite", onsiteBody.GetProperty("financial").GetProperty("context").GetString());
+        Assert.Equal("onsite", onsiteBody.GetProperty("financial").GetProperty("taxRate").GetProperty("code").GetString());
+        Assert.Equal(10, onsiteBody.GetProperty("financial").GetProperty("vatCents").GetInt32());
+        Assert.Equal(6, onsiteBody.GetProperty("position").GetProperty("physicalQuantity").GetInt32());
+    }
+
+    [Fact]
+    public async Task Maps_context_mismatch_and_non_food_context_to_stable_problem_codes()
+    {
+        using var factory = new HostFactory(Now);
+        using var client = factory.CreateClient();
+        await factory.SeedArticleAsync(
+            "0123456789012",
+            "Café à emporter",
+            type: "food",
+            dlc: "2030-01-15",
+            physicalQuantity: 8,
+            consumptionModes: "takeaway");
+        await factory.SeedArticleAsync(
+            "7351353713578",
+            "Batterie industrielle",
+            type: "nonFood",
+            packaging: "new",
+            physicalQuantity: 8);
+
+        using var incompatible = await client.PostAsJsonAsync(
+            "/api/sales",
+            new { ean13 = "0123456789012", quantity = 1, context = "onsite" });
+        Assert.Equal(HttpStatusCode.Conflict, incompatible.StatusCode);
+        var incompatibleBody = await incompatible.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("CONTEXT_INCOMPATIBLE", incompatibleBody.GetProperty("code").GetString());
+        Assert.True(incompatibleBody.GetProperty("errors").GetProperty("context").GetArrayLength() > 0);
+
+        using var notAllowed = await client.PostAsJsonAsync(
+            "/api/sales",
+            new { ean13 = "7351353713578", quantity = 1, context = "takeaway" });
+        Assert.Equal(HttpStatusCode.Conflict, notAllowed.StatusCode);
+        var notAllowedBody = await notAllowed.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("CONTEXT_NOT_ALLOWED", notAllowedBody.GetProperty("code").GetString());
+        Assert.True(notAllowedBody.GetProperty("errors").GetProperty("context").GetArrayLength() > 0);
+        Assert.Equal(
+            0,
+            await factory.ReadFreshAsync(context => context.StockOperations.CountAsync(operation => operation.Type == "SALE")));
+    }
+
+    [Fact]
     public async Task Rejects_invalid_sale_input_and_context_without_writes()
     {
         using var factory = new HostFactory(Now);
@@ -327,7 +477,7 @@ public sealed class StockSaleContractTests
             new { ean13 = "7351353713578", quantity = 1, context = "takeaway" });
         Assert.Equal(HttpStatusCode.Conflict, context.StatusCode);
         var contextBody = await context.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("CONTEXT_UNSUPPORTED", contextBody.GetProperty("code").GetString());
+        Assert.Equal("CONTEXT_NOT_ALLOWED", contextBody.GetProperty("code").GetString());
         Assert.Equal(
             0,
             await factory.ReadFreshAsync(db => db.StockOperations.CountAsync(operation => operation.Type == "SALE")));
@@ -594,7 +744,8 @@ public sealed class StockSaleContractTests
             string? packaging = null,
             int physicalQuantity = 0,
             int positionVersion = 0,
-            int priceHtCents = 1000)
+            int priceHtCents = 1000,
+            string? consumptionModes = null)
         {
             using var scope = Services.CreateScope();
             var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>();
@@ -609,7 +760,7 @@ public sealed class StockSaleContractTests
                 IsActive = isActive,
                 Version = 0,
                 Dlc = dlc,
-                ConsumptionModes = type == "food" ? "takeaway" : null,
+                ConsumptionModes = type == "food" ? consumptionModes ?? "takeaway" : null,
                 Packaging = packaging
             });
             context.StockPositions.Add(new StockPositionEntity
@@ -630,6 +781,22 @@ public sealed class StockSaleContractTests
             position.PhysicalQuantity = physicalQuantity;
             position.Version = version;
             await context.SaveChangesAsync();
+        }
+
+        public async Task FailSaleOperationInsertsAsync()
+        {
+            using var scope = Services.CreateScope();
+            var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>();
+            await using var context = await contextFactory.CreateDbContextAsync();
+            await context.Database.ExecuteSqlRawAsync(
+                """
+                CREATE TRIGGER FailSaleOperationInsert
+                BEFORE INSERT ON StockOperations
+                WHEN NEW.Type = 'SALE'
+                BEGIN
+                    SELECT RAISE(ABORT, 'controlled sale failure');
+                END;
+                """);
         }
 
         public async Task ArchiveArticleAsync()

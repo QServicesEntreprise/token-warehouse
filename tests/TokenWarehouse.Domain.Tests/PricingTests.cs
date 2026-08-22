@@ -72,6 +72,29 @@ public sealed class PricingTests
     }
 
     [Fact]
+    public void Calculates_sale_amounts_for_each_food_context_on_the_total_ht()
+    {
+        var takeaway = PricingPolicy.CalculateSale(
+            CreateFood(101, "takeaway"),
+            new Quantity(2));
+        var onSite = PricingPolicy.CalculateSale(
+            CreateFood(101, "onsite"),
+            new Quantity(2));
+
+        Assert.True(takeaway.IsSuccess);
+        Assert.Equal(SaleContext.Takeaway, takeaway.Snapshot!.SaleContext);
+        Assert.Equal(202, takeaway.Snapshot.AmountHt.Cents);
+        Assert.Equal(11, takeaway.Snapshot.Vat.Cents);
+        Assert.Equal(213, takeaway.Snapshot.AmountTtc.Cents);
+
+        Assert.True(onSite.IsSuccess);
+        Assert.Equal(SaleContext.OnSite, onSite.Snapshot!.SaleContext);
+        Assert.Equal(202, onSite.Snapshot.AmountHt.Cents);
+        Assert.Equal(20, onSite.Snapshot.Vat.Cents);
+        Assert.Equal(222, onSite.Snapshot.AmountTtc.Cents);
+    }
+
+    [Fact]
     public void Calculates_non_food_at_twenty_percent_without_a_context()
     {
         var result = Article.Create(new ArticleDraft
@@ -126,7 +149,7 @@ public sealed class PricingTests
         Assert.False(result.IsSuccess);
         Assert.Empty(result.Quotes);
         var error = Assert.Single(result.Errors);
-        Assert.Equal("pricing.saleContext.not_applicable", error.Code);
+        Assert.Equal("pricing.saleContext.not_allowed", error.Code);
         Assert.Equal("saleContext", error.Field);
     }
 
@@ -138,7 +161,7 @@ public sealed class PricingTests
         Assert.False(result.IsSuccess);
         Assert.Empty(result.Quotes);
         var error = Assert.Single(result.Errors);
-        Assert.Equal("pricing.saleContext.not_applicable", error.Code);
+        Assert.Equal("pricing.saleContext.incompatible", error.Code);
         Assert.Equal("saleContext", error.Field);
     }
 
