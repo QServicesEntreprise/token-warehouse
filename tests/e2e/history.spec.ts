@@ -230,6 +230,60 @@ test('consults global and Article history after real Stock operations', async ({
   await expect(page.locator('#history-list')).toContainText('effet inverse +1');
   await expect(page.locator('#history-list')).toContainText('effet inverse 0');
 
+  const filteredBulkHistoryPromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'GET'
+      && url.pathname === '/api/history'
+      && url.searchParams.get('ean13') === bulkFirstEan13;
+  });
+  await page.locator('#history-ean13').fill(bulkFirstEan13);
+  await page.getByRole('button', { name: 'Filtrer l’Historique', exact: true }).click();
+  const filteredBulkHistoryResponse = await filteredBulkHistoryPromise;
+  expect(filteredBulkHistoryResponse.status()).toBe(200);
+  const filteredBulkEntries = await filteredBulkHistoryResponse.json() as BrowserHistoryEntry[];
+  const filteredBulkHistory = filteredBulkEntries.find((entry) => entry.id === bulkSupply.operation.id);
+  expect(filteredBulkHistory).toMatchObject({
+    id: bulkSupply.operation.id,
+    type: 'SUPPLY',
+    lines: [
+      { lineNumber: 1, ean13: bulkFirstEan13, quantity: 2, stockEffect: 2, resultingPhysicalStock: 2 },
+    ],
+  });
+  const filteredBulkHistoryCard = page.locator(`[aria-labelledby="history-entry-${bulkSupply.operation.id}"]`);
+  await expect(filteredBulkHistoryCard).toContainText('2 unités');
+  await expect(filteredBulkHistoryCard).toContainText('effet +2');
+  await expect(filteredBulkHistoryCard).toContainText('résultat 2');
+  await expect(filteredBulkHistoryCard).not.toContainText('Quantité utile');
+  await expect(filteredBulkHistoryCard).not.toContainText('Stock physique résultant');
+
+  const bulkArticleResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'GET' && url.pathname === `/api/articles/${bulkFirstEan13}`;
+  });
+  await page.locator('#lookupEan13').fill(bulkFirstEan13);
+  await page.locator('section[aria-labelledby="lookup-title"]').getByRole('button', { name: 'Consulter', exact: true }).click();
+  expect((await bulkArticleResponsePromise).status()).toBe(200);
+
+  const bulkArticleHistoryPromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'GET'
+      && url.pathname === '/api/history'
+      && url.searchParams.get('ean13') === bulkFirstEan13;
+  });
+  await page.getByRole('button', { name: 'Consulter l’Historique de cet Article', exact: true }).click();
+  const bulkArticleHistoryResponse = await bulkArticleHistoryPromise;
+  expect(bulkArticleHistoryResponse.status()).toBe(200);
+  const bulkArticleHistoryEntries = await bulkArticleHistoryResponse.json() as BrowserHistoryEntry[];
+  expect(bulkArticleHistoryEntries.find((entry) => entry.id === bulkSupply.operation.id)).toMatchObject({
+    id: bulkSupply.operation.id,
+    lines: [
+      { lineNumber: 1, ean13: bulkFirstEan13, quantity: 2, stockEffect: 2, resultingPhysicalStock: 2 },
+    ],
+  });
+  await expect(page.locator('#article-history-list')).toContainText('2 unités');
+  await expect(page.locator('#article-history-list')).toContainText('effet +2');
+  await expect(page.locator('#article-history-list')).toContainText('résultat 2');
+
   const articleResponsePromise = page.waitForResponse((response) => {
     const url = new URL(response.url());
     return response.request().method() === 'GET' && url.pathname === `/api/articles/${ean13}`;
@@ -354,18 +408,31 @@ test('consults global and Article history after real Stock operations', async ({
   expect((await invalidHistoryPromise).status()).toBe(400);
   await expect(page.locator('#history-state')).toContainText('EAN-13');
 
-  await page.route('**/api/history*', async (route) => {
-    await route.fulfill({
-      status: 500,
-      contentType: 'application/problem+json',
-      body: JSON.stringify({ status: 500, code: 'HISTORY_READ_FAILURE', title: 'Historique indisponible' }),
+});
+
+test.describe('history read failure runtime seam', () => {
+  test.use({ historyReadFailure: true });
+
+  test('renders the real History API failure as an accessible error state', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('link', { name: 'Historique' }).click();
+
+    const failurePromise = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return response.request().method() === 'GET'
+        && url.pathname === '/api/history'
+        && !url.search;
     });
-  }, { times: 1 });
-  const failedHistoryPromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'GET' && url.pathname === '/api/history' && !url.search;
+    await page.getByRole('button', { name: 'Historique global', exact: true }).click();
+    const failure = await failurePromise;
+    expect(failure.status()).toBe(500);
+    expect(failure.headers()['content-type']).toContain('application/problem+json');
+    await expect(failure.json()).resolves.toMatchObject({
+      status: 500,
+      code: 'HISTORY_READ_FAILURE',
+    });
+    await expect(page.locator('#history-state')).toContainText('L’Historique ne peut pas être lu pour le moment.');
+    await expect(page.locator('#history-state')).toHaveAttribute('role', 'status');
+    await expect(page.locator('#history-state')).toHaveAttribute('aria-live', 'polite');
   });
-  await page.getByRole('button', { name: 'Historique global', exact: true }).click();
-  expect((await failedHistoryPromise).status()).toBe(500);
-  await expect(page.locator('#history-state')).toContainText('Historique indisponible');
 });

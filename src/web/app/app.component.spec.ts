@@ -1477,6 +1477,15 @@ describe('AppComponent', () => {
     component.detail.set(article);
     const articleHistory = component.loadArticleHistory(article.ean13);
     http.expectOne('/api/history?ean13=0123456789012').flush([{
+      id: 'bulk-01',
+      type: 'SUPPLY',
+      timestampUtc: '2030-01-15T08:00:00Z',
+      ean13: article.ean13,
+      articles: [{ ean13: article.ean13 }],
+      lines: [
+        { lineNumber: 1, ean13: article.ean13, quantity: 2, stockEffect: 2, resultingPhysicalStock: 5 },
+      ],
+    }, {
       id: 'source-01',
       type: 'SUPPLY',
       timestampUtc: '2030-01-15T09:00:00Z',
@@ -1507,6 +1516,9 @@ describe('AppComponent', () => {
     fixture.detectChanges();
 
     const articleText = fixture.nativeElement.querySelector('#article-history-list').textContent as string;
+    expect(articleText).toContain('2 unités');
+    expect(articleText).toContain('effet +2');
+    expect(articleText).toContain('résultat 5');
     expect(articleText).toContain('Correction : counter-01');
     expect(articleText).toContain('Corrigé par : counter-01');
     expect(articleText).toContain('effet inverse -3');

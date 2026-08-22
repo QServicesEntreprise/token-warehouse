@@ -1000,7 +1000,13 @@ const lastInventoryIdStorageKey = 'token-warehouse.last-inventory-id';
                           @for (line of entry.lines; track line.lineNumber) {
                             <li>
                               Ligne {{ line.lineNumber }} — {{ line.ean13 }}
+                              @if (line.quantity !== undefined) { · {{ line.quantity }} unités }
+                              @if (line.stockEffect !== undefined) { · effet {{ formatHistoryEffect(line.stockEffect) }} }
                               @if (line.inverseEffect !== undefined) { · effet inverse {{ formatHistoryEffect(line.inverseEffect) }} }
+                              @if (line.previousPhysicalStock !== undefined) { · précédent {{ line.previousPhysicalStock }} }
+                              @if (line.countedQuantity !== undefined) { · comptée {{ line.countedQuantity }} }
+                              @if (line.difference !== undefined) { · écart {{ formatHistoryEffect(line.difference) }} }
+                              @if (line.resultingPhysicalStock !== undefined) { · résultat {{ line.resultingPhysicalStock }} }
                             </li>
                           }
                         </ul>

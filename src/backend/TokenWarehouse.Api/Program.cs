@@ -11,6 +11,15 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 var connectionString = builder.Configuration.GetConnectionString("Warehouse")
     ?? "Data Source=token-warehouse.db";
 builder.Services.AddSqlitePersistence(connectionString);
+if (builder.Environment.IsEnvironment("Testing")
+    && string.Equals(
+        Environment.GetEnvironmentVariable("TOKEN_WAREHOUSE_HISTORY_FAILURE"),
+        "true",
+        StringComparison.OrdinalIgnoreCase))
+{
+    builder.Services.AddScoped<IHistoryReader>(services =>
+        new FailingHistoryReader(services.GetRequiredService<SqliteHistoryReader>()));
+}
 builder.Services.AddScoped<ArticleApplication>();
 builder.Services.AddScoped<StockApplication>();
 builder.Services.AddScoped<InventoryApplication>();
@@ -78,4 +87,15 @@ app.Run();
 
 public partial class Program
 {
+}
+
+file sealed class FailingHistoryReader(SqliteHistoryReader inner) : IHistoryReader
+{
+    public async ValueTask<HistoryReadResult> ReadAsync(
+        HistoryQuery query,
+        CancellationToken cancellationToken = default)
+    {
+        await inner.ReadAsync(query, cancellationToken);
+        throw new InvalidOperationException("controlled history failure");
+    }
 }
