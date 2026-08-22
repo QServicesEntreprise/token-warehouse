@@ -89,11 +89,145 @@ public sealed class CounterMovementApplicationTests
         Assert.Equal(0, committer.Calls);
     }
 
+    [Fact]
+    public async Task Corrects_a_sale_with_the_historical_financial_snapshot()
+    {
+        var ean13 = ParseEan("0123456789012");
+        var source = StockOperation.CreateSale("sale-1", ean13, new Quantity(3), Now);
+        var financial = new SaleFinancialSnapshot(
+            SaleContext.Takeaway,
+            Money.FromCents(1000),
+            TaxRate.Takeaway,
+            Money.FromCents(1000),
+            Money.FromCents(55),
+            Money.FromCents(1055));
+        var committer = new FakeCommitter();
+        var application = CreateApplication(
+            source,
+            new StockPosition(ean13, 7),
+            committer,
+            saleReader: new FakeSaleReader(new SaleReadRecord(
+                source,
+                financial,
+                new StockPositionView(
+                    ean13,
+                    "Article",
+                    ArticleType.Food,
+                    true,
+                    new DateOnly(2030, 1, 15),
+                    [ConsumptionMode.Takeaway],
+                    null,
+                    7,
+                    7,
+                    StockAvailability.Available,
+                    null))));
+
+        var result = await application.CorrectAsync(new CounterMovementCommand
+        {
+            SourceOperationId = source.Id,
+            Justification = "Correction Vente"
+        });
+
+        Assert.Equal(CounterMovementRegistrationStatus.Committed, result.Status);
+        Assert.Equal(-1000, result.Receipt?.FinancialReversal?.AmountHt.Cents);
+        Assert.Equal(-55, result.Receipt?.FinancialReversal?.Vat.Cents);
+        Assert.Equal(-1055, result.Receipt?.FinancialReversal?.AmountTtc.Cents);
+        Assert.Equal(TaxRate.Takeaway, result.Receipt?.FinancialReversal?.TaxRate);
+        Assert.Equal(SaleContext.Takeaway, result.Receipt?.FinancialReversal?.SaleContext);
+        Assert.Equal(result.Receipt?.FinancialReversal, committer.LastPlan?.FinancialReversal);
+    }
+
+    [Fact]
+    public async Task Rejects_a_sale_without_a_historical_financial_snapshot_before_commit()
+    {
+        var ean13 = ParseEan("0123456789012");
+        var source = StockOperation.CreateSale("sale-missing-snapshot", ean13, new Quantity(3), Now);
+        var committer = new FakeCommitter();
+        var application = CreateApplication(
+            source,
+            new StockPosition(ean13, 7),
+            committer,
+            saleReader: new FakeSaleReader(null));
+
+        var result = await application.CorrectAsync(new CounterMovementCommand
+        {
+            SourceOperationId = source.Id,
+            Justification = "Correction sans snapshot"
+        });
+
+        Assert.Equal(CounterMovementRegistrationStatus.SaleFinancialSnapshotInvalid, result.Status);
+        Assert.Contains(result.Errors, error => error.Code == "SALE_FINANCIAL_SNAPSHOT_INVALID");
+        Assert.Equal(0, committer.Calls);
+    }
+
+    [Fact]
+    public async Task Maps_an_invalid_persisted_sale_snapshot_to_a_conflict_before_commit()
+    {
+        var ean13 = ParseEan("0123456789012");
+        var source = StockOperation.CreateSale("sale-invalid-snapshot", ean13, new Quantity(3), Now);
+        var committer = new FakeCommitter();
+        var application = CreateApplication(
+            source,
+            new StockPosition(ean13, 7),
+            committer,
+            saleReader: new ThrowingSaleReader());
+
+        var result = await application.CorrectAsync(new CounterMovementCommand
+        {
+            SourceOperationId = source.Id,
+            Justification = "Correction snapshot invalide"
+        });
+
+        Assert.Equal(CounterMovementRegistrationStatus.SaleFinancialSnapshotInvalid, result.Status);
+        Assert.Contains(result.Errors, error => error.Code == "SALE_FINANCIAL_SNAPSHOT_INVALID");
+        Assert.Equal(0, committer.Calls);
+    }
+
+    [Fact]
+    public async Task Lists_a_sale_source_with_its_historical_financial_snapshot()
+    {
+        var ean13 = ParseEan("0123456789012");
+        var source = StockOperation.CreateSale("sale-list-1", ean13, new Quantity(3), Now);
+        var financial = new SaleFinancialSnapshot(
+            SaleContext.OnSite,
+            Money.FromCents(1000),
+            TaxRate.OnSite,
+            Money.FromCents(3000),
+            Money.FromCents(300),
+            Money.FromCents(3300));
+        var application = CreateApplication(
+            source,
+            new StockPosition(ean13, 7),
+            new FakeCommitter(),
+            saleReader: new FakeSaleReader(new SaleReadRecord(
+                source,
+                financial,
+                new StockPositionView(
+                    ean13,
+                    "Article",
+                    ArticleType.Food,
+                    true,
+                    new DateOnly(2030, 1, 15),
+                    [ConsumptionMode.OnSite],
+                    null,
+                    7,
+                    7,
+                    StockAvailability.Available,
+                    null))));
+
+        var result = await application.ListAsync();
+
+        var listed = Assert.Single(result.Sources);
+        Assert.Equal("SALE", listed.Type);
+        Assert.Equal(financial, listed.Financial);
+    }
+
     private static CounterMovementApplication CreateApplication(
         StockOperation source,
         StockPosition position,
         FakeCommitter committer,
-        FakeOperationReader? operationReader = null)
+        FakeOperationReader? operationReader = null,
+        ISaleReader? saleReader = null)
     {
         return new(
             new FakeArticleReader([new ArticleSellabilitySnapshot(
@@ -108,7 +242,8 @@ public sealed class CounterMovementApplicationTests
             new FakePositionReader([position]),
             committer,
             operationReader ?? new FakeOperationReader(source),
-            new FixedClock());
+            new FixedClock(),
+            saleReader);
     }
 
     private static Ean13 ParseEan(string value)
@@ -157,11 +292,33 @@ public sealed class CounterMovementApplicationTests
             Calls++;
             return ValueTask.FromResult(Source?.Id == id ? Source : null);
         }
+
+        public ValueTask<IReadOnlyList<StockOperation>> ListCorrectableAsync(
+            CancellationToken cancellationToken = default)
+            => ValueTask.FromResult<IReadOnlyList<StockOperation>>(Source is null ? [] : [Source]);
+    }
+
+    private sealed class FakeSaleReader(SaleReadRecord? sale) : ISaleReader
+    {
+        public ValueTask<SaleReadRecord?> FindByOperationIdAsync(
+            string operationId,
+            CancellationToken cancellationToken = default)
+            => ValueTask.FromResult(sale?.Operation.Id == operationId ? sale : null);
+    }
+
+    private sealed class ThrowingSaleReader : ISaleReader
+    {
+        public ValueTask<SaleReadRecord?> FindByOperationIdAsync(
+            string operationId,
+            CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("Stored Sale snapshot is invalid.");
     }
 
     private sealed class FakeCommitter : IStockMutationCommitter
     {
         public int Calls { get; private set; }
+
+        public CounterMovementCommitPlan? LastPlan { get; private set; }
 
         public ValueTask<StockMutationCommitResult> CommitAsync(
             InventoryCommitPlan plan,
@@ -173,6 +330,7 @@ public sealed class CounterMovementApplicationTests
             CancellationToken cancellationToken = default)
         {
             Calls++;
+            LastPlan = plan;
             return ValueTask.FromResult(StockMutationCommitResult.Committed(
                 plan.Lines.Select(line => new StockPosition(
                     line.Ean13,

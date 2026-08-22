@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using TokenWarehouse.Application;
+using TokenWarehouse.Domain;
 using TokenWarehouse.Infrastructure.Persistence;
 using Xunit;
 
@@ -103,6 +104,53 @@ public sealed class CounterMovementApiTests
         Assert.Equal("SALE", saleCounter.GetProperty("sourceOperationType").GetString());
         Assert.Equal(3, saleCounter.GetProperty("lines")[0].GetProperty("inverseEffect").GetInt32());
         Assert.Equal(10, saleBody.RootElement.GetProperty("positions")[0].GetProperty("physicalStock").GetInt32());
+        var financialReversal = saleBody.RootElement.GetProperty("financialReversal");
+        Assert.Equal("sale-1", financialReversal.GetProperty("sourceOperationId").GetString());
+        Assert.Equal("takeaway", financialReversal.GetProperty("context").GetString());
+        Assert.Equal(-3000, financialReversal.GetProperty("amountHtCents").GetInt32());
+        Assert.Equal(-165, financialReversal.GetProperty("vatCents").GetInt32());
+        Assert.Equal(-3165, financialReversal.GetProperty("amountTtcCents").GetInt32());
+        var sourceFinancial = saleBody.RootElement.GetProperty("source").GetProperty("financial");
+        Assert.Equal(1000, sourceFinancial.GetProperty("unitPriceHtCents").GetInt32());
+        Assert.Equal(3000, sourceFinancial.GetProperty("amountHtCents").GetInt32());
+        Assert.Equal(165, sourceFinancial.GetProperty("vatCents").GetInt32());
+        Assert.Equal(3165, sourceFinancial.GetProperty("amountTtcCents").GetInt32());
+
+        using var historyResponse = await saleClient.GetAsync("/api/history?ean13=0123456789012");
+        Assert.Equal(HttpStatusCode.OK, historyResponse.StatusCode);
+        using var historyBody = JsonDocument.Parse(await historyResponse.Content.ReadAsStringAsync());
+        var historyCounter = Assert.Single(
+            historyBody.RootElement.EnumerateArray(),
+            entry => entry.GetProperty("type").GetString() == "COUNTER_MOVEMENT");
+        Assert.Equal(-3000, historyCounter.GetProperty("financialReversal").GetProperty("amountHtCents").GetInt32());
+        Assert.Equal(-165, historyCounter.GetProperty("financialReversal").GetProperty("vatCents").GetInt32());
+    }
+
+    [Fact]
+    public async Task SQLite_rejects_an_invalid_sale_financial_reversal_payload()
+    {
+        using var factory = new CounterMovementHostFactory(Now);
+        await factory.SeedOperationAsync("sale-for-reversal-constraint", "0123456789012", "SALE", -3, 7);
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => factory.ReadAsync(async context =>
+        {
+            context.StockOperations.Add(new StockOperationEntity
+            {
+                Id = "invalid-sale-reversal",
+                Type = "COUNTER_MOVEMENT",
+                Ean13 = "0123456789012",
+                Quantity = 0,
+                OccurredAt = Now.ToString("O"),
+                TimestampUtc = Now.ToString("O"),
+                SourceOperationId = "sale-for-reversal-constraint",
+                SourceOperationType = "SALE",
+                Justification = "Payload invalide",
+                SaleCommitDataType = SaleFinancialReversalSerializer.Type,
+                SaleCommitDataPayload = "{\"sourceOperationId\":\"sale-for-reversal-constraint\",\"saleContext\":\"takeaway\",\"unitPriceHtCents\":1000,\"taxRateCode\":\"takeaway\",\"taxRateNumerator\":11,\"taxRateDenominator\":200,\"amountHtCents\":1,\"vatCents\":-165,\"amountTtcCents\":-164}"
+            });
+            await context.SaveChangesAsync();
+            return 0;
+        }));
     }
 
     [Fact]
@@ -634,7 +682,8 @@ public sealed class CounterMovementApiTests
             int sourceEffect,
             int previousPhysicalStock,
             int countedQuantity)
-            => new()
+        {
+            var operation = new StockOperationEntity
             {
                 Id = id,
                 Type = type,
@@ -647,6 +696,48 @@ public sealed class CounterMovementApiTests
                 ResultingPhysicalStock = type == "INVENTORY" ? countedQuantity : 0,
                 TimestampUtc = now.ToString("O")
             };
+
+            if (type == "SALE")
+            {
+                operation.SaleCommitDataType = SaleFinancialSnapshotSerializer.Type;
+                operation.SaleCommitDataPayload = SaleFinancialSnapshotSerializer.Serialize(
+                    new SaleFinancialSnapshot(
+                        SaleContext.Takeaway,
+                        Money.FromCents(1000),
+                        TaxRate.Takeaway,
+                        Money.FromCents(3000),
+                        Money.FromCents(165),
+                        Money.FromCents(3165)),
+                    new StockPositionView(
+                        ParseEan(ean13),
+                        "Article de test",
+                        ArticleType.Food,
+                        true,
+                        new DateOnly(2099, 1, 15),
+                        [ConsumptionMode.Takeaway],
+                        null,
+                        previousPhysicalStock,
+                        previousPhysicalStock,
+                        StockAvailability.Available,
+                        null));
+                operation.SaleFinancialContext = "takeaway";
+                operation.SaleFinancialUnitPriceHtCents = 1000;
+                operation.SaleFinancialTaxRateCode = TaxRate.Takeaway.Code;
+                operation.SaleFinancialTaxRateNumerator = TaxRate.Takeaway.Numerator;
+                operation.SaleFinancialTaxRateDenominator = TaxRate.Takeaway.Denominator;
+                operation.SaleFinancialAmountHtCents = 3000;
+                operation.SaleFinancialVatCents = 165;
+                operation.SaleFinancialAmountTtcCents = 3165;
+            }
+
+            return operation;
+        }
+
+        private static Ean13 ParseEan(string value)
+        {
+            Assert.True(Ean13.TryCreate(value, out var ean13));
+            return ean13;
+        }
 
         private static StockOperationLineEntity CreateLine(
             string operationId,

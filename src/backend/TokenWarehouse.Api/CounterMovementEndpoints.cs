@@ -140,8 +140,56 @@ public sealed record CounterMovementResponse(
     public static CounterMovementResponse From(CounterMovementReceipt receipt)
         => new(
             CounterMovementOperationResponse.From(receipt),
-            CounterMovementSourceResponse.From(receipt.Source),
-            receipt.Positions.Select(CounterMovementPositionResponse.From).ToArray());
+            CounterMovementSourceResponse.From(receipt.Source, receipt.FinancialReversal),
+            receipt.Positions.Select(CounterMovementPositionResponse.From).ToArray())
+        {
+            FinancialReversal = receipt.FinancialReversal is { } reversal
+                ? SaleFinancialReversalResponse.From(reversal)
+                : null
+        };
+
+    public SaleFinancialReversalResponse? FinancialReversal { get; init; }
+}
+
+public sealed record SaleFinancialReversalResponse(
+    string SourceOperationId,
+    string? Context,
+    int UnitPriceHtCents,
+    TaxRateResponse TaxRate,
+    int AmountHtCents,
+    int VatCents,
+    int AmountTtcCents)
+{
+    public static SaleFinancialReversalResponse From(SaleFinancialReversal reversal)
+        => new(
+            reversal.SourceOperationId,
+            reversal.SaleContext switch
+            {
+                SaleContext.Takeaway => "takeaway",
+                SaleContext.OnSite => "onsite",
+                _ => null
+            },
+            reversal.UnitPriceHt.Cents,
+            TaxRateResponse.From(reversal.TaxRate),
+            reversal.AmountHt.Cents,
+            reversal.Vat.Cents,
+            reversal.AmountTtc.Cents);
+
+    public static SaleFinancialResponse SourceFrom(SaleFinancialReversal reversal)
+        => new()
+        {
+            Context = reversal.SaleContext switch
+            {
+                SaleContext.Takeaway => "takeaway",
+                SaleContext.OnSite => "onsite",
+                _ => null
+            },
+            UnitPriceHtCents = reversal.UnitPriceHt.Cents,
+            TaxRate = TaxRateResponse.From(reversal.TaxRate),
+            AmountHtCents = checked(-reversal.AmountHt.Cents),
+            VatCents = checked(-reversal.Vat.Cents),
+            AmountTtcCents = checked(-reversal.AmountTtc.Cents)
+        };
 }
 
 public sealed record CounterMovementOperationResponse(
@@ -181,7 +229,9 @@ public sealed record CounterMovementSourceResponse(
     DateTimeOffset TimestampUtc,
     IReadOnlyList<CounterMovementSourceLineResponse> Lines)
 {
-    public static CounterMovementSourceResponse From(StockOperation source)
+    public static CounterMovementSourceResponse From(
+        StockOperation source,
+        SaleFinancialReversal? financialReversal = null)
         => new(
             source.Id,
             source.Type.ToString().ToUpperInvariant(),
@@ -190,7 +240,14 @@ public sealed record CounterMovementSourceResponse(
             source.Lines.Select(line => new CounterMovementSourceLineResponse(
                 line.LineNumber,
                 line.Ean13.Value,
-                line.StockEffect)).ToArray());
+                line.StockEffect)).ToArray())
+        {
+            Financial = financialReversal is null
+                ? null
+                : SaleFinancialReversalResponse.SourceFrom(financialReversal)
+        };
+
+    public SaleFinancialResponse? Financial { get; init; }
 }
 
 public sealed record CounterMovementSourceLineResponse(
@@ -241,7 +298,14 @@ public sealed record CorrectableSourceResponse(
             source.Lines.Select(line => new CorrectableSourceLineResponse(
                 line.LineNumber,
                 line.Ean13,
-                line.StockEffect)).ToArray());
+                line.StockEffect)).ToArray())
+        {
+            Financial = source.Financial is null
+                ? null
+                : SaleFinancialResponse.From(source.Financial)
+        };
+
+    public SaleFinancialResponse? Financial { get; init; }
 }
 
 public sealed record CorrectableSourceLineResponse(

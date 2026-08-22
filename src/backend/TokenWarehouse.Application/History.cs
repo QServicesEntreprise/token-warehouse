@@ -80,6 +80,8 @@ public sealed record HistoryEntryView
 
     public string? Justification { get; init; }
 
+    public SaleFinancialReversal? FinancialReversal { get; init; }
+
     public string? CorrectedByOperationId { get; init; }
 
     public string? CorrectionOperationId { get; init; }

@@ -86,6 +86,19 @@ public sealed class SqliteHistoryReader(
         var sourceOperationType = type == HistoryEntryType.CounterMovement
             ? ToWireOperationType(entity.SourceOperationType)
             : null;
+        SaleFinancialReversal? financialReversal = null;
+        if (type == HistoryEntryType.CounterMovement
+            && string.Equals(entity.SourceOperationType, "SALE", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!SaleFinancialReversalSerializer.TryDeserialize(
+                    entity.SaleCommitDataType,
+                    entity.SaleCommitDataPayload,
+                    out financialReversal)
+                || financialReversal.SourceOperationId != entity.SourceOperationId)
+            {
+                throw new InvalidOperationException("Stored Sale financial reversal data is invalid.");
+            }
+        }
         var firstLine = selectedLines[0];
         var rootLine = storedLines.Length > 1 ? null : firstLine;
         var isSource = correctionsBySource.TryGetValue(entity.Id, out var correction);
@@ -123,6 +136,7 @@ public sealed class SqliteHistoryReader(
             SourceOperationId = sourceOperationId,
             SourceOperationType = sourceOperationType,
             Justification = type == HistoryEntryType.CounterMovement ? entity.Justification : null,
+            FinancialReversal = financialReversal,
             CorrectedByOperationId = isSource ? correction!.Id : null,
             CorrectionOperationId = type == HistoryEntryType.CounterMovement ? entity.Id : null,
             Ean13 = firstLine.Ean13.Value,

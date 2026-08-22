@@ -224,6 +224,7 @@ public sealed record StockOperation
         SourceOperationId = null;
         SourceOperationType = null;
         Justification = null;
+        FinancialReversal = null;
     }
 
     private StockOperation(
@@ -245,6 +246,7 @@ public sealed record StockOperation
         SourceOperationId = null;
         SourceOperationType = null;
         Justification = null;
+        FinancialReversal = null;
     }
 
     private StockOperation(
@@ -259,6 +261,7 @@ public sealed record StockOperation
         SourceOperationId = null;
         SourceOperationType = null;
         Justification = null;
+        FinancialReversal = null;
     }
 
     private StockOperation(
@@ -267,7 +270,8 @@ public sealed record StockOperation
         StockOperationType sourceOperationType,
         string justification,
         IReadOnlyList<StockOperationLine> lines,
-        DateTimeOffset timestampUtc)
+        DateTimeOffset timestampUtc,
+        SaleFinancialReversal? financialReversal)
     {
         if (string.IsNullOrWhiteSpace(id))
         {
@@ -290,6 +294,13 @@ public sealed record StockOperation
             throw new ArgumentException("A counter-movement must contain at least one line.", nameof(lines));
         }
 
+        if (financialReversal is not null
+            && (sourceOperationType != StockOperationType.Sale
+                || financialReversal.SourceOperationId != sourceOperationId))
+        {
+            throw new ArgumentException("A financial reversal must target its Sale source.", nameof(financialReversal));
+        }
+
         Id = id;
         Type = StockOperationType.CounterMovement;
         Ean13 = lines[0].Ean13;
@@ -300,6 +311,7 @@ public sealed record StockOperation
         SourceOperationId = sourceOperationId;
         SourceOperationType = sourceOperationType;
         Justification = justification.Trim();
+        FinancialReversal = financialReversal;
     }
 
     public string Id { get; }
@@ -329,6 +341,8 @@ public sealed record StockOperation
     public StockOperationType? SourceOperationType { get; }
 
     public string? Justification { get; }
+
+    public SaleFinancialReversal? FinancialReversal { get; }
 
     public static StockOperation CreateSupply(
         string id,
@@ -431,7 +445,8 @@ public sealed record StockOperation
         StockOperationType sourceOperationType,
         string justification,
         IReadOnlyList<CounterMovementLinePlan> lines,
-        DateTimeOffset timestampUtc)
+        DateTimeOffset timestampUtc,
+        SaleFinancialReversal? financialReversal = null)
     {
         ArgumentNullException.ThrowIfNull(lines);
         if (lines.Count == 0)
@@ -479,7 +494,8 @@ public sealed record StockOperation
             sourceOperationType,
             normalizedJustification.Value,
             operationLines,
-            timestampUtc);
+            timestampUtc,
+            financialReversal);
     }
 
     private static IReadOnlyList<StockOperationLine> CopyLines(

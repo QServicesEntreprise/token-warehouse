@@ -2132,6 +2132,100 @@ describe('AppComponent', () => {
     http.verify();
   });
 
+  it('renders the historical sale snapshot and the signed committed reversal', async () => {
+    const fixture = TestBed.configureTestingModule({
+      imports: [AppComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    }).createComponent(AppComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
+    http.expectOne('/api/stock').flush([]);
+    await fixture.whenStable();
+
+    const component = fixture.componentInstance;
+    component.counterMovementSources.set([{
+      id: 'sale-source-01',
+      type: 'SALE',
+      timestampUtc: '2030-01-15T09:00:00+00:00',
+      ean13: '0123456789012',
+      lines: [{ lineNumber: 1, ean13: '0123456789012', stockEffect: -3 }],
+      financial: {
+        context: 'takeaway',
+        unitPriceHtCents: 1000,
+        taxRate: { code: 'takeaway', ratio: '11/200', numerator: 11, denominator: 200 },
+        amountHtCents: 3000,
+        vatCents: 165,
+        amountTtcCents: 3165,
+      },
+    }]);
+    component.counterMovementSourcesState.set('ready');
+    component.counterMovementModel.set({
+      sourceOperationId: 'sale-source-01',
+      justification: 'Correction Vente historique',
+    });
+    fixture.detectChanges();
+    const source = fixture.nativeElement.querySelector('#counter-movement-source-title').parentElement.textContent;
+    expect(source).toContain('1000 centimes');
+    expect(source).toContain('3000 centimes');
+
+    const submission = component.onCounterMovementSubmit(new Event('submit'));
+    const request = http.expectOne('/api/stock/counter-movements');
+    request.flush({
+      counterMovement: {
+        id: 'counter-sale-01',
+        type: 'COUNTER_MOVEMENT',
+        timestampUtc: '2030-01-15T10:00:00+00:00',
+        sourceOperationId: 'sale-source-01',
+        sourceOperationType: 'SALE',
+        justification: 'Correction Vente historique',
+        lines: [{ lineNumber: 1, ean13: '0123456789012', sourceEffect: -3, inverseEffect: 3 }],
+      },
+      source: {
+        id: 'sale-source-01',
+        type: 'SALE',
+        timestampUtc: '2030-01-15T09:00:00+00:00',
+        ean13: '0123456789012',
+        lines: [{ lineNumber: 1, ean13: '0123456789012', stockEffect: -3 }],
+        financial: {
+          context: 'takeaway',
+          unitPriceHtCents: 1000,
+          taxRate: { code: 'takeaway', ratio: '11/200', numerator: 11, denominator: 200 },
+          amountHtCents: 3000,
+          vatCents: 165,
+          amountTtcCents: 3165,
+        },
+      },
+      financialReversal: {
+        sourceOperationId: 'sale-source-01',
+        context: 'takeaway',
+        unitPriceHtCents: 1000,
+        taxRate: { code: 'takeaway', ratio: '11/200', numerator: 11, denominator: 200 },
+        amountHtCents: -3000,
+        vatCents: -165,
+        amountTtcCents: -3165,
+      },
+      positions: [{
+        ean13: '0123456789012',
+        physicalStock: 10,
+        sellableStock: 10,
+        availability: 'AVAILABLE',
+        reason: null,
+      }],
+    });
+    await Promise.resolve();
+    http.expectOne('/api/stock').flush([]);
+    await submission;
+    fixture.detectChanges();
+
+    const result = fixture.nativeElement.querySelector('#counter-movement-result').textContent;
+    expect(result).toContain('-3000 centimes');
+    expect(result).toContain('-165 centimes');
+    expect(result).toContain('-3165 centimes');
+    await flushUnusedDashboardRequest(http);
+    http.verify();
+  });
+
   it('renders literal positive, negative and zero Inventory fields and lifecycle changes', async () => {
     const fixture = TestBed.configureTestingModule({
       imports: [AppComponent],
