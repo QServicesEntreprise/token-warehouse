@@ -564,6 +564,137 @@ describe('AppComponent', () => {
     http.verify();
   });
 
+  it('keeps the newest Dashboard response when reads complete out of order', async () => {
+    const fixture = TestBed.configureTestingModule({
+      imports: [AppComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    }).createComponent(AppComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
+    http.expectOne('/api/stock').flush([]);
+    http.expectOne('/health').flush({
+      status: 'ok',
+      provider: 'test',
+      warehouseDate: '2030-03-15',
+      currentMonth: { from: '2030-03-01', to: '2030-03-31' },
+    });
+    await fixture.whenStable();
+
+    const initial = http.expectOne((request) => request.url === '/api/dashboard');
+    initial.flush({
+      kpis: { physicalStock: 0, sellableStock: 0, nonSellableStock: 0 },
+      alerts: { outOfStock: [], notSellable: [] },
+      stockByArticle: [],
+    });
+    await fixture.whenStable();
+
+    const form = fixture.nativeElement.querySelector('#dashboard-filters') as HTMLFormElement;
+    const setControl = (id: string, value: string) => {
+      const control = fixture.nativeElement.querySelector(`#${id}`) as HTMLInputElement | HTMLSelectElement;
+      control.value = value;
+      control.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    setControl('dashboard-type', 'food');
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    setControl('dashboard-type', 'nonFood');
+    setControl('dashboard-packaging', 'new');
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    const [older, newer] = http.match((request) => request.url === '/api/dashboard');
+    expect(older.request.params.get('type')).toBe('food');
+    expect(newer.request.params.get('type')).toBe('nonFood');
+    newer.flush({
+      kpis: { physicalStock: 8, sellableStock: 8, nonSellableStock: 0 },
+      alerts: { outOfStock: [], notSellable: [] },
+      stockByArticle: [{
+        ean13: '4567890123456',
+        name: 'Article le plus récent',
+        articleType: 'nonFood',
+        lifecycleStatus: 'ACTIVE',
+        physicalStock: 8,
+        sellableStock: 8,
+        nonSellableStock: 0,
+        availability: 'AVAILABLE',
+        reason: null,
+      }],
+    });
+    await fixture.whenStable();
+    older.flush({
+      kpis: { physicalStock: 5, sellableStock: 5, nonSellableStock: 0 },
+      alerts: { outOfStock: [], notSellable: [] },
+      stockByArticle: [{
+        ean13: '0123456789012',
+        name: 'Réponse ancienne',
+        articleType: 'food',
+        lifecycleStatus: 'ACTIVE',
+        physicalStock: 5,
+        sellableStock: 5,
+        nonSellableStock: 0,
+        availability: 'AVAILABLE',
+        reason: null,
+      }],
+    });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('#dashboard-table').textContent)
+      .toContain('Article le plus récent');
+    expect(fixture.nativeElement.querySelector('#dashboard-table').textContent)
+      .not.toContain('Réponse ancienne');
+    http.verify();
+  });
+
+  it('associates Dashboard validation errors with keyboard-accessible controls and announcements', async () => {
+    const fixture = TestBed.configureTestingModule({
+      imports: [AppComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    }).createComponent(AppComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
+    http.expectOne('/api/stock').flush([]);
+    http.expectOne('/health').flush({
+      status: 'ok',
+      provider: 'test',
+      warehouseDate: '2030-03-15',
+      currentMonth: { from: '2030-03-01', to: '2030-03-31' },
+    });
+    await fixture.whenStable();
+    const initial = http.expectOne((request) =>
+      request.url === '/api/dashboard'
+        && request.params.get('from') === '2030-03-01'
+        && request.params.get('to') === '2030-03-31');
+    initial.flush({
+      kpis: { physicalStock: 0, sellableStock: 0, nonSellableStock: 0 },
+      alerts: { outOfStock: [], notSellable: [] },
+      stockByArticle: [],
+    });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    for (const id of ['dashboard-from', 'dashboard-to', 'dashboard-type', 'dashboard-mode', 'dashboard-packaging']) {
+      expect(fixture.nativeElement.querySelector(`label[for="${id}"]`)).not.toBeNull();
+    }
+    const state = fixture.nativeElement.querySelector('#dashboard-state');
+    expect(state.getAttribute('role')).toBe('status');
+    expect(state.getAttribute('aria-live')).toBe('polite');
+
+    const fromControl = fixture.nativeElement.querySelector('#dashboard-from') as HTMLInputElement;
+    fromControl.value = '';
+    fromControl.dispatchEvent(new Event('change'));
+    (fixture.nativeElement.querySelector('#dashboard-filters') as HTMLFormElement)
+      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    fixture.detectChanges();
+
+    const from = fixture.nativeElement.querySelector('#dashboard-from') as HTMLInputElement;
+    expect(from.getAttribute('aria-invalid')).toBe('true');
+    expect(from.getAttribute('aria-describedby')).toBe('dashboard-from-error');
+    expect(fixture.nativeElement.querySelector('#dashboard-from-error')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('#dashboard-state [role="alert"]')).not.toBeNull();
+    expect(from).toBe(document.activeElement);
+    http.verify();
+  });
+
   it('keeps Dashboard controls visible when the calendar bootstrap fails', async () => {
     const fixture = TestBed.configureTestingModule({
       imports: [AppComponent],

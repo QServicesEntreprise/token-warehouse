@@ -25,7 +25,7 @@ public sealed class DashboardApplicationTests
                 StockAvailability.OutOfStock, null),
         };
 
-        var result = await new DashboardApplication(new FakeDashboardSource(rows)).ReadAsync(AllQuery());
+        var result = await new DashboardApplication(new FakeDashboardSource(rows), Calendar()).ReadAsync(AllQuery());
 
         Assert.Equal(DashboardReadStatus.Success, result.Status);
         Assert.NotNull(result.View);
@@ -62,7 +62,7 @@ public sealed class DashboardApplicationTests
             StockAvailability.Available,
             null);
 
-        var result = await new DashboardApplication(new FakeDashboardSource([row])).ReadAsync(AllQuery());
+        var result = await new DashboardApplication(new FakeDashboardSource([row]), Calendar()).ReadAsync(AllQuery());
 
         Assert.Equal(DashboardReadStatus.Success, result.Status);
         Assert.Equal(7, result.View!.StockByArticle[0].PhysicalStock);
@@ -85,7 +85,7 @@ public sealed class DashboardApplicationTests
             StockAvailability.Available,
             null);
 
-        var result = await new DashboardApplication(new FakeDashboardSource([invalid])).ReadAsync(AllQuery());
+        var result = await new DashboardApplication(new FakeDashboardSource([invalid]), Calendar()).ReadAsync(AllQuery());
 
         Assert.Equal(DashboardReadStatus.PersistenceFailed, result.Status);
         Assert.Null(result.View);
@@ -104,11 +104,13 @@ public sealed class DashboardApplicationTests
                 StockAvailability.Available, null)
         };
 
-        var query = new DashboardQuery(
-            new WarehouseDateRange(new DateOnly(2030, 3, 1), new DateOnly(2030, 3, 31)),
-            new DashboardArticleSelection(ArticleType.Food, ConsumptionMode.OnSite, null));
-
-        var result = await new DashboardApplication(new FakeDashboardSource(rows)).ReadAsync(query);
+        var result = await new DashboardApplication(new FakeDashboardSource(rows), Calendar()).ReadAsync(
+            new DashboardQueryRequest(
+                "2030-03-01",
+                "2030-03-31",
+                "food",
+                "onsite",
+                null));
 
         Assert.Equal(DashboardReadStatus.Success, result.Status);
         Assert.Equal(["0123456789012"], result.View!.StockByArticle.Select(row => row.Ean13));
@@ -124,10 +126,13 @@ public sealed class DashboardApplicationTests
         var row = View("4567890123456", "Neuf", ArticleType.NonFood, true, 8, 8,
             StockAvailability.Available, null);
 
-        var result = await new DashboardApplication(new FakeDashboardSource([row])).ReadAsync(
-            new DashboardQuery(
-                new WarehouseDateRange(new DateOnly(2030, 3, 1), new DateOnly(2030, 3, 31)),
-                new DashboardArticleSelection(ArticleType.Food, null, PackagingCondition.New)));
+        var result = await new DashboardApplication(new FakeDashboardSource([row]), Calendar()).ReadAsync(
+            new DashboardQueryRequest(
+                "2030-03-01",
+                "2030-03-31",
+                "food",
+                null,
+                "new"));
 
         Assert.Equal(DashboardReadStatus.Success, result.Status);
         Assert.Empty(result.View!.StockByArticle);
@@ -140,12 +145,78 @@ public sealed class DashboardApplicationTests
     [Fact]
     public void Uses_the_warehouse_date_for_the_current_month()
     {
-        var calendar = new WarehouseCalendar(new FixedClock(new DateTimeOffset(2030, 3, 15, 23, 30, 0, TimeSpan.Zero)));
+        var calendar = new WarehouseCalendar(
+            new FixedClock(new DateTimeOffset(2030, 3, 15, 23, 30, 0, TimeSpan.Zero)),
+            TimeZoneInfo.Utc);
 
         Assert.Equal(new DateOnly(2030, 3, 15), calendar.WarehouseDate);
         Assert.Equal(
             new WarehouseDateRange(new DateOnly(2030, 3, 1), new DateOnly(2030, 3, 31)),
             calendar.CurrentMonth);
+    }
+
+    [Fact]
+    public async Task Accepts_equal_period_bounds_and_passes_the_normalized_query_to_the_read_source()
+    {
+        var source = new FakeDashboardSource([]);
+        var result = await new DashboardApplication(source, Calendar()).ReadAsync(
+            new DashboardQueryRequest("2030-03-15", "2030-03-15", "all", "all", "all"));
+
+        Assert.Equal(DashboardReadStatus.Success, result.Status);
+        Assert.Equal(new DateOnly(2030, 3, 15), source.LastQuery!.Period.From);
+        Assert.Equal(new DateOnly(2030, 3, 15), source.LastQuery.Period.To);
+        Assert.Null(source.LastQuery.Selection.Type);
+        Assert.Null(source.LastQuery.Selection.Mode);
+        Assert.Null(source.LastQuery.Selection.Packaging);
+    }
+
+    [Fact]
+    public async Task Rejects_a_reversed_period_at_the_application_seam_without_reading_sources()
+    {
+        var source = new FakeDashboardSource([]);
+        var result = await new DashboardApplication(source, Calendar()).ReadAsync(
+            new DashboardQueryRequest("2030-03-16", "2030-03-15", null, null, null));
+
+        Assert.Equal(DashboardReadStatus.ValidationFailed, result.Status);
+        Assert.Equal("dashboard.reversed_period", result.Errors[0].Code);
+        Assert.Equal(["from", "to"], result.Errors.Select(error => error.Field));
+        Assert.Equal(0, source.Calls);
+    }
+
+    [Theory]
+    [InlineData(null, "2030-03-15", "dashboard.missing_period", "from")]
+    [InlineData("2030-03-15", null, "dashboard.missing_period", "to")]
+    [InlineData("2030-02-30", "2030-03-15", "dashboard.invalid_date", "from")]
+    [InlineData("2030-03-15", "2030-02-30", "dashboard.invalid_date", "to")]
+    public async Task Rejects_missing_or_invalid_period_bounds_at_the_application_seam(
+        string? from,
+        string? to,
+        string code,
+        string field)
+    {
+        var source = new FakeDashboardSource([]);
+        var result = await new DashboardApplication(source, Calendar()).ReadAsync(
+            new DashboardQueryRequest(from, to, null, null, null));
+
+        Assert.Equal(DashboardReadStatus.ValidationFailed, result.Status);
+        Assert.Contains(result.Errors, error => error.Code == code && error.Field == field);
+        Assert.Equal(0, source.Calls);
+    }
+
+    [Fact]
+    public void Converts_instants_with_the_warehouse_calendar_instead_of_using_the_input_offset()
+    {
+        var calendar = new WarehouseCalendar(
+            new FixedClock(new DateTimeOffset(2030, 3, 15, 10, 0, 0, TimeSpan.Zero)),
+            TimeZoneInfo.CreateCustomTimeZone(
+                "Warehouse",
+                TimeSpan.FromHours(2),
+                "Warehouse",
+                "Warehouse"));
+
+        Assert.Equal(
+            new DateOnly(2030, 3, 16),
+            calendar.ToWarehouseDate(new DateTimeOffset(2030, 3, 15, 23, 30, 0, TimeSpan.Zero)));
     }
 
     private static StockPositionView View(
@@ -176,16 +247,27 @@ public sealed class DashboardApplicationTests
 
     private sealed class FakeDashboardSource(IReadOnlyList<StockPositionView> rows) : ICurrentDashboardReadSource
     {
+        public int Calls { get; private set; }
+
+        public DashboardQuery? LastQuery { get; private set; }
+
         public Task<IReadOnlyList<StockPositionView>> ReadAsync(
             DashboardQuery query,
             CancellationToken cancellationToken = default)
-            => Task.FromResult(rows);
+        {
+            Calls++;
+            LastQuery = query;
+            return Task.FromResult(rows);
+        }
     }
 
-    private static DashboardQuery AllQuery()
-        => new(
-            new WarehouseDateRange(new DateOnly(2030, 1, 1), new DateOnly(2030, 1, 31)),
-            new DashboardArticleSelection(null, null, null));
+    private static DashboardQueryRequest AllQuery()
+        => new("2030-01-01", "2030-01-31", null, null, null);
+
+    private static IWarehouseCalendar Calendar()
+        => new WarehouseCalendar(
+            new FixedClock(new DateTimeOffset(2030, 1, 15, 10, 0, 0, TimeSpan.Zero)),
+            TimeZoneInfo.Utc);
 
     private sealed class FixedClock(DateTimeOffset now) : IClock
     {

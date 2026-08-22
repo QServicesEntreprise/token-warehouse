@@ -619,10 +619,28 @@ public sealed class ArticleApiTests
         Assert.True(body.RootElement.GetProperty("errors").TryGetProperty("to", out _));
     }
 
+    [Fact]
+    public async Task Dashboard_accepts_equal_period_bounds()
+    {
+        using var factory = new ArticleHostFactory();
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync(
+            "/api/dashboard?from=2030-03-15&to=2030-03-15");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
+    }
+
     [Theory]
+    [InlineData("/api/dashboard?to=2030-03-31", "dashboard.missing_period", "from")]
+    [InlineData("/api/dashboard?from=2030-03-01", "dashboard.missing_period", "to")]
     [InlineData("/api/dashboard?from=2030-02-30&to=2030-03-31", "dashboard.invalid_date", "from")]
+    [InlineData("/api/dashboard?from=2030-03-01&to=2030-02-30", "dashboard.invalid_date", "to")]
     [InlineData("/api/dashboard?from=2030-04-01&to=2030-03-31", "dashboard.reversed_period", "from")]
     [InlineData("/api/dashboard?from=2030-03-01&to=2030-03-31&type=unknown", "dashboard.unsupported_filter", "type")]
+    [InlineData("/api/dashboard?from=2030-03-01&to=2030-03-31&mode=unknown", "dashboard.unsupported_filter", "mode")]
+    [InlineData("/api/dashboard?from=2030-03-01&to=2030-03-31&packaging=unknown", "dashboard.unsupported_filter", "packaging")]
     [InlineData("/api/dashboard?from=2030-03-01T00:00:00Z&to=2030-03-31", "dashboard.invalid_date", "from")]
     public async Task Dashboard_rejects_structurally_invalid_periods_and_filters(
         string path,
@@ -639,6 +657,22 @@ public sealed class ArticleApiTests
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.Equal(code, body.RootElement.GetProperty("code").GetString());
         Assert.True(body.RootElement.GetProperty("errors").TryGetProperty(field, out _));
+    }
+
+    [Fact]
+    public async Task Dashboard_reports_both_fields_for_a_reversed_period()
+    {
+        using var factory = new ArticleHostFactory();
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync(
+            "/api/dashboard?from=2030-03-16&to=2030-03-15");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var errors = body.RootElement.GetProperty("errors");
+        Assert.True(errors.TryGetProperty("from", out _));
+        Assert.True(errors.TryGetProperty("to", out _));
     }
 
     [Fact]
@@ -713,6 +747,32 @@ public sealed class ArticleApiTests
             Assert.Equal(["0123456789012"], rows.Select(row => row.GetProperty("ean13").GetString()!).ToArray());
             Assert.Equal(5, filtered.Body.RootElement.GetProperty("kpis").GetProperty("physicalStock").GetInt32());
         }
+
+        async Task<string[]> ReadEansAsync(string query)
+        {
+            var read = await ReadDashboardAsync(client, query);
+            using (read.Body)
+            using (read.Response)
+            {
+                Assert.Equal(HttpStatusCode.OK, read.Response.StatusCode);
+                return read.Body.RootElement.GetProperty("stockByArticle")
+                    .EnumerateArray()
+                    .Select(row => row.GetProperty("ean13").GetString()!)
+                    .ToArray();
+            }
+        }
+
+        Assert.Equal(
+            ["0123456789012", "1234567890128"],
+            await ReadEansAsync("from=2030-03-15&to=2030-03-15&type=food&mode=all&packaging=all"));
+        Assert.Equal(
+            ["0123456789012"],
+            await ReadEansAsync("from=2030-03-01&to=2030-03-31&type=all&mode=onsite&packaging=all"));
+        Assert.Equal(
+            ["4567890123456"],
+            await ReadEansAsync("from=2030-03-01&to=2030-03-31&type=all&mode=all&packaging=new"));
+        Assert.Empty(await ReadEansAsync(
+            "from=2030-03-01&to=2030-03-31&type=nonFood&mode=takeaway&packaging=all"));
 
         var incompatible = await ReadDashboardAsync(
             client,

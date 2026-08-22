@@ -443,6 +443,22 @@ test('filters the Dashboard by explicit period and Article dimensions', async ({
   expect(initialResponse.url()).toContain('from=2030-01-01');
   expect(initialResponse.url()).toContain('to=2030-01-31');
 
+  const foodResponse = page.waitForResponse((candidate) => {
+    const url = new URL(candidate.url());
+    return candidate.request().method() === 'GET'
+      && url.pathname === '/api/dashboard'
+      && url.searchParams.get('type') === 'food'
+      && url.searchParams.get('mode') === null;
+  });
+  await page.locator('#dashboard-type').selectOption('food');
+  await page.getByRole('button', { name: 'Lire le Dashboard' }).click();
+  expect((await foodResponse).status()).toBe(200);
+  await expect(dashboard.locator('#dashboard-table').getByRole('row', { name: /Alimentaire à DLC dépassée/ }))
+    .toBeVisible();
+  await expect(dashboard.locator('#dashboard-table').getByRole('row', { name: /Article archivé/ }))
+    .toHaveCount(0);
+  await expect(dashboard.locator('#dashboard-kpi-physical')).toContainText('12 unités');
+
   const filteredResponse = page.waitForResponse((response) => {
     const url = new URL(response.url());
     return response.request().method() === 'GET'
@@ -463,6 +479,22 @@ test('filters the Dashboard by explicit period and Article dimensions', async ({
     .toHaveCount(0);
   await expect(dashboard.locator('#dashboard-kpi-physical')).toContainText('5 unités');
 
+  const allTypeResponse = page.waitForResponse((candidate) => {
+    const url = new URL(candidate.url());
+    return candidate.request().method() === 'GET'
+      && url.pathname === '/api/dashboard'
+      && url.searchParams.get('type') === null
+      && url.searchParams.get('mode') === 'onsite';
+  });
+  await page.locator('#dashboard-type').selectOption('all');
+  await page.getByRole('button', { name: 'Lire le Dashboard' }).click();
+  expect((await allTypeResponse).status()).toBe(200);
+  await expect(dashboard.locator('#dashboard-table').getByRole('row', { name: /Alimentaire aux deux modes/ }))
+    .toBeVisible();
+  await expect(dashboard.locator('#dashboard-table').getByRole('row', { name: /Article actif sans position/ }))
+    .toHaveCount(0);
+  await expect(dashboard.locator('#dashboard-kpi-physical')).toContainText('5 unités');
+
   const packagingResponse = page.waitForResponse((candidate) => {
     const url = new URL(candidate.url());
     return candidate.request().method() === 'GET'
@@ -477,6 +509,68 @@ test('filters the Dashboard by explicit period and Article dimensions', async ({
   await expect(dashboard.locator('#dashboard-table').getByRole('row', { name: /Article archivé/ }))
     .toBeVisible();
   await expect(dashboard.locator('#dashboard-table').getByRole('row', { name: /Article actif vendable/ }))
+    .toBeVisible();
+});
+
+test('keeps Dashboard controls and focus after a period error, then retries the same selection', async ({ page }) => {
+  const dashboard = page.locator('#dashboard-panel');
+
+  await page.goto('/');
+  await expect(page.locator('#dashboard-from')).toHaveValue('2030-01-01');
+  await expect(page.locator('#dashboard-to')).toHaveValue('2030-01-31');
+  await expect(page.locator('label[for="dashboard-from"]')).toBeVisible();
+  await expect(page.locator('label[for="dashboard-to"]')).toBeVisible();
+  await expect(page.locator('label[for="dashboard-type"]')).toBeVisible();
+  await expect(page.locator('label[for="dashboard-mode"]')).toBeVisible();
+  await expect(page.locator('label[for="dashboard-packaging"]')).toBeVisible();
+  await expect(dashboard.locator('#dashboard-state')).toHaveAttribute('role', 'status');
+
+  const from = page.locator('#dashboard-from');
+  const to = page.locator('#dashboard-to');
+  await from.fill('2030-01-20');
+  await to.fill('2030-01-15');
+  await page.locator('#dashboard-type').selectOption('food');
+  await page.locator('#dashboard-mode').selectOption('onsite');
+
+  const invalidResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'GET'
+      && url.pathname === '/api/dashboard'
+      && url.searchParams.get('from') === '2030-01-20'
+      && url.searchParams.get('to') === '2030-01-15';
+  });
+  await page.getByRole('button', { name: 'Lire le Dashboard' }).click();
+  const invalidResponse = await invalidResponsePromise;
+  expect(invalidResponse.status()).toBe(400);
+  expect(invalidResponse.headers()['content-type']).toContain('application/problem+json');
+  expect((await invalidResponse.json()).code).toBe('dashboard.reversed_period');
+  await expect(dashboard.locator('#dashboard-state [role="alert"]')).toContainText('invalide');
+  await expect(from).toHaveValue('2030-01-20');
+  await expect(to).toHaveValue('2030-01-15');
+  await expect(page.locator('#dashboard-type')).toHaveValue('food');
+  await expect(page.locator('#dashboard-mode')).toHaveValue('onsite');
+  await expect(page.locator('#dashboard-packaging')).toBeDisabled();
+  await expect(from).toHaveAttribute('aria-invalid', 'true');
+  await expect(from).toHaveAttribute('aria-describedby', 'dashboard-from-error');
+  await expect(from).toBeFocused();
+
+  await to.fill('2030-01-20');
+  const retryResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'GET'
+      && url.pathname === '/api/dashboard'
+      && url.searchParams.get('from') === '2030-01-20'
+      && url.searchParams.get('to') === '2030-01-20';
+  });
+  await page.getByRole('button', { name: 'Lire le Dashboard' }).click();
+  const retryResponse = await retryResponsePromise;
+  expect(retryResponse.status()).toBe(200);
+  await expect(dashboard.locator('#dashboard-state')).toContainText('Article suivi');
+  await expect(page.locator('#dashboard-from')).toHaveValue('2030-01-20');
+  await expect(page.locator('#dashboard-to')).toHaveValue('2030-01-20');
+  await expect(page.locator('#dashboard-type')).toHaveValue('food');
+  await expect(page.locator('#dashboard-mode')).toHaveValue('onsite');
+  await expect(dashboard.locator('#dashboard-table').getByRole('row', { name: /Alimentaire aux deux modes/ }))
     .toBeVisible();
 });
 

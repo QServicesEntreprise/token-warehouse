@@ -274,6 +274,7 @@ export class DashboardComponent implements OnInit {
       this.dashboardState.set('error');
       this.dashboardError.set('Corrigez la période sélectionnée.');
       this.dashboardFieldErrors.set(errors);
+      this.focusDashboardField(errors);
       return;
     }
 
@@ -402,7 +403,9 @@ export class DashboardComponent implements OnInit {
 
       this.dashboardState.set('error');
       this.dashboardError.set(this.problemMessage(error, 'Le Dashboard ne peut pas être chargé. Réessayez.'));
-      this.dashboardFieldErrors.set(this.problemFieldErrors(error));
+      const fieldErrors = this.problemFieldErrors(error);
+      this.dashboardFieldErrors.set(fieldErrors);
+      this.focusDashboardField(fieldErrors);
     }
   }
 
@@ -450,5 +453,13 @@ export class DashboardComponent implements OnInit {
         : 'Valeur invalide.';
     }
     return result;
+  }
+
+  private focusDashboardField(errors: DashboardFieldErrors): void {
+    const field = (['from', 'to', 'type', 'mode', 'packaging'] as const)
+      .find(candidate => errors[candidate]);
+    if (field) {
+      document.getElementById(`dashboard-${field}`)?.focus();
+    }
   }
 }

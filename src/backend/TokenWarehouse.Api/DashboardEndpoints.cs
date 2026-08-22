@@ -16,16 +16,15 @@ public static class DashboardEndpoints
             IReadCurrentDashboardUseCase useCase,
             CancellationToken cancellationToken) =>
         {
-            var parsed = DashboardQueryParser.Parse(from, to, type, mode, packaging);
-            if (!parsed.IsSuccess)
+            var result = await useCase.ReadAsync(
+                new DashboardQueryRequest(from, to, type, mode, packaging),
+                cancellationToken);
+            return result.Status switch
             {
-                return ValidationProblem(parsed);
-            }
-
-            var result = await useCase.ReadAsync(parsed.Query!, cancellationToken);
-            return result.Status == DashboardReadStatus.Success
-                ? Results.Ok(DashboardResponse.From(result.View!))
-                : PersistenceProblem();
+                DashboardReadStatus.Success => Results.Ok(DashboardResponse.From(result.View!)),
+                DashboardReadStatus.ValidationFailed => ValidationProblem(result.Errors),
+                _ => PersistenceProblem()
+            };
         });
     }
 
@@ -38,14 +37,14 @@ public static class DashboardEndpoints
                 ["code"] = "dashboard.persistence_failure"
             });
 
-    private static IResult ValidationProblem(DashboardQueryParseResult parsed)
+    private static IResult ValidationProblem(IReadOnlyList<ArticleValidationError> errors)
         => Results.Problem(
             statusCode: StatusCodes.Status400BadRequest,
             title: "La requête du Dashboard est invalide.",
             extensions: new Dictionary<string, object?>
             {
-                ["code"] = parsed.ErrorCode ?? "dashboard.invalid_request",
-                ["errors"] = parsed.Errors
+                ["code"] = errors.FirstOrDefault()?.Code ?? "dashboard.invalid_request",
+                ["errors"] = errors
                     .GroupBy(error => error.Field, StringComparer.Ordinal)
                     .ToDictionary(
                         group => group.Key,
