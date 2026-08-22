@@ -109,6 +109,9 @@ namespace TokenWarehouse.Infrastructure.Persistence.Migrations
                     b.Property<int>("InventoryDifference")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("Justification")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("OccurredAt")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -122,6 +125,12 @@ namespace TokenWarehouse.Infrastructure.Persistence.Migrations
                     b.Property<int>("ResultingPhysicalStock")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("SourceOperationId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SourceOperationType")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("TimestampUtc")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -133,6 +142,9 @@ namespace TokenWarehouse.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("Ean13");
+
+                    b.HasIndex("SourceOperationId")
+                        .IsUnique();
 
                     b.ToTable("StockOperations", null, t =>
                         {
@@ -147,6 +159,8 @@ namespace TokenWarehouse.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("CK_StockOperations_ResultingPhysicalStock_Formula", "ResultingPhysicalStock = CountedQuantity");
 
                             t.HasCheckConstraint("CK_StockOperations_ResultingPhysicalStock_NonNegative", "ResultingPhysicalStock >= 0");
+
+                            t.HasCheckConstraint("CK_StockOperations_CounterMovement_Fields", "Type <> 'COUNTER_MOVEMENT' OR (SourceOperationId IS NOT NULL AND length(trim(SourceOperationId)) > 0 AND SourceOperationType IS NOT NULL AND SourceOperationType IN ('SUPPLY', 'INVENTORY', 'SALE') AND Justification IS NOT NULL AND length(trim(Justification)) > 0)");
                         });
                 });
 
@@ -168,6 +182,9 @@ namespace TokenWarehouse.Infrastructure.Persistence.Migrations
                     b.Property<int>("InventoryDifference")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("InverseEffect")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("OperationType")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -183,6 +200,9 @@ namespace TokenWarehouse.Infrastructure.Persistence.Migrations
                     b.Property<int>("ResultingPhysicalStock")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("SourceEffect")
+                        .HasColumnType("INTEGER");
+
                     b.HasKey("OperationId", "LineNumber");
 
                     b.HasIndex("Ean13");
@@ -194,11 +214,13 @@ namespace TokenWarehouse.Infrastructure.Persistence.Migrations
                         {
                             t.HasCheckConstraint("CK_StockOperationLines_CountedQuantity_NonNegative", "CountedQuantity >= 0");
 
+                            t.HasCheckConstraint("CK_StockOperationLines_CounterMovement_Inverse", "OperationType <> 'COUNTER_MOVEMENT' OR InverseEffect = -SourceEffect");
+
                             t.HasCheckConstraint("CK_StockOperationLines_InventoryDifference_Formula", "InventoryDifference = CountedQuantity - PreviousPhysicalStock");
 
                             t.HasCheckConstraint("CK_StockOperationLines_LineNumber_Positive", "LineNumber >= 1");
 
-                            t.HasCheckConstraint("CK_StockOperationLines_OperationType_Valid", "OperationType IN ('supply', 'INVENTORY')");
+                            t.HasCheckConstraint("CK_StockOperationLines_OperationType_Valid", "OperationType IN ('supply', 'INVENTORY', 'SALE', 'COUNTER_MOVEMENT')");
 
                             t.HasCheckConstraint("CK_StockOperationLines_PreviousPhysicalStock_NonNegative", "PreviousPhysicalStock >= 0");
 
@@ -248,6 +270,11 @@ namespace TokenWarehouse.Infrastructure.Persistence.Migrations
                         .HasForeignKey("Ean13")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("TokenWarehouse.Infrastructure.Persistence.StockOperationEntity", null)
+                        .WithMany()
+                        .HasForeignKey("SourceOperationId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("TokenWarehouse.Infrastructure.Persistence.StockOperationLineEntity", b =>

@@ -30,6 +30,55 @@ public sealed class SqliteStockOperationReader(
         return ToDomain(entity, lines);
     }
 
+    public async ValueTask<StockOperation?> FindCounterMovementBySourceIdAsync(
+        string sourceOperationId,
+        CancellationToken cancellationToken = default)
+    {
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+        var entity = await context.StockOperations
+            .AsNoTracking()
+            .Include(operation => operation.Lines)
+            .SingleOrDefaultAsync(
+                operation => operation.SourceOperationId == sourceOperationId
+                    && operation.Type == "COUNTER_MOVEMENT",
+                cancellationToken);
+        if (entity is null)
+        {
+            return null;
+        }
+
+        var lines = await context.StockOperationLines
+            .AsNoTracking()
+            .Where(line => line.OperationId == entity.Id)
+            .OrderBy(line => line.LineNumber)
+            .ToListAsync(cancellationToken);
+        return ToDomain(entity, lines);
+    }
+
+    public async ValueTask<IReadOnlyList<StockOperation>> ListCorrectableAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+        var entities = await context.StockOperations
+            .AsNoTracking()
+            .Include(operation => operation.Lines)
+            .Where(operation => operation.Type == "supply"
+                || operation.Type == "INVENTORY"
+                || operation.Type == "SALE")
+            .Where(operation => !context.StockOperations.Any(counter =>
+                counter.Type == "COUNTER_MOVEMENT"
+                && counter.SourceOperationId == operation.Id))
+            .OrderBy(operation => operation.TimestampUtc)
+            .ThenBy(operation => operation.Id)
+            .ToListAsync(cancellationToken);
+
+        return entities
+            .Select(entity => ToDomain(
+                entity,
+                entity.Lines.OrderBy(line => line.LineNumber).ToArray()))
+            .ToArray();
+    }
+
     private static StockOperation ToDomain(
         StockOperationEntity entity,
         IReadOnlyList<StockOperationLineEntity> lineEntities)
@@ -46,7 +95,7 @@ public sealed class SqliteStockOperationReader(
 
         if (string.Equals(entity.Type, "supply", StringComparison.OrdinalIgnoreCase))
         {
-            if (entity.Lines.Count == 0)
+            if (lineEntities.Count == 0)
             {
                 if (!Quantity.TryCreatePositive(entity.Quantity, out var quantity))
                 {
@@ -56,12 +105,13 @@ public sealed class SqliteStockOperationReader(
                 return StockOperation.CreateSupply(entity.Id, operationEan13, quantity, timestampUtc);
             }
 
-            var supplyLines = entity.Lines
+            var supplyLines = lineEntities
                 .OrderBy(line => line.LineNumber)
                 .Select(line =>
                 {
                     if (!Ean13.TryCreate(line.Ean13, out var lineEan13)
-                        || !Quantity.TryCreatePositive(line.Quantity, out var quantity))
+                        || !Quantity.TryCreatePositive(line.Quantity, out var quantity)
+                        || line.SourceEffect != line.Quantity)
                     {
                         throw new InvalidOperationException("Stored Supply line data is invalid.");
                     }
@@ -70,6 +120,66 @@ public sealed class SqliteStockOperationReader(
                 })
                 .ToArray();
             return StockOperation.CreateBulkSupply(entity.Id, supplyLines, timestampUtc);
+        }
+
+        if (string.Equals(entity.Type, "SALE", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!Quantity.TryCreatePositive(entity.Quantity, out var quantity))
+            {
+                throw new InvalidOperationException("Stored Sale data is invalid.");
+            }
+
+            if (lineEntities.Count > 0
+                && (lineEntities.Count != 1
+                    || lineEntities[0].LineNumber != 1
+                    || lineEntities[0].Ean13 != operationEan13.Value
+                    || lineEntities[0].Quantity != quantity.Value
+                    || lineEntities[0].SourceEffect != -quantity.Value))
+            {
+                throw new InvalidOperationException("Stored Sale line data is invalid.");
+            }
+
+            return StockOperation.CreateSale(entity.Id, operationEan13, quantity, timestampUtc);
+        }
+
+        if (string.Equals(entity.Type, "COUNTER_MOVEMENT", StringComparison.Ordinal))
+        {
+            if (string.IsNullOrWhiteSpace(entity.SourceOperationId)
+                || string.IsNullOrWhiteSpace(entity.Justification)
+                || !Enum.TryParse<StockOperationType>(
+                    entity.SourceOperationType,
+                    ignoreCase: true,
+                    out var sourceType))
+            {
+                throw new InvalidOperationException("Stored CounterMovement data is invalid.");
+            }
+
+            var counterLines = lineEntities
+                .Select(line =>
+                {
+                    if (!Ean13.TryCreate(line.Ean13, out var ean13)
+                        || line.SourceEffect == int.MinValue
+                        || line.InverseEffect != -line.SourceEffect)
+                    {
+                        throw new InvalidOperationException("Stored CounterMovement line data is invalid.");
+                    }
+
+                    return new CounterMovementLinePlan(
+                        ean13,
+                        line.SourceEffect,
+                        line.InverseEffect,
+                        0,
+                        0,
+                        0);
+                })
+                .ToArray();
+            return StockOperation.CreateCounterMovement(
+                entity.Id,
+                entity.SourceOperationId,
+                sourceType,
+                entity.Justification,
+                counterLines,
+                timestampUtc);
         }
 
         if (!string.Equals(entity.Type, "INVENTORY", StringComparison.Ordinal))
@@ -100,7 +210,8 @@ public sealed class SqliteStockOperationReader(
                     line.PreviousPhysicalStock,
                     line.CountedQuantity);
                 if (reconciliation.InventoryDifference != line.InventoryDifference
-                    || reconciliation.ResultingPhysicalStock != line.ResultingPhysicalStock)
+                    || reconciliation.ResultingPhysicalStock != line.ResultingPhysicalStock
+                    || line.SourceEffect != reconciliation.InventoryDifference)
                 {
                     throw new InvalidOperationException("Stored Inventory data is invalid.");
                 }

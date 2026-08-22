@@ -62,7 +62,11 @@ public sealed class WarehouseDbContext(DbContextOptions<WarehouseDbContext> opti
         operation.Property(entity => entity.InventoryDifference).IsRequired();
         operation.Property(entity => entity.ResultingPhysicalStock).IsRequired();
         operation.Property(entity => entity.TimestampUtc).IsRequired();
+        operation.Property(entity => entity.SourceOperationId);
+        operation.Property(entity => entity.SourceOperationType);
+        operation.Property(entity => entity.Justification);
         operation.HasIndex(entity => entity.Ean13);
+        operation.HasIndex(entity => entity.SourceOperationId).IsUnique();
         operation.ToTable("StockOperations", table =>
         {
             table.HasCheckConstraint(
@@ -83,10 +87,17 @@ public sealed class WarehouseDbContext(DbContextOptions<WarehouseDbContext> opti
             table.HasCheckConstraint(
                 "CK_StockOperations_ResultingPhysicalStock_Formula",
                 "ResultingPhysicalStock = CountedQuantity");
+            table.HasCheckConstraint(
+                "CK_StockOperations_CounterMovement_Fields",
+                "Type <> 'COUNTER_MOVEMENT' OR (SourceOperationId IS NOT NULL AND length(trim(SourceOperationId)) > 0 AND SourceOperationType IS NOT NULL AND SourceOperationType IN ('SUPPLY', 'INVENTORY', 'SALE') AND Justification IS NOT NULL AND length(trim(Justification)) > 0)");
         });
         operation.HasOne<ArticleEntity>()
             .WithMany()
             .HasForeignKey(entity => entity.Ean13)
+            .OnDelete(DeleteBehavior.Restrict);
+        operation.HasOne<StockOperationEntity>()
+            .WithMany()
+            .HasForeignKey(entity => entity.SourceOperationId)
             .OnDelete(DeleteBehavior.Restrict);
 
         var operationLine = modelBuilder.Entity<StockOperationLineEntity>();
@@ -100,6 +111,8 @@ public sealed class WarehouseDbContext(DbContextOptions<WarehouseDbContext> opti
         operationLine.Property(entity => entity.CountedQuantity).IsRequired();
         operationLine.Property(entity => entity.InventoryDifference).IsRequired();
         operationLine.Property(entity => entity.ResultingPhysicalStock).IsRequired();
+        operationLine.Property(entity => entity.SourceEffect).IsRequired();
+        operationLine.Property(entity => entity.InverseEffect).IsRequired();
         operationLine.HasIndex(entity => new { entity.OperationId, entity.Ean13 }).IsUnique();
         operationLine.ToTable("StockOperationLines", table =>
         {
@@ -108,7 +121,7 @@ public sealed class WarehouseDbContext(DbContextOptions<WarehouseDbContext> opti
                 "LineNumber >= 1");
             table.HasCheckConstraint(
                 "CK_StockOperationLines_OperationType_Valid",
-                "OperationType IN ('supply', 'INVENTORY')");
+                "OperationType IN ('supply', 'INVENTORY', 'SALE', 'COUNTER_MOVEMENT')");
             table.HasCheckConstraint(
                 "CK_StockOperationLines_Quantity_NonNegative",
                 "Quantity >= 0");
@@ -130,6 +143,9 @@ public sealed class WarehouseDbContext(DbContextOptions<WarehouseDbContext> opti
             table.HasCheckConstraint(
                 "CK_StockOperationLines_ResultingPhysicalStock_Formula",
                 "ResultingPhysicalStock = CountedQuantity");
+            table.HasCheckConstraint(
+                "CK_StockOperationLines_CounterMovement_Inverse",
+                "OperationType <> 'COUNTER_MOVEMENT' OR InverseEffect = -SourceEffect");
         });
         operationLine.HasOne(entity => entity.Operation)
             .WithMany(operation => operation.Lines)

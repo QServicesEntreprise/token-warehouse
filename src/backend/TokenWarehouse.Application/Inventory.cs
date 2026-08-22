@@ -127,6 +127,11 @@ public interface IStockMutationCommitter
     ValueTask<StockMutationCommitResult> CommitAsync(
         InventoryCommitPlan plan,
         CancellationToken cancellationToken = default);
+
+    ValueTask<StockMutationCommitResult> CommitAsync(
+        CounterMovementCommitPlan plan,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("This committer does not support counter-movements.");
 }
 
 public interface IStockOperationReader
@@ -134,6 +139,15 @@ public interface IStockOperationReader
     ValueTask<StockOperation?> FindByIdAsync(
         string id,
         CancellationToken cancellationToken = default);
+
+    ValueTask<StockOperation?> FindCounterMovementBySourceIdAsync(
+        string sourceOperationId,
+        CancellationToken cancellationToken = default)
+        => ValueTask.FromResult<StockOperation?>(null);
+
+    ValueTask<IReadOnlyList<StockOperation>> ListCorrectableAsync(
+        CancellationToken cancellationToken = default)
+        => ValueTask.FromResult<IReadOnlyList<StockOperation>>([]);
 }
 
 public sealed record InventoryReceipt(

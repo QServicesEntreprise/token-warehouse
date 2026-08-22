@@ -125,7 +125,9 @@ public sealed class SqliteSupplyCommitter(
                 LineNumber = line.LineNumber,
                 Ean13 = line.Ean13.Value,
                 OperationType = "supply",
-                Quantity = line.Quantity.Value
+                Quantity = line.Quantity.Value,
+                SourceEffect = line.StockEffect,
+                InverseEffect = line.InverseEffect
             }));
             await context.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);

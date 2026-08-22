@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
 import {
   FieldTree,
   FormField,
@@ -40,6 +40,14 @@ import {
   InventoryResponse,
   InventoryOperationLineResponse,
 } from './inventory-api.service';
+import {
+  CounterMovementApiService,
+  CounterMovementResponse,
+  CounterMovementSource,
+  CounterMovementReason,
+  CounterMovementAvailability,
+  CounterMovementSourceType,
+} from './counter-movement-api.service';
 
 interface ArticleFormModel {
   ean13: string;
@@ -70,6 +78,11 @@ interface InventoryBulkFormModel {
   lines: InventoryFormModel[];
 }
 
+interface CounterMovementFormModel {
+  sourceOperationId: string;
+  justification: string;
+}
+
 type InventoryReceiptResponse = InventoryResponse | BulkInventoryResponse;
 
 interface InventoryDisplayLine {
@@ -86,6 +99,7 @@ type CatalogState = 'loading' | 'ready' | 'empty' | 'error';
 type CatalogType = ArticleType | 'all';
 type StockState = 'loading' | 'ready' | 'empty' | 'error';
 type InventoryRestoreState = 'loading' | 'ready' | 'empty' | 'error';
+type CounterMovementSourcesState = 'idle' | 'loading' | 'ready' | 'empty' | 'error';
 
 const initialModel: ArticleFormModel = {
   ean13: '',
@@ -121,6 +135,7 @@ const lastInventoryIdStorageKey = 'token-warehouse.last-inventory-id';
         <a href="#stock-panel">Stock</a>
         <a href="#supply-panel">Approvisionnement</a>
         <a href="#inventory-title">Inventaire</a>
+        <a href="#counter-movement-panel">Contre-mouvement</a>
         <a href="#catalog-title">Catalogue</a>
       </nav>
 
@@ -362,6 +377,117 @@ const lastInventoryIdStorageKey = 'token-warehouse.last-inventory-id';
                   <div><dt>Disponibilité</dt><dd>{{ formatStockAvailability(line.position.availability) }}</dd></div>
                   <div><dt>Raison</dt><dd>{{ formatStockReason(line.position.reason) }}</dd></div>
                   <div><dt>Timestamp UTC</dt><dd>{{ receipt.operation.timestampUtc }}</dd></div>
+                </dl>
+              </section>
+            }
+          </article>
+        }
+      </section>
+
+      <section id="counter-movement-panel" class="panel" aria-labelledby="counter-movement-title">
+        <div>
+          <p class="eyebrow">Correction traçable</p>
+          <h2 id="counter-movement-title">Corriger une Opération</h2>
+        </div>
+        <p>La source reste inchangée ; le serveur applique son effet inverse à la position courante.</p>
+
+        <button
+          id="counter-movement-load"
+          type="button"
+          class="secondary-button"
+          [disabled]="counterMovementSourcesState() === 'loading'"
+          (click)="loadCounterMovementSources()">
+          {{ counterMovementSourcesState() === 'loading' ? 'Chargement…' : 'Charger les Opérations corrigeables' }}
+        </button>
+
+        <div id="counter-movement-sources-state" role="status" aria-live="polite">
+          @switch (counterMovementSourcesState()) {
+            @case ('loading') { <p>Chargement des Opérations corrigeables…</p> }
+            @case ('empty') { <p>Aucune Opération corrigeable n’est disponible.</p> }
+            @case ('error') { <p class="form-error" role="alert">{{ counterMovementError() }}</p> }
+          }
+        </div>
+
+        @if (counterMovementSources().length > 0) {
+          <form id="counter-movement-form" class="form-grid" novalidate [formRoot]="counterMovementForm" (submit)="onCounterMovementSubmit($event)">
+            <label for="counter-movement-source">
+              Opération source
+              <select
+                id="counter-movement-source"
+                [formField]="counterMovementForm.sourceOperationId"
+                [attr.aria-invalid]="counterMovementFieldError('sourceOperationId') ? 'true' : null"
+                [attr.aria-describedby]="counterMovementErrorId('sourceOperationId')"
+                (input)="clearCounterMovementField('sourceOperationId')">
+                <option value="">Choisir une Opération</option>
+                @for (source of counterMovementSources(); track source.id) {
+                  <option [value]="source.id">
+                    {{ formatCounterMovementSourceType(source.type) }} — {{ source.id }} — {{ source.timestampUtc }}
+                  </option>
+                }
+              </select>
+              @if (counterMovementFieldError('sourceOperationId'); as error) {
+                <span id="counter-movement-sourceOperationId-error" class="field-error">{{ error }}</span>
+              }
+            </label>
+
+            @if (selectedCounterMovementSource(); as source) {
+              <article class="stock-detail" aria-labelledby="counter-movement-source-title">
+                <h3 id="counter-movement-source-title">Source {{ source.id }}</h3>
+                <dl>
+                  <div><dt>Type</dt><dd>{{ formatCounterMovementSourceType(source.type) }}</dd></div>
+                  <div><dt>Timestamp UTC</dt><dd>{{ source.timestampUtc }}</dd></div>
+                  @for (line of source.lines; track line.lineNumber) {
+                    <div><dt>Ligne {{ line.lineNumber }} — {{ line.ean13 }}</dt><dd>{{ formatCounterMovementEffect(line.stockEffect) }}</dd></div>
+                  }
+                </dl>
+              </article>
+            }
+
+            <label for="counter-movement-justification">
+              Justification
+              <textarea
+                id="counter-movement-justification"
+                rows="3"
+                [formField]="counterMovementForm.justification"
+                [attr.aria-invalid]="counterMovementFieldError('justification') ? 'true' : null"
+                [attr.aria-describedby]="counterMovementErrorId('justification')"
+                (input)="clearCounterMovementField('justification')"></textarea>
+              @if (counterMovementFieldError('justification'); as error) {
+                <span id="counter-movement-justification-error" class="field-error">{{ error }}</span>
+              }
+            </label>
+
+            <button id="counter-movement-submit" type="submit" [disabled]="counterMovementSubmitting()">
+              {{ counterMovementSubmitting() ? 'Correction…' : 'Enregistrer le Contre-mouvement' }}
+            </button>
+          </form>
+        }
+
+        @if (counterMovementError() && counterMovementSourcesState() !== 'error') {
+          <p id="counter-movement-error" class="form-error" role="alert" aria-live="assertive" tabindex="-1">{{ counterMovementError() }}</p>
+        }
+
+        @if (counterMovementReceipt(); as receipt) {
+          <article id="counter-movement-result" class="stock-detail" role="region" aria-live="polite" aria-labelledby="counter-movement-result-title" tabindex="-1">
+            <h3 id="counter-movement-result-title">Contre-mouvement enregistré</h3>
+            <dl>
+              <div><dt>Correction</dt><dd><code>{{ receipt.counterMovement.id }}</code></dd></div>
+              <div><dt>Source</dt><dd><code>{{ receipt.counterMovement.sourceOperationId }}</code> — {{ receipt.counterMovement.sourceOperationType }}</dd></div>
+              <div><dt>Justification</dt><dd>{{ receipt.counterMovement.justification }}</dd></div>
+              <div><dt>Timestamp UTC</dt><dd>{{ receipt.counterMovement.timestampUtc }}</dd></div>
+            </dl>
+            @for (line of receipt.counterMovement.lines; track line.lineNumber) {
+              <section class="inventory-result-line" [attr.aria-labelledby]="'counter-movement-result-line-' + line.lineNumber">
+                <h4 [id]="'counter-movement-result-line-' + line.lineNumber">Ligne {{ line.lineNumber }} — {{ line.ean13 }}</h4>
+                <dl>
+                  <div><dt>Effet source</dt><dd>{{ formatCounterMovementEffect(line.sourceEffect) }}</dd></div>
+                  <div><dt>Effet inverse</dt><dd>{{ formatCounterMovementEffect(line.inverseEffect) }}</dd></div>
+                  @if (counterMovementPosition(receipt, line.ean13); as position) {
+                    <div><dt>Stock physique</dt><dd>{{ position.physicalStock }} unités</dd></div>
+                    <div><dt>Stock vendable</dt><dd>{{ position.sellableStock }} unités</dd></div>
+                    <div><dt>Disponibilité</dt><dd>{{ formatCounterMovementAvailability(position.availability) }}</dd></div>
+                    <div><dt>Raison</dt><dd>{{ formatCounterMovementReason(position.reason) }}</dd></div>
+                  }
                 </dl>
               </section>
             }
@@ -760,6 +886,7 @@ export class AppComponent implements OnInit {
   private readonly api = inject(ArticleApiService);
   private readonly stockApi = inject(StockApiService);
   private readonly inventoryApi = inject(InventoryApiService);
+  private readonly counterMovementApi = inject(CounterMovementApiService);
 
   readonly model = signal<ArticleFormModel>({ ...initialModel, consumptionModes: [] });
   readonly supplyModel = signal<SupplyFormModel>({ ean13: '', quantity: '' });
@@ -799,6 +926,16 @@ export class AppComponent implements OnInit {
     });
   });
 
+  readonly counterMovementModel = signal<CounterMovementFormModel>({
+    sourceOperationId: '',
+    justification: '',
+  });
+  readonly counterMovementForm = form(this.counterMovementModel, (schemaPath) => {
+    required(schemaPath.sourceOperationId, { message: 'Choisissez une Opération source.' });
+    required(schemaPath.justification, { message: 'La justification est obligatoire.' });
+    pattern(schemaPath.justification, /\S/, { message: 'La justification ne peut pas être vide.' });
+  });
+
   readonly consumptionModeOptions: readonly { value: ConsumptionMode; label: string }[] = [
     { value: 'takeaway', label: 'À emporter' },
     { value: 'onsite', label: 'Sur place' },
@@ -836,6 +973,14 @@ export class AppComponent implements OnInit {
   readonly inventoryRestoreState = signal<InventoryRestoreState>('empty');
   readonly inventoryLines = signal<InventoryFormModel[]>([{ ...initialInventoryModel }]);
   readonly inventoryLineErrors = signal<Record<string, string>>({});
+  readonly counterMovementSources = signal<CounterMovementSource[]>([]);
+  readonly counterMovementSourcesState = signal<CounterMovementSourcesState>('idle');
+  readonly counterMovementSourceId = computed(() => this.counterMovementModel().sourceOperationId);
+  readonly counterMovementJustification = computed(() => this.counterMovementModel().justification);
+  readonly counterMovementFieldErrors = signal<Record<string, string>>({});
+  readonly counterMovementError = signal('');
+  readonly counterMovementReceipt = signal<CounterMovementResponse | null>(null);
+  readonly counterMovementSubmitting = signal(false);
 
   private catalogRequestId = 0;
   private stockRequestId = 0;
@@ -844,6 +989,7 @@ export class AppComponent implements OnInit {
   private lifecycleRequestId = 0;
   private supplyRequestId = 0;
   private inventoryRestoreRequestId = 0;
+  private counterMovementRequestId = 0;
 
   ngOnInit(): void {
     void this.loadCatalog();
@@ -960,6 +1106,148 @@ export class AppComponent implements OnInit {
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
       this.restoreInventoryFocus();
     }
+  }
+
+  async loadCounterMovementSources(): Promise<void> {
+    const requestId = ++this.counterMovementRequestId;
+    this.counterMovementSourcesState.set('loading');
+    this.counterMovementError.set('');
+    try {
+      const sources = await firstValueFrom(this.counterMovementApi.listSources());
+      if (requestId !== this.counterMovementRequestId) {
+        return;
+      }
+
+      this.counterMovementSources.set(sources);
+      if (!sources.some((source) => source.id === this.counterMovementSourceId())) {
+        this.counterMovementModel.update((model) => ({ ...model, sourceOperationId: '' }));
+      }
+      this.counterMovementSourcesState.set(sources.length > 0 ? 'ready' : 'empty');
+    } catch (error) {
+      if (requestId !== this.counterMovementRequestId) {
+        return;
+      }
+
+      this.counterMovementSourcesState.set('error');
+      this.counterMovementError.set(
+        this.problemMessage(error, 'Les Opérations corrigeables ne peuvent pas être chargées.'),
+      );
+    }
+  }
+
+  clearCounterMovementField(field: 'sourceOperationId' | 'justification'): void {
+    this.counterMovementFieldErrors.update((errors) => ({ ...errors, [field]: '' }));
+  }
+
+  selectedCounterMovementSource(): CounterMovementSource | undefined {
+    return this.counterMovementSources().find((source) => source.id === this.counterMovementSourceId());
+  }
+
+  counterMovementFieldError(field: 'sourceOperationId' | 'justification'): string {
+    const serverError = this.counterMovementFieldErrors()[field];
+    if (serverError) {
+      return serverError;
+    }
+
+    return field === 'sourceOperationId'
+      ? this.counterMovementForm.sourceOperationId().errors()[0]?.message ?? ''
+      : this.counterMovementForm.justification().errors()[0]?.message ?? '';
+  }
+
+  counterMovementErrorId(field: 'sourceOperationId' | 'justification'): string {
+    return field === 'sourceOperationId'
+      ? 'counter-movement-sourceOperationId-error'
+      : 'counter-movement-justification-error';
+  }
+
+  async onCounterMovementSubmit(event: Event): Promise<void> {
+    event.preventDefault();
+    const requestId = ++this.counterMovementRequestId;
+    this.counterMovementFieldErrors.set({});
+    this.counterMovementError.set('');
+    this.counterMovementReceipt.set(null);
+
+    let shouldRestoreFocus = false;
+    await submit(this.counterMovementForm, {
+      action: async () => {
+        shouldRestoreFocus = !(await this.registerCounterMovement(requestId));
+        return undefined;
+      },
+      onInvalid: () => {
+        shouldRestoreFocus = true;
+        this.counterMovementError.set('Corrigez les erreurs signalées avant de continuer.');
+      },
+    });
+    if (shouldRestoreFocus) {
+      setTimeout(() => this.focusCounterMovementError());
+    }
+  }
+
+  private async registerCounterMovement(requestId: number): Promise<boolean> {
+    this.counterMovementSubmitting.set(true);
+    try {
+      const receipt = await firstValueFrom(this.counterMovementApi.correct({
+        sourceOperationId: this.counterMovementSourceId(),
+        justification: this.counterMovementJustification(),
+      }));
+      if (requestId !== this.counterMovementRequestId) {
+        return true;
+      }
+
+      this.counterMovementReceipt.set(receipt);
+      this.counterMovementSources.update((sources) => sources.filter((source) => source.id !== receipt.counterMovement.sourceOperationId));
+      this.counterMovementModel.update((model) => ({ ...model, sourceOperationId: '' }));
+      this.counterMovementSourcesState.set(this.counterMovementSources().length > 0 ? 'ready' : 'empty');
+      await this.loadStock();
+      setTimeout(() => document.getElementById('counter-movement-result')?.focus());
+      return true;
+    } catch (error) {
+      if (requestId !== this.counterMovementRequestId) {
+        return true;
+      }
+
+      const problem = this.problemDetails(error, 'Le Contre-mouvement n’a pas pu être enregistré.');
+      this.counterMovementFieldErrors.set(
+        Object.fromEntries(
+          Object.entries(problem.errors ?? {}).map(([field, messages]) => [field, messages[0] ?? 'Valeur invalide.']),
+        ),
+      );
+      this.counterMovementError.set(
+        problem.title ?? 'Le Contre-mouvement n’a pas pu être enregistré.',
+      );
+      return false;
+    } finally {
+      if (requestId === this.counterMovementRequestId) {
+        this.counterMovementSubmitting.set(false);
+      }
+    }
+  }
+
+  formatCounterMovementSourceType(type: CounterMovementSourceType): string {
+    return type === 'SUPPLY' ? 'Approvisionnement' : type === 'INVENTORY' ? 'Inventaire' : 'Vente';
+  }
+
+  formatCounterMovementAvailability(availability: CounterMovementAvailability): string {
+    return availability === 'AVAILABLE'
+      ? 'Disponible'
+      : availability === 'OUT_OF_STOCK'
+        ? 'Rupture'
+        : 'Non vendable';
+  }
+
+  formatCounterMovementReason(reason: CounterMovementReason | null): string {
+    return this.formatStockReason(reason);
+  }
+
+  formatCounterMovementEffect(effect: number): string {
+    return effect > 0 ? `+${effect}` : String(effect);
+  }
+
+  counterMovementPosition(
+    receipt: CounterMovementResponse,
+    ean13: string,
+  ): CounterMovementResponse['positions'][number] | undefined {
+    return receipt.positions.find((position) => position.ean13 === ean13);
   }
 
   setInventoryEan(index: number, event: Event): void {
@@ -1877,6 +2165,21 @@ export class AppComponent implements OnInit {
       : fieldName === 'quantity'
         ? document.getElementById(this.supplyInputId('quantity', line))
         : document.getElementById('supply-status');
+    target?.focus();
+  }
+
+  private focusCounterMovementError(): void {
+    const field = Object.keys(this.counterMovementFieldErrors())[0]
+      ?? (this.counterMovementForm.sourceOperationId().errors().length > 0
+        ? 'sourceOperationId'
+        : this.counterMovementForm.justification().errors().length > 0
+          ? 'justification'
+          : '');
+    const target = field === 'sourceOperationId'
+      ? document.getElementById('counter-movement-source')
+      : field === 'justification'
+        ? document.getElementById('counter-movement-justification')
+        : document.getElementById('counter-movement-error');
     target?.focus();
   }
 }

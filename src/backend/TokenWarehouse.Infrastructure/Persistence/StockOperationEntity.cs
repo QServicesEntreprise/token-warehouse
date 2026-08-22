@@ -22,5 +22,11 @@ public sealed class StockOperationEntity
 
     public string TimestampUtc { get; set; } = string.Empty;
 
+    public string? SourceOperationId { get; set; }
+
+    public string? SourceOperationType { get; set; }
+
+    public string? Justification { get; set; }
+
     public ICollection<StockOperationLineEntity> Lines { get; set; } = [];
 }

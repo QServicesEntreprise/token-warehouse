@@ -20,5 +20,9 @@ public sealed class StockOperationLineEntity
 
     public int ResultingPhysicalStock { get; set; }
 
+    public int SourceEffect { get; set; }
+
+    public int InverseEffect { get; set; }
+
     public StockOperationEntity? Operation { get; set; }
 }
