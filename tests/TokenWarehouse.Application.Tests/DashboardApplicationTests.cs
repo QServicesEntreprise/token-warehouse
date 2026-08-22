@@ -156,6 +156,24 @@ public sealed class DashboardApplicationTests
     }
 
     [Fact]
+    public void Uses_one_configured_warehouse_calendar_at_a_local_midnight_boundary()
+    {
+        var instant = new DateTimeOffset(2030, 3, 31, 23, 30, 0, TimeSpan.Zero);
+        var warehouseTimeZone = TimeZoneInfo.CreateCustomTimeZone(
+            "Warehouse",
+            TimeSpan.FromHours(2),
+            "Warehouse",
+            "Warehouse");
+        var calendar = new WarehouseCalendar(new FixedClock(instant), warehouseTimeZone);
+
+        Assert.Equal(new DateOnly(2030, 4, 1), calendar.WarehouseDate);
+        Assert.Equal(
+            new WarehouseDateRange(new DateOnly(2030, 4, 1), new DateOnly(2030, 4, 30)),
+            calendar.CurrentMonth);
+        Assert.Equal(calendar.WarehouseDate, calendar.ToWarehouseDate(instant));
+    }
+
+    [Fact]
     public async Task Accepts_equal_period_bounds_and_passes_the_normalized_query_to_the_read_source()
     {
         var source = new FakeDashboardSource([]);

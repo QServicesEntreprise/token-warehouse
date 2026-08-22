@@ -9,6 +9,10 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.NumberHandling = JsonNumberHandling.Strict);
 
+var warehouseTimeZone = TimeZoneInfo.FindSystemTimeZoneById(
+    builder.Configuration["Warehouse:TimeZoneId"] ?? TimeZoneInfo.Utc.Id);
+builder.Services.AddSingleton(warehouseTimeZone);
+
 var connectionString = builder.Configuration.GetConnectionString("Warehouse")
     ?? "Data Source=token-warehouse.db";
 builder.Services.AddSqlitePersistence(connectionString);

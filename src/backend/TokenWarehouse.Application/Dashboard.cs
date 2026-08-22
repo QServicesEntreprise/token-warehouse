@@ -49,11 +49,11 @@ public interface IWarehouseCalendar
 
 public sealed class WarehouseCalendar(
     IClock clock,
-    TimeZoneInfo? warehouseTimeZone = null) : IWarehouseCalendar
+    TimeZoneInfo warehouseTimeZone) : IWarehouseCalendar
 {
-    private readonly TimeZoneInfo warehouseTimeZone = warehouseTimeZone ?? TimeZoneInfo.Local;
+    private readonly TimeZoneInfo warehouseTimeZone = warehouseTimeZone;
 
-    public DateOnly WarehouseDate => clock.WarehouseDate;
+    public DateOnly WarehouseDate => ToWarehouseDate(clock.UtcNow);
 
     public WarehouseDateRange CurrentMonth
     {

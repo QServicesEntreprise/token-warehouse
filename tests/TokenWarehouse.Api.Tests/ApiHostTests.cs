@@ -52,6 +52,28 @@ public sealed class ApiHostTests
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
     }
 
+    [Fact]
+    public async Task Health_exposes_one_configured_warehouse_date_and_current_month()
+    {
+        var instant = new DateTimeOffset(2030, 3, 31, 23, 30, 0, TimeSpan.Zero);
+        var warehouseTimeZone = TimeZoneInfo.CreateCustomTimeZone(
+            "Warehouse",
+            TimeSpan.FromHours(2),
+            "Warehouse",
+            "Warehouse");
+        using var factory = new CalendarBoundaryHostFactory(instant, warehouseTimeZone);
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync("/health");
+        response.EnsureSuccessStatusCode();
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var currentMonth = payload.RootElement.GetProperty("currentMonth");
+
+        Assert.Equal("2030-04-01", payload.RootElement.GetProperty("warehouseDate").GetString());
+        Assert.Equal("2030-04-01", currentMonth.GetProperty("from").GetString());
+        Assert.Equal("2030-04-30", currentMonth.GetProperty("to").GetString());
+    }
+
     private sealed class RealHostFactory : WebApplicationFactory<Program>
     {
         private readonly string databasePath = Path.Combine(Path.GetTempPath(), $"token-warehouse-{Guid.NewGuid():N}.db");
@@ -83,6 +105,30 @@ public sealed class ApiHostTests
                 services.AddSingleton<IPersistenceAdapter>(fake);
             });
         }
+    }
+
+    private sealed class CalendarBoundaryHostFactory(
+        DateTimeOffset instant,
+        TimeZoneInfo warehouseTimeZone) : WebApplicationFactory<Program>
+    {
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            builder.UseEnvironment("Testing");
+            builder.ConfigureServices(services =>
+            {
+                services.RemoveAll<IClock>();
+                services.RemoveAll<TimeZoneInfo>();
+                services.RemoveAll<IPersistenceAdapter>();
+                services.AddSingleton<IClock>(new FixedClock(instant));
+                services.AddSingleton(warehouseTimeZone);
+                services.AddSingleton<IPersistenceAdapter>(new FakePersistenceAdapter());
+            });
+        }
+    }
+
+    private sealed class FixedClock(DateTimeOffset instant) : IClock
+    {
+        public DateTimeOffset UtcNow => instant;
     }
 
     private sealed class FakePersistenceAdapter(bool ready = true) : IPersistenceAdapter
