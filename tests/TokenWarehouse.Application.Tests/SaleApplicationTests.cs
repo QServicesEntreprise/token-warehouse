@@ -41,7 +41,6 @@ public sealed class SaleApplicationTests
         Assert.Equal(364, result.Receipt.Financial.AmountTtc.Cents);
         Assert.Equal("sale.financial.v1", stock.ParticipantData?.Type);
         Assert.Contains("\"amountHtCents\":303", stock.ParticipantData?.Payload);
-        Assert.Equal(result.Receipt.Financial, stock.ParticipantData?.FinancialSnapshot);
         Assert.Equal(5, result.Receipt.Position.PhysicalQuantity);
     }
 

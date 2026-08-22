@@ -21,6 +21,7 @@ public static class SqlitePersistenceRegistration
         services.AddScoped<SqliteSupplyCommitter>();
         services.AddScoped<ISupplyCommitter>(services =>
             services.GetRequiredService<SqliteSupplyCommitter>());
+        services.AddScoped<ISqliteStockSaleCommitDataAdapter, SqliteSaleFinancialSnapshotCommitDataAdapter>();
         services.AddScoped<SqliteStockMutationCommitter>();
         services.AddScoped<IStockMutationCommitter>(services =>
             services.GetRequiredService<SqliteStockMutationCommitter>());

@@ -7,8 +7,12 @@ using TokenWarehouse.Domain;
 namespace TokenWarehouse.Infrastructure.Persistence;
 
 public sealed class SqliteStockMutationCommitter(
-    IDbContextFactory<WarehouseDbContext> contextFactory) : IStockMutationCommitter
+    IDbContextFactory<WarehouseDbContext> contextFactory,
+    IEnumerable<ISqliteStockSaleCommitDataAdapter>? commitDataAdapters = null) : IStockMutationCommitter
 {
+    private readonly IReadOnlyList<ISqliteStockSaleCommitDataAdapter> CommitDataAdapters =
+        commitDataAdapters?.ToArray() ?? [];
+
     public async ValueTask<StockMutationCommitResult> CommitAsync(
         InventoryCommitPlan plan,
         CancellationToken cancellationToken = default)
@@ -331,7 +335,7 @@ public sealed class SqliteStockMutationCommitter(
             if (participant is not null)
             {
                 await participant.PrepareAsync(
-                    new SqliteStockSaleTransaction(context, operationEntity),
+                    new SqliteStockSaleTransaction(context, operationEntity, CommitDataAdapters),
                     plan.Operation,
                     StockPositionView.From(currentArticle, committedPosition, plan.WarehouseDate),
                     cancellationToken);
@@ -437,7 +441,8 @@ public sealed class SqliteStockMutationCommitter(
 
 internal sealed class SqliteStockSaleTransaction(
     WarehouseDbContext context,
-    StockOperationEntity operation) : IStockSaleTransaction
+    StockOperationEntity operation,
+    IReadOnlyList<ISqliteStockSaleCommitDataAdapter> commitDataAdapters) : IStockSaleTransaction
 {
     public async ValueTask StageAsync(
         StockSaleCommitData data,
@@ -453,27 +458,9 @@ internal sealed class SqliteStockSaleTransaction(
 
         operation.SaleCommitDataType = data.Type;
         operation.SaleCommitDataPayload = data.Payload;
-        if (data.FinancialSnapshot is { } snapshot)
+        foreach (var adapter in commitDataAdapters.Where(adapter => adapter.CanHandle(data.Type)))
         {
-            if (!string.Equals(operation.Type, "SALE", StringComparison.Ordinal)
-                || !string.Equals(data.Type, SaleFinancialSnapshotSerializer.Type, StringComparison.Ordinal))
-            {
-                throw new InvalidOperationException("Financial snapshot data is only valid for a Sale.");
-            }
-
-            operation.SaleFinancialContext = snapshot.SaleContext switch
-            {
-                SaleContext.Takeaway => "takeaway",
-                SaleContext.OnSite => "onsite",
-                _ => null
-            };
-            operation.SaleFinancialUnitPriceHtCents = snapshot.UnitPriceHt.Cents;
-            operation.SaleFinancialTaxRateCode = snapshot.TaxRate.Code;
-            operation.SaleFinancialTaxRateNumerator = snapshot.TaxRate.Numerator;
-            operation.SaleFinancialTaxRateDenominator = snapshot.TaxRate.Denominator;
-            operation.SaleFinancialAmountHtCents = snapshot.AmountHt.Cents;
-            operation.SaleFinancialVatCents = snapshot.Vat.Cents;
-            operation.SaleFinancialAmountTtcCents = snapshot.AmountTtc.Cents;
+            adapter.Apply(operation, data);
         }
         await context.SaveChangesAsync(cancellationToken);
     }

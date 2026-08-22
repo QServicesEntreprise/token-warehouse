@@ -58,8 +58,6 @@ public sealed record StockSaleCommitData
     public string Type { get; }
 
     public string Payload { get; }
-
-    public SaleFinancialSnapshot? FinancialSnapshot { get; init; }
 }
 
 public interface IStockSaleTransaction

@@ -157,6 +157,128 @@ public partial class SaleFinancialSnapshot : Migration
             """);
 
         migrationBuilder.Sql("""
+            CREATE TRIGGER TR_StockOperations_SaleFinancialSnapshot_Constraints_Insert
+            BEFORE INSERT ON StockOperations
+            WHEN NOT (
+                (NEW.Type <> 'SALE'
+                    OR NEW.SaleCommitDataType IS NULL
+                    OR NEW.SaleCommitDataType <> 'sale.financial.v1'
+                    OR (NEW.SaleFinancialUnitPriceHtCents IS NOT NULL
+                        AND NEW.SaleFinancialTaxRateCode IS NOT NULL
+                        AND NEW.SaleFinancialTaxRateNumerator IS NOT NULL
+                        AND NEW.SaleFinancialTaxRateDenominator IS NOT NULL
+                        AND NEW.SaleFinancialAmountHtCents IS NOT NULL
+                        AND NEW.SaleFinancialVatCents IS NOT NULL
+                        AND NEW.SaleFinancialAmountTtcCents IS NOT NULL))
+                AND (NEW.SaleFinancialContext IS NULL
+                    OR NEW.SaleFinancialContext IN ('takeaway', 'onsite'))
+                AND COALESCE(
+                    (NEW.SaleFinancialContext = 'takeaway'
+                        AND NEW.SaleFinancialTaxRateCode = 'takeaway'
+                        AND NEW.SaleFinancialTaxRateNumerator = 11
+                        AND NEW.SaleFinancialTaxRateDenominator = 200)
+                    OR (NEW.SaleFinancialContext = 'onsite'
+                        AND NEW.SaleFinancialTaxRateCode = 'onsite'
+                        AND NEW.SaleFinancialTaxRateNumerator = 1
+                        AND NEW.SaleFinancialTaxRateDenominator = 10)
+                    OR (NEW.SaleFinancialContext IS NULL
+                        AND NEW.SaleFinancialTaxRateCode = 'nonFood'
+                        AND NEW.SaleFinancialTaxRateNumerator = 1
+                        AND NEW.SaleFinancialTaxRateDenominator = 5)
+                    OR (NEW.SaleFinancialTaxRateCode IS NULL
+                        AND NEW.SaleFinancialTaxRateNumerator IS NULL
+                        AND NEW.SaleFinancialTaxRateDenominator IS NULL), 0)
+                AND (NEW.SaleFinancialUnitPriceHtCents IS NULL
+                    OR NEW.SaleFinancialUnitPriceHtCents >= 0)
+                AND (NEW.SaleFinancialAmountHtCents IS NULL
+                    OR (NEW.SaleFinancialUnitPriceHtCents IS NOT NULL
+                        AND NEW.SaleFinancialAmountHtCents >= 0
+                        AND NEW.SaleFinancialAmountHtCents
+                            = NEW.SaleFinancialUnitPriceHtCents * NEW.Quantity))
+                AND (NEW.SaleFinancialVatCents IS NULL
+                    OR (NEW.SaleFinancialAmountHtCents IS NOT NULL
+                        AND NEW.SaleFinancialTaxRateNumerator IS NOT NULL
+                        AND NEW.SaleFinancialTaxRateDenominator IS NOT NULL
+                        AND NEW.SaleFinancialVatCents >= 0
+                        AND NEW.SaleFinancialVatCents
+                            = (NEW.SaleFinancialAmountHtCents
+                                * NEW.SaleFinancialTaxRateNumerator * 2
+                                + NEW.SaleFinancialTaxRateDenominator)
+                                / (NEW.SaleFinancialTaxRateDenominator * 2)))
+                AND (NEW.SaleFinancialAmountTtcCents IS NULL
+                    OR (NEW.SaleFinancialAmountHtCents IS NOT NULL
+                        AND NEW.SaleFinancialVatCents IS NOT NULL
+                        AND NEW.SaleFinancialAmountTtcCents >= 0
+                        AND NEW.SaleFinancialAmountTtcCents
+                            = NEW.SaleFinancialAmountHtCents + NEW.SaleFinancialVatCents))
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'Sale financial snapshot constraints are invalid.');
+            END;
+            """);
+
+        migrationBuilder.Sql("""
+            CREATE TRIGGER TR_StockOperations_SaleFinancialSnapshot_Constraints_Update
+            BEFORE UPDATE ON StockOperations
+            WHEN NOT (
+                (NEW.Type <> 'SALE'
+                    OR NEW.SaleCommitDataType IS NULL
+                    OR NEW.SaleCommitDataType <> 'sale.financial.v1'
+                    OR (NEW.SaleFinancialUnitPriceHtCents IS NOT NULL
+                        AND NEW.SaleFinancialTaxRateCode IS NOT NULL
+                        AND NEW.SaleFinancialTaxRateNumerator IS NOT NULL
+                        AND NEW.SaleFinancialTaxRateDenominator IS NOT NULL
+                        AND NEW.SaleFinancialAmountHtCents IS NOT NULL
+                        AND NEW.SaleFinancialVatCents IS NOT NULL
+                        AND NEW.SaleFinancialAmountTtcCents IS NOT NULL))
+                AND (NEW.SaleFinancialContext IS NULL
+                    OR NEW.SaleFinancialContext IN ('takeaway', 'onsite'))
+                AND COALESCE(
+                    (NEW.SaleFinancialContext = 'takeaway'
+                        AND NEW.SaleFinancialTaxRateCode = 'takeaway'
+                        AND NEW.SaleFinancialTaxRateNumerator = 11
+                        AND NEW.SaleFinancialTaxRateDenominator = 200)
+                    OR (NEW.SaleFinancialContext = 'onsite'
+                        AND NEW.SaleFinancialTaxRateCode = 'onsite'
+                        AND NEW.SaleFinancialTaxRateNumerator = 1
+                        AND NEW.SaleFinancialTaxRateDenominator = 10)
+                    OR (NEW.SaleFinancialContext IS NULL
+                        AND NEW.SaleFinancialTaxRateCode = 'nonFood'
+                        AND NEW.SaleFinancialTaxRateNumerator = 1
+                        AND NEW.SaleFinancialTaxRateDenominator = 5)
+                    OR (NEW.SaleFinancialTaxRateCode IS NULL
+                        AND NEW.SaleFinancialTaxRateNumerator IS NULL
+                        AND NEW.SaleFinancialTaxRateDenominator IS NULL), 0)
+                AND (NEW.SaleFinancialUnitPriceHtCents IS NULL
+                    OR NEW.SaleFinancialUnitPriceHtCents >= 0)
+                AND (NEW.SaleFinancialAmountHtCents IS NULL
+                    OR (NEW.SaleFinancialUnitPriceHtCents IS NOT NULL
+                        AND NEW.SaleFinancialAmountHtCents >= 0
+                        AND NEW.SaleFinancialAmountHtCents
+                            = NEW.SaleFinancialUnitPriceHtCents * NEW.Quantity))
+                AND (NEW.SaleFinancialVatCents IS NULL
+                    OR (NEW.SaleFinancialAmountHtCents IS NOT NULL
+                        AND NEW.SaleFinancialTaxRateNumerator IS NOT NULL
+                        AND NEW.SaleFinancialTaxRateDenominator IS NOT NULL
+                        AND NEW.SaleFinancialVatCents >= 0
+                        AND NEW.SaleFinancialVatCents
+                            = (NEW.SaleFinancialAmountHtCents
+                                * NEW.SaleFinancialTaxRateNumerator * 2
+                                + NEW.SaleFinancialTaxRateDenominator)
+                                / (NEW.SaleFinancialTaxRateDenominator * 2)))
+                AND (NEW.SaleFinancialAmountTtcCents IS NULL
+                    OR (NEW.SaleFinancialAmountHtCents IS NOT NULL
+                        AND NEW.SaleFinancialVatCents IS NOT NULL
+                        AND NEW.SaleFinancialAmountTtcCents >= 0
+                        AND NEW.SaleFinancialAmountTtcCents
+                            = NEW.SaleFinancialAmountHtCents + NEW.SaleFinancialVatCents))
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'Sale financial snapshot constraints are invalid.');
+            END;
+            """);
+
+        migrationBuilder.Sql("""
             CREATE TRIGGER TR_StockOperations_SaleFinancialSnapshot_Immutable
             BEFORE UPDATE ON StockOperations
             WHEN OLD.Type = 'SALE'
@@ -210,6 +332,14 @@ public partial class SaleFinancialSnapshot : Migration
 
         migrationBuilder.Sql("""
             DROP TRIGGER IF EXISTS TR_StockOperations_SaleFinancialSnapshot_Update;
+            """);
+
+        migrationBuilder.Sql("""
+            DROP TRIGGER IF EXISTS TR_StockOperations_SaleFinancialSnapshot_Constraints_Insert;
+            """);
+
+        migrationBuilder.Sql("""
+            DROP TRIGGER IF EXISTS TR_StockOperations_SaleFinancialSnapshot_Constraints_Update;
             """);
 
         migrationBuilder.Sql("""

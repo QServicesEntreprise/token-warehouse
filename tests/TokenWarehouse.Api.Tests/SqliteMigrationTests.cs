@@ -8,6 +8,63 @@ namespace TokenWarehouse.Api.Tests;
 public sealed class SqliteMigrationTests
 {
     [Fact]
+    public async Task Sale_snapshot_constraints_are_materialized_by_the_applied_migration()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<WarehouseDbContext>()
+            .UseSqlite(connection)
+            .Options;
+
+        await using var context = new WarehouseDbContext(options);
+        await context.Database.MigrateAsync();
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'TR_StockOperations_SaleFinancialSnapshot_%' ORDER BY name";
+        await using var reader = await command.ExecuteReaderAsync();
+        var triggerNames = new List<string>();
+        while (await reader.ReadAsync())
+        {
+            triggerNames.Add(reader.GetString(0));
+        }
+
+        foreach (var trigger in new[]
+        {
+            "TR_StockOperations_SaleFinancialSnapshot_Constraints_Insert",
+            "TR_StockOperations_SaleFinancialSnapshot_Constraints_Update",
+            "TR_StockOperations_SaleFinancialSnapshot_Immutable",
+            "TR_StockOperations_SaleFinancialSnapshot_Delete"
+        })
+        {
+            Assert.Contains(trigger, triggerNames);
+        }
+
+        context.Articles.Add(new ArticleEntity
+        {
+            Ean13 = "0123456789012",
+            Type = "food",
+            Name = "Article vendu",
+            NameSearchKey = "ARTICLE VENDU",
+            PriceHtCents = 99,
+            IsActive = true,
+            Dlc = "2030-01-15",
+            ConsumptionModes = "takeaway"
+        });
+        context.StockOperations.Add(new StockOperationEntity
+        {
+            Id = "invalid-sale-snapshot",
+            Type = "SALE",
+            Ean13 = "0123456789012",
+            Quantity = 2,
+            OccurredAt = "2030-01-15T10:00:00.0000000+00:00",
+            TimestampUtc = "2030-01-15T10:00:00.0000000+00:00",
+            SaleCommitDataType = "sale.financial.v1",
+            SaleCommitDataPayload = "{}"
+        });
+        await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+    }
+
+    [Fact]
     public async Task Migrations_survive_shared_memory_contexts_and_file_reopen()
     {
         var filePath = Path.Combine(Path.GetTempPath(), $"token-warehouse-{Guid.NewGuid():N}.db");
