@@ -484,7 +484,10 @@ public sealed class SaleApplication(
             => transaction.StageAsync(
                 new StockSaleCommitData(
                     SaleFinancialSnapshotSerializer.Type,
-                    SaleFinancialSnapshotSerializer.Serialize(snapshot, resultingPosition)),
+                    SaleFinancialSnapshotSerializer.Serialize(snapshot, resultingPosition))
+                {
+                    FinancialSnapshot = snapshot
+                },
                 cancellationToken);
     }
 

@@ -146,6 +146,66 @@ public sealed class StockSaleContractTests
     }
 
     [Fact]
+    public async Task Persists_the_financial_snapshot_as_metadata_of_the_same_stock_operation()
+    {
+        using var factory = new HostFactory(Now);
+        using var client = factory.CreateClient();
+        await factory.SeedArticleAsync(
+            "0123456789012",
+            "Chocolat à emporter",
+            dlc: "2030-01-15",
+            physicalQuantity: 5,
+            priceHtCents: 99,
+            consumptionModes: "takeaway");
+
+        using var response = await client.PostAsJsonAsync(
+            "/api/sales",
+            new { ean13 = "0123456789012", quantity = 2 });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var operation = body.GetProperty("operation");
+        var operationId = operation.GetProperty("id").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(operationId));
+
+        var stored = await factory.ReadFreshAsync(async context => await context.StockOperations
+            .AsNoTracking()
+            .SingleAsync(candidate => candidate.Id == operationId));
+
+        Assert.Equal("SALE", stored.Type);
+        Assert.Equal("0123456789012", stored.Ean13);
+        Assert.Equal(2, stored.Quantity);
+        Assert.Equal(Now.ToString("O"), stored.TimestampUtc);
+        Assert.Equal("takeaway", stored.SaleFinancialContext);
+        Assert.Equal(99, stored.SaleFinancialUnitPriceHtCents);
+        Assert.Equal("takeaway", stored.SaleFinancialTaxRateCode);
+        Assert.Equal(11, stored.SaleFinancialTaxRateNumerator);
+        Assert.Equal(200, stored.SaleFinancialTaxRateDenominator);
+        Assert.Equal(198, stored.SaleFinancialAmountHtCents);
+        Assert.Equal(11, stored.SaleFinancialVatCents);
+        Assert.Equal(209, stored.SaleFinancialAmountTtcCents);
+
+        using var priceUpdate = await client.PatchAsJsonAsync(
+            "/api/articles/0123456789012",
+            new { priceHtCents = 999 });
+        Assert.Equal(HttpStatusCode.OK, priceUpdate.StatusCode);
+
+        using var readBack = await client.GetAsync($"/api/sales/{operationId}");
+        Assert.Equal(HttpStatusCode.OK, readBack.StatusCode);
+        var readBody = await readBack.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(operationId, readBody.GetProperty("operation").GetProperty("id").GetString());
+        Assert.Equal("0123456789012", readBody.GetProperty("operation").GetProperty("ean13").GetString());
+        Assert.Equal(2, readBody.GetProperty("operation").GetProperty("quantity").GetInt32());
+        Assert.Equal(99, readBody.GetProperty("financial").GetProperty("unitPriceHtCents").GetInt32());
+        Assert.Equal(198, readBody.GetProperty("financial").GetProperty("amountHtCents").GetInt32());
+        Assert.Equal(11, readBody.GetProperty("financial").GetProperty("vatCents").GetInt32());
+        Assert.Equal(209, readBody.GetProperty("financial").GetProperty("amountTtcCents").GetInt32());
+        Assert.Equal(
+            1,
+            await factory.ReadFreshAsync(context => context.StockOperations.CountAsync(operation => operation.Type == "SALE")));
+    }
+
+    [Fact]
     public async Task Reads_each_sale_snapshot_after_a_later_sale_and_sellability_change()
     {
         using var factory = new HostFactory(Now);

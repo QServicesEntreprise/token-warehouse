@@ -453,6 +453,28 @@ internal sealed class SqliteStockSaleTransaction(
 
         operation.SaleCommitDataType = data.Type;
         operation.SaleCommitDataPayload = data.Payload;
+        if (data.FinancialSnapshot is { } snapshot)
+        {
+            if (!string.Equals(operation.Type, "SALE", StringComparison.Ordinal)
+                || !string.Equals(data.Type, SaleFinancialSnapshotSerializer.Type, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException("Financial snapshot data is only valid for a Sale.");
+            }
+
+            operation.SaleFinancialContext = snapshot.SaleContext switch
+            {
+                SaleContext.Takeaway => "takeaway",
+                SaleContext.OnSite => "onsite",
+                _ => null
+            };
+            operation.SaleFinancialUnitPriceHtCents = snapshot.UnitPriceHt.Cents;
+            operation.SaleFinancialTaxRateCode = snapshot.TaxRate.Code;
+            operation.SaleFinancialTaxRateNumerator = snapshot.TaxRate.Numerator;
+            operation.SaleFinancialTaxRateDenominator = snapshot.TaxRate.Denominator;
+            operation.SaleFinancialAmountHtCents = snapshot.AmountHt.Cents;
+            operation.SaleFinancialVatCents = snapshot.Vat.Cents;
+            operation.SaleFinancialAmountTtcCents = snapshot.AmountTtc.Cents;
+        }
         await context.SaveChangesAsync(cancellationToken);
     }
 }

@@ -32,5 +32,21 @@ public sealed class StockOperationEntity
 
     public string? SaleCommitDataPayload { get; set; }
 
+    public string? SaleFinancialContext { get; set; }
+
+    public int? SaleFinancialUnitPriceHtCents { get; set; }
+
+    public string? SaleFinancialTaxRateCode { get; set; }
+
+    public int? SaleFinancialTaxRateNumerator { get; set; }
+
+    public int? SaleFinancialTaxRateDenominator { get; set; }
+
+    public int? SaleFinancialAmountHtCents { get; set; }
+
+    public int? SaleFinancialVatCents { get; set; }
+
+    public int? SaleFinancialAmountTtcCents { get; set; }
+
     public ICollection<StockOperationLineEntity> Lines { get; set; } = [];
 }

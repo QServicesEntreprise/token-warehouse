@@ -95,6 +95,19 @@ public sealed class PricingTests
     }
 
     [Fact]
+    public void Rounds_takeaway_vat_once_after_multiplying_the_total_ht()
+    {
+        var result = PricingPolicy.CalculateSale(
+            CreateFood(9, "takeaway"),
+            new Quantity(2));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(18, result.Snapshot!.AmountHt.Cents);
+        Assert.Equal(1, result.Snapshot.Vat.Cents);
+        Assert.Equal(19, result.Snapshot.AmountTtc.Cents);
+    }
+
+    [Fact]
     public void Calculates_non_food_at_twenty_percent_without_a_context()
     {
         var result = Article.Create(new ArticleDraft
