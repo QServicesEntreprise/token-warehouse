@@ -13,6 +13,10 @@ public sealed record StockOperationLineReadView(
     int StockEffect,
     int InverseEffect);
 
+public sealed record StockOperationReadFact(
+    StockOperation Operation,
+    SaleContext? SaleContext = null);
+
 public sealed record StockOperationReadView(
     string Id,
     StockOperationType Type,
@@ -22,7 +26,8 @@ public sealed record StockOperationReadView(
     string? SourceOperationId,
     StockOperationType? SourceOperationType,
     string? Justification,
-    IReadOnlyList<StockOperationLineReadView> Lines);
+    IReadOnlyList<StockOperationLineReadView> Lines,
+    SaleContext? SaleContext = null);
 
 public enum StockOperationReadStatus
 {
@@ -37,6 +42,10 @@ public sealed record StockOperationReadResult(
 public interface IStockOperationReadContract
 {
     Task<StockOperationReadResult> ListAsync(CancellationToken cancellationToken = default);
+
+    Task<StockOperationReadResult> ListForDashboardAsync(
+        CancellationToken cancellationToken = default)
+        => ListAsync(cancellationToken);
 }
 
 public sealed class StockOperationReadApplication(IStockOperationReader reader)
@@ -48,13 +57,7 @@ public sealed class StockOperationReadApplication(IStockOperationReader reader)
         try
         {
             var operations = await reader.ListAsync(cancellationToken);
-            return new(
-                StockOperationReadStatus.Success,
-                operations
-                    .OrderBy(operation => operation.TimestampUtc)
-                    .ThenBy(operation => operation.Id, StringComparer.Ordinal)
-                    .Select(ToView)
-                    .ToArray());
+            return ToResult(operations.Select(operation => new StockOperationReadFact(operation)));
         }
         catch (OperationCanceledException)
         {
@@ -66,8 +69,37 @@ public sealed class StockOperationReadApplication(IStockOperationReader reader)
         }
     }
 
-    private static StockOperationReadView ToView(StockOperation operation)
+    public async Task<StockOperationReadResult> ListForDashboardAsync(
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return ToResult(await reader.ListForDashboardAsync(cancellationToken));
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            return new(StockOperationReadStatus.PersistenceFailed, []);
+        }
+    }
+
+    private static StockOperationReadResult ToResult(
+        IEnumerable<StockOperationReadFact> operations)
         => new(
+            StockOperationReadStatus.Success,
+            operations
+                .OrderBy(operation => operation.Operation.TimestampUtc)
+                .ThenBy(operation => operation.Operation.Id, StringComparer.Ordinal)
+                .Select(ToView)
+                .ToArray());
+
+    private static StockOperationReadView ToView(StockOperationReadFact fact)
+    {
+        var operation = fact.Operation;
+        return new(
             operation.Id,
             operation.Type,
             operation.Ean13.Value,
@@ -88,5 +120,7 @@ public sealed class StockOperationReadApplication(IStockOperationReader reader)
                     line.ResultingPhysicalStock,
                     line.StockEffect,
                     line.InverseEffect))
-                .ToArray());
+                .ToArray(),
+            fact.SaleContext);
+    }
 }

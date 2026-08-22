@@ -38,6 +38,12 @@ export interface DashboardStockLineResponse {
   reason: StockReason | null;
 }
 
+export interface DashboardFlowDayResponse {
+  date: string;
+  supplies: number;
+  sales: number;
+}
+
 export interface DashboardResponse {
   kpis: {
     physicalStock: number;
@@ -49,6 +55,7 @@ export interface DashboardResponse {
     notSellable: DashboardStockLineResponse[];
   };
   stockByArticle: DashboardStockLineResponse[];
+  flowsByDay: DashboardFlowDayResponse[];
 }
 
 @Injectable({ providedIn: 'root' })

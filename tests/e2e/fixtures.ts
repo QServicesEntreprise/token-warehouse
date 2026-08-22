@@ -62,7 +62,7 @@ const stopApi = async (server: ChildProcess): Promise<void> => {
 type Fixtures = {
   isolatedApi: void;
   historyReadFailure: boolean;
-  e2eSeed: 'true' | 'empty';
+  e2eSeed: 'true' | 'empty' | 'flows';
 };
 
 export const test = base.extend<Fixtures>({

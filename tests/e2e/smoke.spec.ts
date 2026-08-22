@@ -534,6 +534,63 @@ test('filters the Dashboard by explicit period and Article dimensions', async ({
   expect(takeawayBody.kpis).toEqual({ physicalStock: 12, sellableStock: 5, nonSellableStock: 7 });
 });
 
+test.describe('Dashboard daily flows', () => {
+  test.use({ e2eSeed: 'flows', timezoneId: 'America/Los_Angeles' });
+
+  test('renders accepted flows as an accessible filtered daily table', async ({ page }) => {
+    const dashboard = page.locator('#dashboard-panel');
+    const dashboardResponse = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return response.request().method() === 'GET' && url.pathname === '/api/dashboard';
+    });
+
+    await page.goto('/');
+    const firstResponse = await dashboardResponse;
+    expect(firstResponse.status()).toBe(200);
+    const firstView = await firstResponse.json();
+    expect(firstView.flowsByDay).toHaveLength(31);
+    expect(firstView.flowsByDay.slice(9, 13)).toEqual([
+      { date: '2030-01-10', supplies: 0, sales: 2 },
+      { date: '2030-01-11', supplies: 19, sales: 0 },
+      { date: '2030-01-12', supplies: 2, sales: 5 },
+      { date: '2030-01-13', supplies: 0, sales: 0 },
+    ]);
+    await expect(page.locator('#dashboard-from')).toHaveValue('2030-01-01');
+    await expect(page.locator('#dashboard-to')).toHaveValue('2030-01-31');
+
+    const flowTable = dashboard.locator('#dashboard-flows-table');
+    await expect(flowTable).toBeVisible();
+    await expect(flowTable.getByRole('columnheader', { name: 'Date' })).toBeVisible();
+    await expect(flowTable.getByRole('columnheader', { name: 'Approvisionnements' })).toBeVisible();
+    await expect(flowTable.getByRole('columnheader', { name: 'Ventes' })).toBeVisible();
+    await expect(flowTable.locator('tbody tr')).toHaveCount(31);
+    await expect(flowTable.getByRole('row', { name: /2030-01-10/ })).toContainText('2 unités');
+    await expect(flowTable.getByRole('row', { name: /2030-01-11/ })).toContainText('19 unités');
+    await expect(flowTable.getByRole('row', { name: /2030-01-13/ })).toContainText('0 unité');
+
+    const filteredResponse = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return response.request().method() === 'GET'
+        && url.pathname === '/api/dashboard'
+        && url.searchParams.get('type') === 'food'
+        && url.searchParams.get('mode') === 'onsite';
+    });
+    await page.locator('#dashboard-type').selectOption('food');
+    await page.locator('#dashboard-mode').selectOption('onsite');
+    await page.getByRole('button', { name: 'Lire le Dashboard' }).click();
+    const filteredView = await (await filteredResponse).json();
+    expect(filteredView.flowsByDay.slice(9, 13)).toEqual([
+      { date: '2030-01-10', supplies: 0, sales: 0 },
+      { date: '2030-01-11', supplies: 5, sales: 0 },
+      { date: '2030-01-12', supplies: 2, sales: 4 },
+      { date: '2030-01-13', supplies: 0, sales: 0 },
+    ]);
+    await expect(flowTable.getByRole('row', { name: /2030-01-10/ })).toContainText('0 unité');
+    await expect(flowTable.getByRole('row', { name: /2030-01-11/ })).toContainText('5 unités');
+    await expect(flowTable.getByRole('row', { name: /2030-01-12/ })).toContainText('4 unités');
+  });
+});
+
 test('keeps Dashboard controls and focus after a period error, then retries the same selection', async ({ page }) => {
   const dashboard = page.locator('#dashboard-panel');
 

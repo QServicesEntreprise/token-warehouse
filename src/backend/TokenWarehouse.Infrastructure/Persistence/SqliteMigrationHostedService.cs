@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using System.Globalization;
 using TokenWarehouse.Application;
+using TokenWarehouse.Domain;
 
 namespace TokenWarehouse.Infrastructure.Persistence;
 
@@ -22,13 +23,19 @@ public sealed class SqliteMigrationHostedService(
         await context.Database.MigrateAsync(cancellationToken);
         await BackfillNameSearchKeysAsync(context, cancellationToken);
 
-        if (environment.IsEnvironment("Testing")
-            && string.Equals(
-                Environment.GetEnvironmentVariable("TOKEN_WAREHOUSE_E2E_SEED"),
-                "true",
-                StringComparison.OrdinalIgnoreCase))
+        if (environment.IsEnvironment("Testing"))
         {
-            await SeedE2eStockArticlesAsync(context, clock.WarehouseDate, cancellationToken);
+            var seed = Environment.GetEnvironmentVariable("TOKEN_WAREHOUSE_E2E_SEED");
+            if (string.Equals(seed, "true", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(seed, "flows", StringComparison.OrdinalIgnoreCase))
+            {
+                await SeedE2eStockArticlesAsync(context, clock.WarehouseDate, cancellationToken);
+            }
+
+            if (string.Equals(seed, "flows", StringComparison.OrdinalIgnoreCase))
+            {
+                await SeedE2eFlowFactsAsync(context, cancellationToken);
+            }
         }
     }
 
@@ -156,6 +163,122 @@ public sealed class SqliteMigrationHostedService(
             }
         }
 
+        await context.SaveChangesAsync(cancellationToken);
+    }
+
+    private static async Task SeedE2eFlowFactsAsync(
+        WarehouseDbContext context,
+        CancellationToken cancellationToken)
+    {
+        if (await context.StockOperations.AnyAsync(
+                operation => operation.Id == "e2e-flow-bulk",
+                cancellationToken))
+        {
+            return;
+        }
+
+        static StockOperationEntity Operation(
+            string id,
+            string type,
+            string ean13,
+            string timestamp,
+            int quantity,
+            string? sourceOperationId = null,
+            string? sourceOperationType = null,
+            string? justification = null,
+            string? saleCommitDataPayload = null)
+            => new()
+            {
+                Id = id,
+                Type = type,
+                Ean13 = ean13,
+                Quantity = quantity,
+                OccurredAt = timestamp,
+                TimestampUtc = timestamp,
+                SourceOperationId = sourceOperationId,
+                SourceOperationType = sourceOperationType,
+                Justification = justification,
+                SaleCommitDataType = saleCommitDataPayload is null
+                    ? null
+                    : SaleFinancialSnapshotSerializer.Type,
+                SaleCommitDataPayload = saleCommitDataPayload
+            };
+
+        static StockOperationLineEntity Line(
+            string operationId,
+            int lineNumber,
+            string ean13,
+            string operationType,
+            int quantity,
+            int sourceEffect,
+            int inverseEffect = 0,
+            int previousPhysicalStock = 0,
+            int countedQuantity = 0,
+            int inventoryDifference = 0,
+            int resultingPhysicalStock = 0)
+            => new()
+            {
+                OperationId = operationId,
+                LineNumber = lineNumber,
+                Ean13 = ean13,
+                OperationType = operationType,
+                Quantity = quantity,
+                SourceEffect = sourceEffect,
+                InverseEffect = inverseEffect,
+                PreviousPhysicalStock = previousPhysicalStock,
+                CountedQuantity = countedQuantity,
+                InventoryDifference = inventoryDifference,
+                ResultingPhysicalStock = resultingPhysicalStock
+            };
+
+        var takeaway = SaleFinancialSnapshotSerializer.Serialize(
+            new SaleFinancialSnapshot(
+                SaleContext.Takeaway,
+                Money.FromCents(100),
+                TaxRate.Takeaway,
+                Money.FromCents(200),
+                Money.FromCents(11),
+                Money.FromCents(211)));
+        var onsite = SaleFinancialSnapshotSerializer.Serialize(
+            new SaleFinancialSnapshot(
+                SaleContext.OnSite,
+                Money.FromCents(100),
+                TaxRate.OnSite,
+                Money.FromCents(400),
+                Money.FromCents(40),
+                Money.FromCents(440)));
+        var bulkTimestamp = "2030-01-11T10:00:00+00:00";
+        var nextTimestamp = "2030-01-12T10:00:00+00:00";
+        context.StockOperations.AddRange(
+            Operation("e2e-flow-bulk", "supply", "0123456789012", bulkTimestamp, 19),
+            Operation("e2e-flow-supply", "supply", "0123456789012", nextTimestamp, 2),
+            Operation("e2e-flow-sale-b", "SALE", "1234567890128", "2030-01-10T10:00:00+00:00", 2,
+                saleCommitDataPayload: takeaway),
+            Operation("e2e-flow-sale-takeaway", "SALE", "0123456789012", nextTimestamp, 1,
+                saleCommitDataPayload: takeaway),
+            Operation("e2e-flow-sale-onsite", "SALE", "0123456789012", "2030-01-12T11:00:00+00:00", 4,
+                saleCommitDataPayload: onsite),
+            Operation("e2e-flow-inventory", "INVENTORY", "0123456789012", "2030-01-13T10:00:00+00:00", 0),
+            Operation(
+                "e2e-flow-counter",
+                "COUNTER_MOVEMENT",
+                "0123456789012",
+                "2030-01-11T11:00:00+00:00",
+                0,
+                sourceOperationId: "e2e-flow-bulk",
+                sourceOperationType: "SUPPLY",
+                justification: "Test sans effet de flux"));
+        context.StockOperationLines.AddRange(
+            Line("e2e-flow-bulk", 1, "0123456789012", "supply", 5, 5),
+            Line("e2e-flow-bulk", 2, "1234567890128", "supply", 3, 3),
+            Line("e2e-flow-bulk", 3, "2345678901234", "supply", 7, 7),
+            Line("e2e-flow-bulk", 4, "3456789012340", "supply", 4, 4),
+            Line("e2e-flow-supply", 1, "0123456789012", "supply", 2, 2),
+            Line("e2e-flow-sale-b", 1, "1234567890128", "SALE", 2, -2),
+            Line("e2e-flow-sale-takeaway", 1, "0123456789012", "SALE", 1, -1),
+            Line("e2e-flow-sale-onsite", 1, "0123456789012", "SALE", 4, -4),
+            Line("e2e-flow-inventory", 1, "0123456789012", "INVENTORY", 0, 99, 0, 0, 99, 99, 99),
+            Line("e2e-flow-counter", 1, "0123456789012", "COUNTER_MOVEMENT", 0, 99, -99));
         await context.SaveChangesAsync(cancellationToken);
     }
 }

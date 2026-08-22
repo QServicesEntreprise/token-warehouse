@@ -585,6 +585,87 @@ public sealed class ArticleApiTests
     }
 
     [Fact]
+    public async Task Dashboard_returns_continuous_filtered_flows_from_accepted_sqlite_facts()
+    {
+        using var factory = new ArticleHostFactory(
+            fixedNow: new DateTimeOffset(2030, 3, 15, 10, 0, 0, TimeSpan.Zero));
+        using var client = factory.CreateClient();
+
+        async Task CreateArticle(object payload)
+        {
+            using var response = await client.PostAsJsonAsync("/api/articles", payload);
+            Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        }
+
+        await CreateArticle(new
+        {
+            ean13 = "0123456789012",
+            type = "food",
+            name = "A",
+            priceHtCents = 100,
+            dlc = "2030-03-31",
+            consumptionModes = new[] { "takeaway", "onsite" }
+        });
+        await CreateArticle(new
+        {
+            ean13 = "1234567890128",
+            type = "food",
+            name = "B",
+            priceHtCents = 100,
+            dlc = "2030-03-31",
+            consumptionModes = new[] { "takeaway" }
+        });
+        await CreateArticle(new
+        {
+            ean13 = "2345678901234",
+            type = "nonFood",
+            name = "C",
+            priceHtCents = 100,
+            packaging = "new"
+        });
+        await CreateArticle(new
+        {
+            ean13 = "3456789012340",
+            type = "nonFood",
+            name = "D",
+            priceHtCents = 100,
+            packaging = "refurbished"
+        });
+
+        await SeedDashboardFlowFactsAsync(factory);
+        var operationsBeforeReads = await CountStockOperationsAsync(factory.Services);
+
+        using var response = await client.GetAsync(
+            "/api/dashboard?from=2030-03-10&to=2030-03-13");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(
+            [
+                ("2030-03-10", 0, 2),
+                ("2030-03-11", 19, 0),
+                ("2030-03-12", 2, 5),
+                ("2030-03-13", 0, 0)
+            ],
+            ReadFlowDays(body.RootElement));
+
+        using var filtered = await client.GetAsync(
+            "/api/dashboard?from=2030-03-10&to=2030-03-13&type=food&mode=onsite");
+        Assert.Equal(HttpStatusCode.OK, filtered.StatusCode);
+        Assert.Equal("application/json", filtered.Content.Headers.ContentType?.MediaType);
+        using var filteredBody = JsonDocument.Parse(await filtered.Content.ReadAsStringAsync());
+        Assert.Equal(
+            [
+                ("2030-03-10", 0, 0),
+                ("2030-03-11", 5, 0),
+                ("2030-03-12", 2, 4),
+                ("2030-03-13", 0, 0)
+            ],
+            ReadFlowDays(filteredBody.RootElement));
+        Assert.Equal(operationsBeforeReads, await CountStockOperationsAsync(factory.Services));
+    }
+
+    [Fact]
     public async Task Dashboard_returns_empty_collections_and_zero_kpis_for_an_empty_catalogue()
     {
         using var factory = new ArticleHostFactory();
@@ -601,6 +682,11 @@ public sealed class ArticleApiTests
         Assert.Empty(root.GetProperty("alerts").GetProperty("outOfStock").EnumerateArray());
         Assert.Empty(root.GetProperty("alerts").GetProperty("notSellable").EnumerateArray());
         Assert.Empty(root.GetProperty("stockByArticle").EnumerateArray());
+        var flowDays = ReadFlowDays(root);
+        Assert.Equal(31, flowDays.Length);
+        Assert.Equal("2030-01-01", flowDays[0].Date);
+        Assert.Equal("2030-01-31", flowDays[^1].Date);
+        Assert.All(flowDays, day => Assert.Equal((0, 0), (day.Supplies, day.Sales)));
     }
 
     [Fact]
@@ -1679,6 +1765,126 @@ public sealed class ArticleApiTests
         });
         await context.SaveChangesAsync();
     }
+
+    private static async Task SeedDashboardFlowFactsAsync(ArticleHostFactory factory)
+    {
+        using var scope = factory.Services.CreateScope();
+        var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>();
+        await using var context = await contextFactory.CreateDbContextAsync();
+
+        static StockOperationEntity Operation(
+            string id,
+            string type,
+            string ean13,
+            string timestamp,
+            int quantity,
+            string? sourceOperationId = null,
+            string? sourceOperationType = null,
+            string? justification = null,
+            string? saleCommitDataPayload = null)
+            => new()
+            {
+                Id = id,
+                Type = type,
+                Ean13 = ean13,
+                Quantity = quantity,
+                OccurredAt = timestamp,
+                TimestampUtc = timestamp,
+                SourceOperationId = sourceOperationId,
+                SourceOperationType = sourceOperationType,
+                Justification = justification,
+                SaleCommitDataType = saleCommitDataPayload is null
+                    ? null
+                    : SaleFinancialSnapshotSerializer.Type,
+                SaleCommitDataPayload = saleCommitDataPayload
+            };
+
+        static StockOperationLineEntity Line(
+            string operationId,
+            int lineNumber,
+            string ean13,
+            string operationType,
+            int quantity,
+            int sourceEffect,
+            int inverseEffect = 0,
+            int previousPhysicalStock = 0,
+            int countedQuantity = 0,
+            int inventoryDifference = 0,
+            int resultingPhysicalStock = 0)
+            => new()
+            {
+                OperationId = operationId,
+                LineNumber = lineNumber,
+                Ean13 = ean13,
+                OperationType = operationType,
+                Quantity = quantity,
+                SourceEffect = sourceEffect,
+                InverseEffect = inverseEffect,
+                PreviousPhysicalStock = previousPhysicalStock,
+                CountedQuantity = countedQuantity,
+                InventoryDifference = inventoryDifference,
+                ResultingPhysicalStock = resultingPhysicalStock
+            };
+
+        var takeaway = SaleFinancialSnapshotSerializer.Serialize(
+            new SaleFinancialSnapshot(
+                SaleContext.Takeaway,
+                Money.FromCents(100),
+                TaxRate.Takeaway,
+                Money.FromCents(200),
+                Money.FromCents(11),
+                Money.FromCents(211)));
+        var onsite = SaleFinancialSnapshotSerializer.Serialize(
+            new SaleFinancialSnapshot(
+                SaleContext.OnSite,
+                Money.FromCents(100),
+                TaxRate.OnSite,
+                Money.FromCents(400),
+                Money.FromCents(40),
+                Money.FromCents(440)));
+        var bulkTimestamp = "2030-03-11T10:00:00+00:00";
+        var nextTimestamp = "2030-03-12T10:00:00+00:00";
+        context.StockOperations.AddRange(
+            Operation("bulk", "supply", "0123456789012", bulkTimestamp, 19),
+            Operation("supply", "supply", "0123456789012", nextTimestamp, 2),
+            Operation("sale-b", "SALE", "1234567890128", "2030-03-10T10:00:00+00:00", 2,
+                saleCommitDataPayload: takeaway),
+            Operation("sale-takeaway", "SALE", "0123456789012", nextTimestamp, 1,
+                saleCommitDataPayload: takeaway),
+            Operation("sale-onsite", "SALE", "0123456789012", "2030-03-12T11:00:00+00:00", 4,
+                saleCommitDataPayload: onsite),
+            Operation("inventory", "INVENTORY", "0123456789012", "2030-03-13T10:00:00+00:00", 0),
+            Operation(
+                "counter",
+                "COUNTER_MOVEMENT",
+                "0123456789012",
+                "2030-03-11T11:00:00+00:00",
+                0,
+                sourceOperationId: "bulk",
+                sourceOperationType: "SUPPLY",
+                justification: "Test sans effet de flux"));
+        context.StockOperationLines.AddRange(
+            Line("bulk", 1, "0123456789012", "supply", 5, 5),
+            Line("bulk", 2, "1234567890128", "supply", 3, 3),
+            Line("bulk", 3, "2345678901234", "supply", 7, 7),
+            Line("bulk", 4, "3456789012340", "supply", 4, 4),
+            Line("supply", 1, "0123456789012", "supply", 2, 2),
+            Line("sale-b", 1, "1234567890128", "SALE", 2, -2),
+            Line("sale-takeaway", 1, "0123456789012", "SALE", 1, -1),
+            Line("sale-onsite", 1, "0123456789012", "SALE", 4, -4),
+            Line("inventory", 1, "0123456789012", "INVENTORY", 0, 99, 0, 0, 99, 99, 99),
+            Line("counter", 1, "0123456789012", "COUNTER_MOVEMENT", 0, 99, -99));
+        await context.SaveChangesAsync();
+    }
+
+    private static (string Date, int Supplies, int Sales)[] ReadFlowDays(JsonElement root)
+        => root.GetProperty("flowsByDay")
+            .EnumerateArray()
+            .Select(day => (
+                day.GetProperty("date").GetString()!,
+                day.GetProperty("supplies").GetInt32(),
+                day.GetProperty("sales").GetInt32()))
+            .ToArray();
 
     private static async Task<int> CountStockPositionsAsync(IServiceProvider services, string ean13)
     {
