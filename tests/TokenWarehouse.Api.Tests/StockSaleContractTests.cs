@@ -146,6 +146,248 @@ public sealed class StockSaleContractTests
     }
 
     [Fact]
+    public async Task Persists_the_financial_snapshot_as_metadata_of_the_same_stock_operation()
+    {
+        using var factory = new HostFactory(Now);
+        using var client = factory.CreateClient();
+        await factory.SeedArticleAsync(
+            "0123456789012",
+            "Chocolat à emporter",
+            dlc: "2030-01-15",
+            physicalQuantity: 5,
+            priceHtCents: 99,
+            consumptionModes: "takeaway");
+
+        using var response = await client.PostAsJsonAsync(
+            "/api/sales",
+            new { ean13 = "0123456789012", quantity = 2 });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var operation = body.GetProperty("operation");
+        var operationId = operation.GetProperty("id").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(operationId));
+        Assert.Equal("SALE", operation.GetProperty("type").GetString());
+        Assert.Equal("0123456789012", operation.GetProperty("ean13").GetString());
+        Assert.Equal(2, operation.GetProperty("quantity").GetInt32());
+        Assert.Equal(Now, operation.GetProperty("occurredAt").GetDateTimeOffset());
+        var financial = body.GetProperty("financial");
+        Assert.Equal("takeaway", financial.GetProperty("context").GetString());
+        Assert.Equal(99, financial.GetProperty("unitPriceHtCents").GetInt32());
+        var taxRate = financial.GetProperty("taxRate");
+        Assert.Equal("takeaway", taxRate.GetProperty("code").GetString());
+        Assert.Equal("11/200", taxRate.GetProperty("ratio").GetString());
+        Assert.Equal(11, taxRate.GetProperty("numerator").GetInt32());
+        Assert.Equal(200, taxRate.GetProperty("denominator").GetInt32());
+        Assert.Equal(198, financial.GetProperty("amountHtCents").GetInt32());
+        Assert.Equal(11, financial.GetProperty("vatCents").GetInt32());
+        Assert.Equal(209, financial.GetProperty("amountTtcCents").GetInt32());
+        Assert.Equal(3, body.GetProperty("position").GetProperty("physicalQuantity").GetInt32());
+
+        using var priceUpdate = await client.PatchAsJsonAsync(
+            "/api/articles/0123456789012",
+            new { priceHtCents = 999 });
+        Assert.Equal(HttpStatusCode.OK, priceUpdate.StatusCode);
+
+        using var reloadedClient = factory.CreateClient();
+        using var readBack = await reloadedClient.GetAsync($"/api/sales/{operationId}");
+        Assert.Equal(HttpStatusCode.OK, readBack.StatusCode);
+        var readBody = await readBack.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(operationId, readBody.GetProperty("operation").GetProperty("id").GetString());
+        Assert.Equal("0123456789012", readBody.GetProperty("operation").GetProperty("ean13").GetString());
+        Assert.Equal(2, readBody.GetProperty("operation").GetProperty("quantity").GetInt32());
+        Assert.Equal(Now, readBody.GetProperty("operation").GetProperty("occurredAt").GetDateTimeOffset());
+        var readFinancial = readBody.GetProperty("financial");
+        Assert.Equal("takeaway", readFinancial.GetProperty("context").GetString());
+        Assert.Equal(99, readFinancial.GetProperty("unitPriceHtCents").GetInt32());
+        Assert.Equal("takeaway", readFinancial.GetProperty("taxRate").GetProperty("code").GetString());
+        Assert.Equal(11, readFinancial.GetProperty("taxRate").GetProperty("numerator").GetInt32());
+        Assert.Equal(200, readFinancial.GetProperty("taxRate").GetProperty("denominator").GetInt32());
+        Assert.Equal(198, readFinancial.GetProperty("amountHtCents").GetInt32());
+        Assert.Equal(11, readFinancial.GetProperty("vatCents").GetInt32());
+        Assert.Equal(209, readFinancial.GetProperty("amountTtcCents").GetInt32());
+        Assert.Equal(3, readBody.GetProperty("position").GetProperty("physicalQuantity").GetInt32());
+
+        using var history = await reloadedClient.GetAsync("/api/history?ean13=0123456789012");
+        Assert.Equal(HttpStatusCode.OK, history.StatusCode);
+        var historyBody = await history.Content.ReadFromJsonAsync<JsonElement>();
+        var saleHistory = historyBody.EnumerateArray()
+            .Single(entry => entry.GetProperty("id").GetString() == operationId);
+        Assert.Equal("SALE_STOCK", saleHistory.GetProperty("type").GetString());
+        Assert.Equal(2, saleHistory.GetProperty("quantity").GetInt32());
+        Assert.Equal(-2, saleHistory.GetProperty("stockEffect").GetInt32());
+        var historyLine = saleHistory.GetProperty("lines")[0];
+        Assert.Equal(5, historyLine.GetProperty("previousPhysicalStock").GetInt32());
+        Assert.Equal(3, historyLine.GetProperty("resultingPhysicalStock").GetInt32());
+    }
+
+    [Fact]
+    public async Task Rejects_sale_edit_and_delete_at_public_and_persistence_boundaries()
+    {
+        using var factory = new HostFactory(Now);
+        using var client = factory.CreateClient();
+        await factory.SeedArticleAsync(
+            "7351353713578",
+            "Batterie industrielle",
+            type: "nonFood",
+            packaging: "new",
+            physicalQuantity: 8,
+            priceHtCents: 101);
+
+        using var created = await client.PostAsJsonAsync(
+            "/api/sales",
+            new { ean13 = "7351353713578", quantity = 3 });
+        var createdBody = await created.Content.ReadFromJsonAsync<JsonElement>();
+        var operationId = createdBody.GetProperty("operation").GetProperty("id").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(operationId));
+
+        using var beforeResponse = await client.GetAsync($"/api/sales/{operationId}");
+        var before = await beforeResponse.Content.ReadFromJsonAsync<JsonElement>();
+        using var beforeHistoryResponse = await client.GetAsync("/api/history?ean13=7351353713578");
+        Assert.Equal(HttpStatusCode.OK, beforeHistoryResponse.StatusCode);
+        var beforeHistory = await beforeHistoryResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var beforeSaleHistory = beforeHistory.EnumerateArray()
+            .Single(entry => entry.GetProperty("id").GetString() == operationId);
+        var beforeHistoryLine = beforeSaleHistory.GetProperty("lines")[0];
+        foreach (var method in new[] { HttpMethod.Patch, HttpMethod.Put, HttpMethod.Delete })
+        {
+            using var request = new HttpRequestMessage(method, $"/api/sales/{operationId}");
+            if (method != HttpMethod.Delete)
+            {
+                request.Content = JsonContent.Create(new
+                {
+                    financial = new { amountHtCents = 1 },
+                    occurredAt = "2030-01-15T10:00:00Z"
+                });
+            }
+
+            using var response = await client.SendAsync(request);
+            Assert.False(response.IsSuccessStatusCode);
+        }
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => factory.ReadFreshAsync(async context =>
+        {
+            var operation = await context.StockOperations.SingleAsync(candidate => candidate.Id == operationId);
+            operation.SaleFinancialAmountHtCents++;
+            await context.SaveChangesAsync();
+            return true;
+        }));
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => factory.ReadFreshAsync(async context =>
+        {
+            var operation = await context.StockOperations.SingleAsync(candidate => candidate.Id == operationId);
+            context.StockOperations.Remove(operation);
+            await context.SaveChangesAsync();
+            return true;
+        }));
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => factory.ReadFreshAsync(async context =>
+        {
+            var line = await context.StockOperationLines
+                .SingleAsync(candidate => candidate.OperationId == operationId);
+            line.Quantity++;
+            await context.SaveChangesAsync();
+            return true;
+        }));
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => factory.ReadFreshAsync(async context =>
+        {
+            var line = await context.StockOperationLines
+                .SingleAsync(candidate => candidate.OperationId == operationId);
+            context.StockOperationLines.Remove(line);
+            await context.SaveChangesAsync();
+            return true;
+        }));
+
+        using var reloadedClient = factory.CreateClient();
+        using var afterResponse = await reloadedClient.GetAsync($"/api/sales/{operationId}");
+        var after = await afterResponse.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(
+            before.GetProperty("operation").GetProperty("id").GetString(),
+            after.GetProperty("operation").GetProperty("id").GetString());
+        Assert.Equal(
+            before.GetProperty("operation").GetProperty("ean13").GetString(),
+            after.GetProperty("operation").GetProperty("ean13").GetString());
+        Assert.Equal(
+            before.GetProperty("operation").GetProperty("quantity").GetInt32(),
+            after.GetProperty("operation").GetProperty("quantity").GetInt32());
+        Assert.Equal(
+            before.GetProperty("operation").GetProperty("occurredAt").GetDateTimeOffset(),
+            after.GetProperty("operation").GetProperty("occurredAt").GetDateTimeOffset());
+        Assert.Equal(
+            before.GetProperty("financial").GetProperty("context").ValueKind,
+            after.GetProperty("financial").GetProperty("context").ValueKind);
+        Assert.Equal(
+            before.GetProperty("financial").GetProperty("unitPriceHtCents").GetInt32(),
+            after.GetProperty("financial").GetProperty("unitPriceHtCents").GetInt32());
+        foreach (var property in new[] { "code", "ratio" })
+        {
+            Assert.Equal(
+                before.GetProperty("financial").GetProperty("taxRate").GetProperty(property).GetString(),
+                after.GetProperty("financial").GetProperty("taxRate").GetProperty(property).GetString());
+        }
+        foreach (var property in new[] { "numerator", "denominator" })
+        {
+            Assert.Equal(
+                before.GetProperty("financial").GetProperty("taxRate").GetProperty(property).GetInt32(),
+                after.GetProperty("financial").GetProperty("taxRate").GetProperty(property).GetInt32());
+        }
+        Assert.Equal(
+            before.GetProperty("financial").GetProperty("amountHtCents").GetInt32(),
+            after.GetProperty("financial").GetProperty("amountHtCents").GetInt32());
+        Assert.Equal(
+            before.GetProperty("financial").GetProperty("vatCents").GetInt32(),
+            after.GetProperty("financial").GetProperty("vatCents").GetInt32());
+        Assert.Equal(
+            before.GetProperty("financial").GetProperty("amountTtcCents").GetInt32(),
+            after.GetProperty("financial").GetProperty("amountTtcCents").GetInt32());
+        Assert.Equal(
+            before.GetProperty("position").GetProperty("physicalQuantity").GetInt32(),
+            after.GetProperty("position").GetProperty("physicalQuantity").GetInt32());
+        Assert.Equal(
+            before.GetProperty("position").GetProperty("sellableQuantity").GetInt32(),
+            after.GetProperty("position").GetProperty("sellableQuantity").GetInt32());
+
+        using var afterHistoryResponse = await reloadedClient.GetAsync("/api/history?ean13=7351353713578");
+        Assert.Equal(HttpStatusCode.OK, afterHistoryResponse.StatusCode);
+        var afterHistory = await afterHistoryResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var afterSaleHistory = afterHistory.EnumerateArray()
+            .Single(entry => entry.GetProperty("id").GetString() == operationId);
+        var afterHistoryLine = afterSaleHistory.GetProperty("lines")[0];
+        foreach (var property in new[] { "type", "ean13" })
+        {
+            Assert.Equal(
+                beforeSaleHistory.GetProperty(property).GetString(),
+                afterSaleHistory.GetProperty(property).GetString());
+        }
+        foreach (var property in new[] { "timestampUtc", "occurredAt" })
+        {
+            Assert.Equal(
+                beforeSaleHistory.GetProperty(property).GetDateTimeOffset(),
+                afterSaleHistory.GetProperty(property).GetDateTimeOffset());
+        }
+        Assert.Equal(
+            beforeSaleHistory.GetProperty("quantity").GetInt32(),
+            afterSaleHistory.GetProperty("quantity").GetInt32());
+        Assert.Equal(
+            beforeSaleHistory.GetProperty("stockEffect").GetInt32(),
+            afterSaleHistory.GetProperty("stockEffect").GetInt32());
+        Assert.Equal(
+            beforeHistoryLine.GetProperty("lineNumber").GetInt32(),
+            afterHistoryLine.GetProperty("lineNumber").GetInt32());
+        Assert.Equal(
+            beforeHistoryLine.GetProperty("ean13").GetString(),
+            afterHistoryLine.GetProperty("ean13").GetString());
+        Assert.Equal(
+            beforeHistoryLine.GetProperty("quantity").GetInt32(),
+            afterHistoryLine.GetProperty("quantity").GetInt32());
+        Assert.Equal(
+            beforeHistoryLine.GetProperty("stockEffect").GetInt32(),
+            afterHistoryLine.GetProperty("stockEffect").GetInt32());
+    }
+
+    [Fact]
     public async Task Reads_each_sale_snapshot_after_a_later_sale_and_sellability_change()
     {
         using var factory = new HostFactory(Now);

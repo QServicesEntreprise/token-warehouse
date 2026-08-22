@@ -70,6 +70,14 @@ public sealed class WarehouseDbContext(DbContextOptions<WarehouseDbContext> opti
         operation.Property(entity => entity.Justification);
         operation.Property(entity => entity.SaleCommitDataType);
         operation.Property(entity => entity.SaleCommitDataPayload);
+        operation.Property(entity => entity.SaleFinancialContext);
+        operation.Property(entity => entity.SaleFinancialUnitPriceHtCents);
+        operation.Property(entity => entity.SaleFinancialTaxRateCode);
+        operation.Property(entity => entity.SaleFinancialTaxRateNumerator);
+        operation.Property(entity => entity.SaleFinancialTaxRateDenominator);
+        operation.Property(entity => entity.SaleFinancialAmountHtCents);
+        operation.Property(entity => entity.SaleFinancialVatCents);
+        operation.Property(entity => entity.SaleFinancialAmountTtcCents);
         operation.HasIndex(entity => entity.Ean13);
         operation.HasIndex(entity => new { entity.TimestampUtc, entity.Id });
         operation.HasIndex(entity => entity.SourceOperationId).IsUnique();
@@ -96,6 +104,27 @@ public sealed class WarehouseDbContext(DbContextOptions<WarehouseDbContext> opti
             table.HasCheckConstraint(
                 "CK_StockOperations_CounterMovement_Fields",
                 "Type <> 'COUNTER_MOVEMENT' OR (SourceOperationId IS NOT NULL AND length(trim(SourceOperationId)) > 0 AND SourceOperationType IS NOT NULL AND SourceOperationType IN ('SUPPLY', 'INVENTORY', 'SALE') AND Justification IS NOT NULL AND length(trim(Justification)) > 0)");
+            table.HasCheckConstraint(
+                "CK_StockOperations_SaleFinancialSnapshot_Fields",
+                "Type <> 'SALE' OR SaleCommitDataType IS NULL OR SaleCommitDataType <> 'sale.financial.v1' OR (SaleFinancialUnitPriceHtCents IS NOT NULL AND SaleFinancialTaxRateCode IS NOT NULL AND SaleFinancialTaxRateNumerator IS NOT NULL AND SaleFinancialTaxRateDenominator IS NOT NULL AND SaleFinancialAmountHtCents IS NOT NULL AND SaleFinancialVatCents IS NOT NULL AND SaleFinancialAmountTtcCents IS NOT NULL)");
+            table.HasCheckConstraint(
+                "CK_StockOperations_SaleFinancialSnapshot_Context",
+                "SaleFinancialContext IS NULL OR SaleFinancialContext IN ('takeaway', 'onsite')");
+            table.HasCheckConstraint(
+                "CK_StockOperations_SaleFinancialSnapshot_TaxRate",
+                "(SaleFinancialContext = 'takeaway' AND SaleFinancialTaxRateCode = 'takeaway' AND SaleFinancialTaxRateNumerator = 11 AND SaleFinancialTaxRateDenominator = 200) OR (SaleFinancialContext = 'onsite' AND SaleFinancialTaxRateCode = 'onsite' AND SaleFinancialTaxRateNumerator = 1 AND SaleFinancialTaxRateDenominator = 10) OR (SaleFinancialContext IS NULL AND SaleFinancialTaxRateCode = 'nonFood' AND SaleFinancialTaxRateNumerator = 1 AND SaleFinancialTaxRateDenominator = 5) OR (SaleFinancialTaxRateCode IS NULL AND SaleFinancialTaxRateNumerator IS NULL AND SaleFinancialTaxRateDenominator IS NULL)");
+            table.HasCheckConstraint(
+                "CK_StockOperations_SaleFinancialSnapshot_NonNegative",
+                "(SaleFinancialUnitPriceHtCents IS NULL OR SaleFinancialUnitPriceHtCents >= 0) AND (SaleFinancialAmountHtCents IS NULL OR SaleFinancialAmountHtCents >= 0) AND (SaleFinancialVatCents IS NULL OR SaleFinancialVatCents >= 0) AND (SaleFinancialAmountTtcCents IS NULL OR SaleFinancialAmountTtcCents >= 0)");
+            table.HasCheckConstraint(
+                "CK_StockOperations_SaleFinancialSnapshot_AmountHt",
+                "SaleFinancialAmountHtCents IS NULL OR SaleFinancialAmountHtCents = SaleFinancialUnitPriceHtCents * Quantity");
+            table.HasCheckConstraint(
+                "CK_StockOperations_SaleFinancialSnapshot_Vat",
+                "SaleFinancialVatCents IS NULL OR SaleFinancialVatCents = (SaleFinancialAmountHtCents * SaleFinancialTaxRateNumerator * 2 + SaleFinancialTaxRateDenominator) / (SaleFinancialTaxRateDenominator * 2)");
+            table.HasCheckConstraint(
+                "CK_StockOperations_SaleFinancialSnapshot_Total",
+                "SaleFinancialAmountTtcCents IS NULL OR (SaleFinancialAmountHtCents IS NOT NULL AND SaleFinancialVatCents IS NOT NULL AND SaleFinancialAmountTtcCents = SaleFinancialAmountHtCents + SaleFinancialVatCents)");
         });
         operation.HasOne<ArticleEntity>()
             .WithMany()

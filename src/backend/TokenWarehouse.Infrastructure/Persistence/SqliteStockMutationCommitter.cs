@@ -7,8 +7,12 @@ using TokenWarehouse.Domain;
 namespace TokenWarehouse.Infrastructure.Persistence;
 
 public sealed class SqliteStockMutationCommitter(
-    IDbContextFactory<WarehouseDbContext> contextFactory) : IStockMutationCommitter
+    IDbContextFactory<WarehouseDbContext> contextFactory,
+    IEnumerable<ISqliteStockSaleCommitDataAdapter>? commitDataAdapters = null) : IStockMutationCommitter
 {
+    private readonly IReadOnlyList<ISqliteStockSaleCommitDataAdapter> CommitDataAdapters =
+        commitDataAdapters?.ToArray() ?? [];
+
     public async ValueTask<StockMutationCommitResult> CommitAsync(
         InventoryCommitPlan plan,
         CancellationToken cancellationToken = default)
@@ -308,7 +312,8 @@ public sealed class SqliteStockMutationCommitter(
                 return StockMutationCommitResult.Conflict();
             }
 
-            var resultingPhysicalStock = (long)currentPosition.PhysicalQuantity
+            var previousPhysicalStock = currentPosition.PhysicalQuantity;
+            var resultingPhysicalStock = (long)previousPhysicalStock
                 + plan.Operation.Lines[0].StockEffect;
             if (resultingPhysicalStock < 0 || resultingPhysicalStock > int.MaxValue
                 || plan.Position.PhysicalQuantity != resultingPhysicalStock)
@@ -322,7 +327,11 @@ public sealed class SqliteStockMutationCommitter(
             var operationEntity = ToEntity(plan.Operation);
             context.StockOperations.Add(operationEntity);
             context.StockOperationLines.AddRange(
-                plan.Operation.Lines.Select(line => ToEntity(plan.Operation, line)));
+                plan.Operation.Lines.Select(line => ToEntity(
+                    plan.Operation,
+                    line,
+                    previousPhysicalStock,
+                    (int)resultingPhysicalStock)));
             await context.SaveChangesAsync(cancellationToken);
             var committedPosition = new StockPosition(
                 plan.Position.Ean13,
@@ -331,7 +340,7 @@ public sealed class SqliteStockMutationCommitter(
             if (participant is not null)
             {
                 await participant.PrepareAsync(
-                    new SqliteStockSaleTransaction(context, operationEntity),
+                    new SqliteStockSaleTransaction(context, operationEntity, CommitDataAdapters),
                     plan.Operation,
                     StockPositionView.From(currentArticle, committedPosition, plan.WarehouseDate),
                     cancellationToken);
@@ -392,7 +401,9 @@ public sealed class SqliteStockMutationCommitter(
 
     private static StockOperationLineEntity ToEntity(
         StockOperation operation,
-        StockOperationLine line)
+        StockOperationLine line,
+        int? previousPhysicalStock = null,
+        int? resultingPhysicalStock = null)
         => new()
         {
             OperationId = operation.Id,
@@ -405,10 +416,10 @@ public sealed class SqliteStockMutationCommitter(
                     : operation.Type == StockOperationType.Supply
                         ? "supply"
                         : "INVENTORY",
-            PreviousPhysicalStock = line.PreviousPhysicalStock,
+            PreviousPhysicalStock = previousPhysicalStock ?? line.PreviousPhysicalStock,
             CountedQuantity = line.CountedQuantity,
             InventoryDifference = line.InventoryDifference,
-            ResultingPhysicalStock = line.ResultingPhysicalStock,
+            ResultingPhysicalStock = resultingPhysicalStock ?? line.ResultingPhysicalStock,
             Quantity = operation.Type is StockOperationType.Supply or StockOperationType.Sale
                 ? line.Quantity.Value
                 : 0,
@@ -437,7 +448,8 @@ public sealed class SqliteStockMutationCommitter(
 
 internal sealed class SqliteStockSaleTransaction(
     WarehouseDbContext context,
-    StockOperationEntity operation) : IStockSaleTransaction
+    StockOperationEntity operation,
+    IReadOnlyList<ISqliteStockSaleCommitDataAdapter> commitDataAdapters) : IStockSaleTransaction
 {
     public async ValueTask StageAsync(
         StockSaleCommitData data,
@@ -453,6 +465,10 @@ internal sealed class SqliteStockSaleTransaction(
 
         operation.SaleCommitDataType = data.Type;
         operation.SaleCommitDataPayload = data.Payload;
+        foreach (var adapter in commitDataAdapters.Where(adapter => adapter.CanHandle(data.Type)))
+        {
+            adapter.Apply(operation, data);
+        }
         await context.SaveChangesAsync(cancellationToken);
     }
 }

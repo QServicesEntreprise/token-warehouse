@@ -47,6 +47,20 @@ test('framework packages stay at the adapter edges', async () => {
   ]);
 });
 
+test('the generic Stock sale seam does not interpret Ventes pricing data', async () => {
+  const stockSale = await readFile(
+    join(root, 'src/backend/TokenWarehouse.Application/StockSale.cs'),
+    'utf8',
+  );
+  const stockCommitter = await readFile(
+    join(root, 'src/backend/TokenWarehouse.Infrastructure/Persistence/SqliteStockMutationCommitter.cs'),
+    'utf8',
+  );
+
+  assert.doesNotMatch(stockSale, /SaleFinancialSnapshot|SaleContext|SaleFinancialSnapshotSerializer/);
+  assert.doesNotMatch(stockCommitter, /SaleFinancialSnapshot|SaleContext|SaleFinancialSnapshotSerializer/);
+});
+
 test('the scaffold does not add explicitly forbidden abstractions', async () => {
   const walk = async (directory) => {
     const entries = await readdir(directory, { withFileTypes: true });

@@ -95,6 +95,19 @@ public sealed class PricingTests
     }
 
     [Fact]
+    public void Rounds_takeaway_vat_once_after_multiplying_the_total_ht()
+    {
+        var result = PricingPolicy.CalculateSale(
+            CreateFood(9, "takeaway"),
+            new Quantity(2));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(18, result.Snapshot!.AmountHt.Cents);
+        Assert.Equal(1, result.Snapshot.Vat.Cents);
+        Assert.Equal(19, result.Snapshot.AmountTtc.Cents);
+    }
+
+    [Fact]
     public void Calculates_non_food_at_twenty_percent_without_a_context()
     {
         var result = Article.Create(new ArticleDraft
@@ -128,6 +141,27 @@ public sealed class PricingTests
         Assert.Equal(303, snapshot.AmountHt.Cents);
         Assert.Equal(61, snapshot.Vat.Cents);
         Assert.Equal(364, snapshot.AmountTtc.Cents);
+    }
+
+    [Fact]
+    public void Keeps_a_sale_snapshot_unchanged_when_the_article_and_a_copy_change()
+    {
+        var article = CreateFood(101, "takeaway");
+        var snapshot = Assert.IsType<SaleFinancialSnapshot>(
+            PricingPolicy.CalculateSale(article, new Quantity(2)).Snapshot);
+        var copy = snapshot with { };
+
+        article.ChangePriceHt(Money.FromCents(999));
+
+        foreach (var current in new[] { snapshot, copy })
+        {
+            Assert.Equal(SaleContext.Takeaway, current.SaleContext);
+            Assert.Equal(101, current.UnitPriceHt.Cents);
+            Assert.Equal(new TaxRate("takeaway", 11, 200), current.TaxRate);
+            Assert.Equal(202, current.AmountHt.Cents);
+            Assert.Equal(11, current.Vat.Cents);
+            Assert.Equal(213, current.AmountTtc.Cents);
+        }
     }
 
     [Fact]

@@ -140,6 +140,30 @@ namespace TokenWarehouse.Infrastructure.Persistence.Migrations
                     b.Property<string>("SaleCommitDataType")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("SaleFinancialContext")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("SaleFinancialAmountHtCents")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("SaleFinancialAmountTtcCents")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("SaleFinancialTaxRateCode")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("SaleFinancialTaxRateDenominator")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("SaleFinancialTaxRateNumerator")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("SaleFinancialUnitPriceHtCents")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("SaleFinancialVatCents")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("SourceOperationId")
                         .HasColumnType("TEXT");
 
@@ -178,6 +202,20 @@ namespace TokenWarehouse.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("CK_StockOperations_ResultingPhysicalStock_Formula", "Type <> 'INVENTORY' OR ResultingPhysicalStock = CountedQuantity");
 
                             t.HasCheckConstraint("CK_StockOperations_ResultingPhysicalStock_NonNegative", "ResultingPhysicalStock >= 0");
+
+                            t.HasCheckConstraint("CK_StockOperations_SaleFinancialSnapshot_Fields", "Type <> 'SALE' OR SaleCommitDataType IS NULL OR SaleCommitDataType <> 'sale.financial.v1' OR (SaleFinancialUnitPriceHtCents IS NOT NULL AND SaleFinancialTaxRateCode IS NOT NULL AND SaleFinancialTaxRateNumerator IS NOT NULL AND SaleFinancialTaxRateDenominator IS NOT NULL AND SaleFinancialAmountHtCents IS NOT NULL AND SaleFinancialVatCents IS NOT NULL AND SaleFinancialAmountTtcCents IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_StockOperations_SaleFinancialSnapshot_Context", "SaleFinancialContext IS NULL OR SaleFinancialContext IN ('takeaway', 'onsite')");
+
+                            t.HasCheckConstraint("CK_StockOperations_SaleFinancialSnapshot_TaxRate", "(SaleFinancialContext = 'takeaway' AND SaleFinancialTaxRateCode = 'takeaway' AND SaleFinancialTaxRateNumerator = 11 AND SaleFinancialTaxRateDenominator = 200) OR (SaleFinancialContext = 'onsite' AND SaleFinancialTaxRateCode = 'onsite' AND SaleFinancialTaxRateNumerator = 1 AND SaleFinancialTaxRateDenominator = 10) OR (SaleFinancialContext IS NULL AND SaleFinancialTaxRateCode = 'nonFood' AND SaleFinancialTaxRateNumerator = 1 AND SaleFinancialTaxRateDenominator = 5) OR (SaleFinancialTaxRateCode IS NULL AND SaleFinancialTaxRateNumerator IS NULL AND SaleFinancialTaxRateDenominator IS NULL)");
+
+                            t.HasCheckConstraint("CK_StockOperations_SaleFinancialSnapshot_NonNegative", "(SaleFinancialUnitPriceHtCents IS NULL OR SaleFinancialUnitPriceHtCents >= 0) AND (SaleFinancialAmountHtCents IS NULL OR SaleFinancialAmountHtCents >= 0) AND (SaleFinancialVatCents IS NULL OR SaleFinancialVatCents >= 0) AND (SaleFinancialAmountTtcCents IS NULL OR SaleFinancialAmountTtcCents >= 0)");
+
+                            t.HasCheckConstraint("CK_StockOperations_SaleFinancialSnapshot_AmountHt", "SaleFinancialAmountHtCents IS NULL OR SaleFinancialAmountHtCents = SaleFinancialUnitPriceHtCents * Quantity");
+
+                            t.HasCheckConstraint("CK_StockOperations_SaleFinancialSnapshot_Vat", "SaleFinancialVatCents IS NULL OR SaleFinancialVatCents = (SaleFinancialAmountHtCents * SaleFinancialTaxRateNumerator * 2 + SaleFinancialTaxRateDenominator) / (SaleFinancialTaxRateDenominator * 2)");
+
+                            t.HasCheckConstraint("CK_StockOperations_SaleFinancialSnapshot_Total", "SaleFinancialAmountTtcCents IS NULL OR (SaleFinancialAmountHtCents IS NOT NULL AND SaleFinancialVatCents IS NOT NULL AND SaleFinancialAmountTtcCents = SaleFinancialAmountHtCents + SaleFinancialVatCents)");
                         });
                 });
 
