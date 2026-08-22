@@ -368,6 +368,116 @@ test('consults Stock positions, distinguishes blocked quantities and opens detai
   await expect(reloadedStockPanel.locator('#stock-detail')).toContainText('DLC dépassée');
 });
 
+test('consults the current Dashboard with aligned KPIs, alerts and keyboard links', async ({ page }) => {
+  const dashboard = page.locator('#dashboard-panel');
+  const dashboardResponse = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'GET' && url.pathname === '/api/dashboard';
+  });
+
+  await page.goto('/');
+  const firstResponse = await dashboardResponse;
+  expect(firstResponse.status()).toBe(200);
+  const firstView = await firstResponse.json();
+  await expect(dashboard.locator('#dashboard-state')).toContainText('Articles suivis');
+  await expect(dashboard.locator('#dashboard-kpi-physical')).toContainText('49 unités');
+  await expect(dashboard.locator('#dashboard-kpi-sellable')).toContainText('31 unités');
+  await expect(dashboard.locator('#dashboard-kpi-non-sellable')).toContainText('18 unités');
+
+  await expect(dashboard.locator('#dashboard-table').getByRole('row', { name: /DLC de démonstration/ }))
+    .toContainText('0123456789012');
+  await expect(dashboard.locator('#dashboard-table').getByRole('row', { name: /DLC de démonstration/ }))
+    .toContainText('8 unités');
+  await expect(dashboard.locator('#dashboard-table').getByRole('row', { name: /Biscuit historique/ }))
+    .toContainText('Archivé');
+  await expect(dashboard.locator('#dashboard-table').getByRole('row', { name: /Biscuit historique/ }))
+    .toContainText('4 unités');
+  await expect(dashboard.locator('#dashboard-table').getByRole('row', { name: /Article sans position/ }))
+    .toContainText('0 unités');
+
+  await expect(dashboard.locator('#dashboard-alert-out-of-stock')).toContainText('Article sans position');
+  await expect(dashboard.locator('#dashboard-alert-not-sellable')).toContainText('Alimentaire expiré');
+  await expect(dashboard.locator('#dashboard-alert-not-sellable')).toContainText('Biscuit historique');
+  await expect(dashboard.locator('#dashboard-alert-not-sellable')).toContainText('Packaging invendable');
+
+  const alertLink = dashboard.locator('#dashboard-alert-out-of-stock').getByRole('link');
+  await alertLink.focus();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/#dashboard-row-0360002914522$/);
+  await expect(dashboard.locator('#dashboard-row-0360002914522')).toBeVisible();
+
+  const reloadResponse = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'GET' && url.pathname === '/api/dashboard';
+  });
+  await page.reload();
+  const secondView = await (await reloadResponse).json();
+  expect(secondView).toEqual(firstView);
+  await expect(page.locator('#dashboard-panel #dashboard-kpi-physical')).toContainText('49 unités');
+});
+
+test('announces Dashboard loading, empty and error states', async ({ page }) => {
+  const dashboardState = page.locator('#dashboard-state');
+  const dashboardRoute = /\/api\/dashboard$/;
+  let releaseLoading!: () => void;
+  const loading = new Promise<void>((resolve) => {
+    releaseLoading = resolve;
+  });
+  const delayedDashboardRoute = async (route: Route) => {
+    await loading;
+    await route.continue();
+  };
+
+  await page.route(dashboardRoute, delayedDashboardRoute);
+  const navigation = page.goto('/');
+  await expect(dashboardState).toContainText('Chargement du Dashboard');
+  releaseLoading();
+  await navigation;
+  await expect(dashboardState).toContainText('Articles suivis');
+  await page.unroute(dashboardRoute, delayedDashboardRoute);
+
+  let responseState: 'empty' | 'error' | 'ready' = 'empty';
+  const stateRoute = async (route: Route) => {
+    if (responseState === 'empty') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          kpis: { physicalStock: 0, sellableStock: 0, nonSellableStock: 0 },
+          alerts: { outOfStock: [], notSellable: [] },
+          stockByArticle: [],
+        }),
+      });
+      return;
+    }
+
+    if (responseState === 'error') {
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/problem+json',
+        body: JSON.stringify({ title: 'Le Dashboard est indisponible.', code: 'internal_error' }),
+      });
+      return;
+    }
+
+    await route.continue();
+  };
+  await page.route(dashboardRoute, stateRoute);
+
+  await page.reload();
+  await expect(dashboardState).toContainText('Aucun Article');
+
+  responseState = 'error';
+  await page.reload();
+  await expect(dashboardState.locator('[role="alert"]')).toContainText('indisponible');
+  await expect(page.locator('#dashboard-table')).toHaveCount(0);
+
+  responseState = 'ready';
+  await page.getByRole('button', { name: 'Réessayer', exact: true }).click();
+  await expect(dashboardState).toContainText('Articles suivis');
+  await page.unroute(dashboardRoute, stateRoute);
+});
+
 test('records a unit supply and shows the committed stocks after reload', async ({ page }) => {
   const ean13 = '9876543210982';
   const expiredEan13 = '1234567890128';

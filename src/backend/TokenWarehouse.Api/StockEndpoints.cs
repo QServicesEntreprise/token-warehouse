@@ -107,19 +107,8 @@ public sealed class StockPositionResponse
         Status = position.IsActive ? "active" : "archived",
         PhysicalQuantity = position.PhysicalQuantity,
         SellableQuantity = position.SellableQuantity,
-        Availability = position.Availability switch
-        {
-            StockAvailability.Available => "AVAILABLE",
-            StockAvailability.OutOfStock => "OUT_OF_STOCK",
-            _ => "NOT_SELLABLE"
-        },
-        Reason = position.Reason switch
-        {
-            SellabilityReason.Archived => "ARCHIVED",
-            SellabilityReason.DlcExpired => "DLC_EXPIRED",
-            SellabilityReason.UnsellablePackaging => "UNSELLABLE_PACKAGING",
-            _ => null
-        },
+        Availability = AvailabilityCode(position.Availability),
+        Reason = ReasonCode(position.Reason),
         Dlc = position.Type == ArticleType.Food
             ? position.Dlc?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
             : null,
@@ -135,4 +124,21 @@ public sealed class StockPositionResponse
             }
             : null
     };
+
+    internal static string AvailabilityCode(StockAvailability availability)
+        => availability switch
+        {
+            StockAvailability.Available => "AVAILABLE",
+            StockAvailability.OutOfStock => "OUT_OF_STOCK",
+            _ => "NOT_SELLABLE"
+        };
+
+    internal static string? ReasonCode(SellabilityReason? reason)
+        => reason switch
+        {
+            SellabilityReason.Archived => "ARCHIVED",
+            SellabilityReason.DlcExpired => "DLC_EXPIRED",
+            SellabilityReason.UnsellablePackaging => "UNSELLABLE_PACKAGING",
+            _ => null
+        };
 }

@@ -13,9 +13,12 @@ var connectionString = builder.Configuration.GetConnectionString("Warehouse")
 builder.Services.AddSqlitePersistence(connectionString);
 builder.Services.AddScoped<ArticleApplication>();
 builder.Services.AddScoped<StockApplication>();
+builder.Services.AddScoped<DashboardApplication>();
 builder.Services.AddScoped<InventoryApplication>();
 builder.Services.AddScoped<IReadStockUseCase>(services => services.GetRequiredService<StockApplication>());
 builder.Services.AddScoped<IStockPositionReadContract>(services => services.GetRequiredService<StockApplication>());
+builder.Services.AddScoped<IReadCurrentDashboardUseCase>(services =>
+    services.GetRequiredService<DashboardApplication>());
 builder.Services.AddScoped<StockOperationReadApplication>();
 builder.Services.AddScoped<IStockOperationReadContract>(services =>
     services.GetRequiredService<StockOperationReadApplication>());
@@ -74,6 +77,7 @@ app.MapGet("/health", async (RuntimeReadiness readiness, CancellationToken cance
 
 app.MapArticleEndpoints();
 app.MapStockEndpoints();
+app.MapDashboardEndpoints();
 app.MapSupplyEndpoints();
 app.MapInventoryEndpoints();
 app.MapCounterMovementEndpoints();
