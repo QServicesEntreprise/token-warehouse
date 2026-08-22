@@ -1264,6 +1264,7 @@ export class AppComponent implements OnInit {
   }
 
   async searchSaleArticles(): Promise<void> {
+    this.invalidateSaleRestore();
     const requestId = ++this.saleSearchRequestId;
     this.saleSearchState.set('loading');
     this.saleSearchError.set('');
@@ -1298,6 +1299,7 @@ export class AppComponent implements OnInit {
   }
 
   selectSaleArticle(article: SaleArticleResponse): void {
+    this.invalidateSaleRestore();
     this.selectedSaleArticle.set(article);
     this.saleFieldErrors.set({});
     this.saleStatusMessage.set('');
@@ -1319,6 +1321,7 @@ export class AppComponent implements OnInit {
 
   async onSaleSubmit(event: Event): Promise<void> {
     event.preventDefault();
+    this.invalidateSaleRestore();
     const requestId = ++this.saleRequestId;
     const article = this.selectedSaleArticle();
     const rawQuantity = this.saleQuantity().trim();
@@ -1412,6 +1415,10 @@ export class AppComponent implements OnInit {
         this.saleStatusMessage.set(this.problemMessage(error, 'La Vente enregistrée ne peut pas être relue.'));
       }
     }
+  }
+
+  private invalidateSaleRestore(): void {
+    this.saleRestoreRequestId++;
   }
 
   private saleArticleFromReceipt(receipt: SaleResponse): SaleArticleResponse {

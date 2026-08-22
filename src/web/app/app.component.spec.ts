@@ -86,6 +86,83 @@ describe('AppComponent', () => {
     http.verify();
   });
 
+  it('ignores a delayed previous sale restore after a newer sale commits', async () => {
+    sessionStorage.setItem('token-warehouse.last-sale-id', 'old-sale');
+    const fixture = TestBed.configureTestingModule({
+      imports: [AppComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    }).createComponent(AppComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
+    http.expectOne('/api/stock').flush([]);
+    const delayedRestore = http.expectOne('/api/sales/old-sale');
+
+    const response = (id: string, name: string, quantity: number, physicalQuantity: number) => ({
+      operation: {
+        id,
+        type: 'SALE',
+        ean13: '0123456789012',
+        quantity,
+        occurredAt: '2030-01-15T10:00:00+00:00',
+      },
+      financial: {
+        context: null,
+        unitPriceHtCents: 101,
+        taxRate: { code: 'nonFood', ratio: '1/5', numerator: 1, denominator: 5 },
+        amountHtCents: quantity * 101,
+        vatCents: quantity === 2 ? 40 : 20,
+        amountTtcCents: quantity === 2 ? 242 : 121,
+      },
+      position: {
+        ean13: '0123456789012',
+        name,
+        type: 'nonFood',
+        isActive: true,
+        status: 'active',
+        physicalQuantity,
+        sellableQuantity: physicalQuantity,
+        availability: 'AVAILABLE',
+        reason: null,
+        packaging: 'new',
+      },
+    });
+
+    const component = fixture.componentInstance;
+    const article = {
+      ean13: '0123456789012',
+      name: 'Article courant',
+      type: 'nonFood' as const,
+      isActive: true,
+      status: 'active' as const,
+      priceHtCents: 101,
+      physicalQuantity: 8,
+      sellableQuantity: 8,
+      availability: 'AVAILABLE' as const,
+      reason: null,
+      packaging: 'new' as const,
+    };
+    component.saleArticles.set([article]);
+    component.selectSaleArticle(article);
+    component.saleQuantity.set('2');
+
+    const submission = component.onSaleSubmit(new Event('submit'));
+    const saleRequest = http.expectOne('/api/sales');
+    saleRequest.flush(response('new-sale', 'Article courant', 2, 6));
+    await submission;
+
+    delayedRestore.flush(response('old-sale', 'Ancienne Vente', 1, 7));
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(component.saleReceipt()?.operation.id).toBe('new-sale');
+    expect(component.selectedSaleArticle()?.name).toBe('Article courant');
+    expect(component.saleQuantity()).toBe('2');
+    expect(component.saleState()).toBe('success');
+    expect(fixture.nativeElement.querySelector('#sale-result').textContent).toContain('new-sale');
+    http.verify();
+  });
+
   it('keeps the sale draft and exposes a conflict after a server rejection', async () => {
     const fixture = TestBed.configureTestingModule({
       imports: [AppComponent],
