@@ -460,6 +460,149 @@ public sealed class ArticleApiTests
         Assert.Equal("application/problem+json", unknown.Content.Headers.ContentType?.MediaType);
     }
 
+    [Fact]
+    public async Task Dashboard_aligns_kpis_rows_and_alerts_without_creating_missing_positions()
+    {
+        var day = new DateTimeOffset(2030, 1, 15, 10, 0, 0, TimeSpan.Zero);
+        using var factory = new ArticleHostFactory(fixedNow: day);
+        using var client = factory.CreateClient();
+
+        async Task CreateArticle(object payload, string ean13, int? physicalQuantity = null)
+        {
+            using var response = await client.PostAsJsonAsync("/api/articles", payload);
+            Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+            if (physicalQuantity is not null)
+            {
+                await SeedStockPositionAsync(factory.Services, ean13, physicalQuantity.Value);
+            }
+        }
+
+        await CreateArticle(new
+        {
+            ean13 = "0123456789012",
+            type = "food",
+            name = "Alimentaire aux deux modes",
+            priceHtCents = 100,
+            dlc = "2030-01-15",
+            consumptionModes = new[] { "takeaway", "onsite" }
+        }, "0123456789012", 5);
+        await CreateArticle(new
+        {
+            ean13 = "1234567890128",
+            type = "food",
+            name = "Alimentaire à DLC dépassée",
+            priceHtCents = 100,
+            dlc = "2030-01-14",
+            consumptionModes = new[] { "takeaway" }
+        }, "1234567890128", 7);
+        await CreateArticle(new
+        {
+            ean13 = "2345678901234",
+            type = "nonFood",
+            name = "Article archivé",
+            priceHtCents = 100,
+            packaging = "new"
+        }, "2345678901234", 4);
+        using (var archive = await client.PostAsync("/api/articles/2345678901234/archive", null))
+        {
+            Assert.Equal(HttpStatusCode.OK, archive.StatusCode);
+        }
+        await CreateArticle(new
+        {
+            ean13 = "3456789012340",
+            type = "nonFood",
+            name = "Packaging invendable",
+            priceHtCents = 100,
+            packaging = "unsellable"
+        }, "3456789012340", 3);
+        await CreateArticle(new
+        {
+            ean13 = "4567890123456",
+            type = "nonFood",
+            name = "Article actif vendable",
+            priceHtCents = 100,
+            packaging = "new"
+        }, "4567890123456", 8);
+        await CreateArticle(new
+        {
+            ean13 = "5678901234562",
+            type = "food",
+            name = "Article actif sans position",
+            priceHtCents = 100,
+            dlc = "2030-01-15",
+            consumptionModes = new[] { "takeaway" }
+        }, "5678901234562");
+
+        var positionsBeforeReads = await CountStockPositionsAsync(factory.Services);
+        var operationsBeforeReads = await CountStockOperationsAsync(factory.Services);
+        using var first = await client.GetAsync("/api/dashboard");
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal("application/json", first.Content.Headers.ContentType?.MediaType);
+        var firstBody = await first.Content.ReadAsStringAsync();
+        using var dashboard = JsonDocument.Parse(firstBody);
+        var root = dashboard.RootElement;
+
+        Assert.Equal(27, root.GetProperty("kpis").GetProperty("physicalStock").GetInt32());
+        Assert.Equal(13, root.GetProperty("kpis").GetProperty("sellableStock").GetInt32());
+        Assert.Equal(14, root.GetProperty("kpis").GetProperty("nonSellableStock").GetInt32());
+        var rows = root.GetProperty("stockByArticle").EnumerateArray().ToArray();
+        Assert.Equal(6, rows.Length);
+        Assert.Equal(
+            ["0123456789012", "1234567890128", "2345678901234", "3456789012340", "4567890123456", "5678901234562"],
+            rows.Select(row => row.GetProperty("ean13").GetString()!).ToArray());
+        Assert.Equal(
+            ["5678901234562"],
+            root.GetProperty("alerts").GetProperty("outOfStock")
+                .EnumerateArray().Select(row => row.GetProperty("ean13").GetString()!).ToArray());
+        Assert.Equal(
+            ["1234567890128", "2345678901234", "3456789012340"],
+            root.GetProperty("alerts").GetProperty("notSellable")
+                .EnumerateArray().Select(row => row.GetProperty("ean13").GetString()!).ToArray());
+
+        var archived = rows.Single(row => row.GetProperty("ean13").GetString() == "2345678901234");
+        Assert.Equal("Article archivé", archived.GetProperty("name").GetString());
+        Assert.Equal("nonFood", archived.GetProperty("articleType").GetString());
+        Assert.Equal("ARCHIVED", archived.GetProperty("lifecycleStatus").GetString());
+        Assert.Equal(4, archived.GetProperty("physicalStock").GetInt32());
+        Assert.Equal(0, archived.GetProperty("sellableStock").GetInt32());
+        Assert.Equal(4, archived.GetProperty("nonSellableStock").GetInt32());
+        Assert.Equal("ARCHIVED", archived.GetProperty("reason").GetString());
+
+        Assert.Equal(positionsBeforeReads, await CountStockPositionsAsync(factory.Services));
+        Assert.Equal(operationsBeforeReads, await CountStockOperationsAsync(factory.Services));
+        using var second = await client.GetAsync("/api/dashboard");
+        Assert.Equal(firstBody, await second.Content.ReadAsStringAsync());
+        Assert.Equal(positionsBeforeReads, await CountStockPositionsAsync(factory.Services));
+        Assert.Equal(operationsBeforeReads, await CountStockOperationsAsync(factory.Services));
+
+        using var reopened = factory.Reopen();
+        using var reopenedClient = reopened.CreateClient();
+        using var reopenedResponse = await reopenedClient.GetAsync("/api/dashboard");
+        Assert.Equal(HttpStatusCode.OK, reopenedResponse.StatusCode);
+        Assert.Equal(firstBody, await reopenedResponse.Content.ReadAsStringAsync());
+        Assert.Equal(positionsBeforeReads, await CountStockPositionsAsync(reopened.Services));
+        Assert.Equal(operationsBeforeReads, await CountStockOperationsAsync(reopened.Services));
+    }
+
+    [Fact]
+    public async Task Dashboard_returns_empty_collections_and_zero_kpis_for_an_empty_catalogue()
+    {
+        using var factory = new ArticleHostFactory();
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync("/api/dashboard");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = body.RootElement;
+        Assert.Equal(0, root.GetProperty("kpis").GetProperty("physicalStock").GetInt32());
+        Assert.Equal(0, root.GetProperty("kpis").GetProperty("sellableStock").GetInt32());
+        Assert.Equal(0, root.GetProperty("kpis").GetProperty("nonSellableStock").GetInt32());
+        Assert.Empty(root.GetProperty("alerts").GetProperty("outOfStock").EnumerateArray());
+        Assert.Empty(root.GetProperty("alerts").GetProperty("notSellable").EnumerateArray());
+        Assert.Empty(root.GetProperty("stockByArticle").EnumerateArray());
+    }
+
     [Theory]
     [InlineData("123")]
     [InlineData("01234567890X2")]
@@ -1231,6 +1374,12 @@ public sealed class ArticleApiTests
             Assert.DoesNotContain("database internals", body);
             Assert.DoesNotContain("SQLite", body, StringComparison.OrdinalIgnoreCase);
         }
+
+        using var dashboard = await client.GetAsync("/api/dashboard");
+        Assert.Equal(HttpStatusCode.InternalServerError, dashboard.StatusCode);
+        Assert.Equal("application/problem+json", dashboard.Content.Headers.ContentType?.MediaType);
+        using var dashboardBody = JsonDocument.Parse(await dashboard.Content.ReadAsStringAsync());
+        Assert.Equal("dashboard.persistence_failure", dashboardBody.RootElement.GetProperty("code").GetString());
     }
 
     private static async Task<IReadOnlyList<string?>> ReadNames(HttpResponseMessage response)
@@ -1293,20 +1442,47 @@ public sealed class ArticleApiTests
         return await context.StockPositions.CountAsync(position => position.Ean13 == ean13);
     }
 
+    private static async Task<int> CountStockPositionsAsync(IServiceProvider services)
+    {
+        using var scope = services.CreateScope();
+        var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>();
+        await using var context = await contextFactory.CreateDbContextAsync();
+        return await context.StockPositions.CountAsync();
+    }
+
+    private static async Task<int> CountStockOperationsAsync(IServiceProvider services)
+    {
+        using var scope = services.CreateScope();
+        var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>();
+        await using var context = await contextFactory.CreateDbContextAsync();
+        return await context.StockOperations.CountAsync();
+    }
+
     private sealed class ArticleHostFactory : WebApplicationFactory<Program>
     {
-        private readonly string databasePath = Path.Combine(Path.GetTempPath(), $"token-warehouse-article-{Guid.NewGuid():N}.db");
+        private readonly string databasePath;
+        private readonly bool ownsDatabase;
         private readonly CultureInfo? requestCulture;
         private readonly MutableClock? fixedClock;
 
-        public ArticleHostFactory(CultureInfo? requestCulture = null, DateTimeOffset? fixedNow = null)
+        public ArticleHostFactory(
+            CultureInfo? requestCulture = null,
+            DateTimeOffset? fixedNow = null,
+            string? databasePath = null,
+            bool ownsDatabase = true)
         {
+            this.databasePath = databasePath
+                ?? Path.Combine(Path.GetTempPath(), $"token-warehouse-article-{Guid.NewGuid():N}.db");
+            this.ownsDatabase = ownsDatabase;
             this.requestCulture = requestCulture;
             fixedClock = fixedNow is { } now ? new MutableClock(now) : null;
         }
 
         public void SetNow(DateTimeOffset now)
             => (fixedClock ?? throw new InvalidOperationException("A fixed clock is required.")).Now = now;
+
+        public ArticleHostFactory Reopen()
+            => new(requestCulture, fixedClock?.Now, databasePath, false);
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -1333,9 +1509,12 @@ public sealed class ArticleApiTests
             base.Dispose(disposing);
             if (disposing)
             {
-                File.Delete(databasePath);
-                File.Delete($"{databasePath}-shm");
-                File.Delete($"{databasePath}-wal");
+                if (ownsDatabase)
+                {
+                    File.Delete(databasePath);
+                    File.Delete($"{databasePath}-shm");
+                    File.Delete($"{databasePath}-wal");
+                }
             }
         }
     }
