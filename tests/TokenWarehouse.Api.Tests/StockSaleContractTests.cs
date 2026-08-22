@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Hosting;
@@ -19,7 +20,7 @@ public sealed class StockSaleContractTests
         new(2030, 1, 15, 10, 0, 0, TimeSpan.Zero);
 
     [Fact]
-    public async Task Commits_a_sale_atomically_and_reloads_it_from_sqlite_without_a_sale_endpoint()
+    public async Task Commits_a_sale_atomically_and_reloads_it_from_sqlite()
     {
         using var factory = new HostFactory(Now);
         using var client = factory.CreateClient();
@@ -91,10 +92,248 @@ public sealed class StockSaleContractTests
             repeatedOperations.Operations.Select(operation => operation.Id));
         Assert.Equal(beforeReads, afterReads);
 
-        using var saleEndpoint = await client.PostAsJsonAsync(
+    }
+
+    [Fact]
+    public async Task Creates_a_sale_with_a_server_financial_snapshot_and_reads_it_back()
+    {
+        using var factory = new HostFactory(Now);
+        using var client = factory.CreateClient();
+        await factory.SeedArticleAsync(
+            "7351353713578",
+            "Batterie industrielle",
+            type: "nonFood",
+            packaging: "new",
+            physicalQuantity: 8,
+            priceHtCents: 101);
+
+        using var response = await client.PostAsJsonAsync(
             "/api/sales",
-            new { ean13 = "0123456789012", quantity = 1 });
-        Assert.Equal(HttpStatusCode.NotFound, saleEndpoint.StatusCode);
+            new { ean13 = "7351353713578", quantity = 3 });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var operationId = body.GetProperty("operation").GetProperty("id").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(operationId));
+        Assert.Equal("SALE", body.GetProperty("operation").GetProperty("type").GetString());
+        Assert.Equal("7351353713578", body.GetProperty("operation").GetProperty("ean13").GetString());
+        Assert.Equal(3, body.GetProperty("operation").GetProperty("quantity").GetInt32());
+        Assert.Equal(101, body.GetProperty("financial").GetProperty("unitPriceHtCents").GetInt32());
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("financial").GetProperty("context").ValueKind);
+        Assert.Equal("nonFood", body.GetProperty("financial").GetProperty("taxRate").GetProperty("code").GetString());
+        Assert.Equal(303, body.GetProperty("financial").GetProperty("amountHtCents").GetInt32());
+        Assert.Equal(61, body.GetProperty("financial").GetProperty("vatCents").GetInt32());
+        Assert.Equal(364, body.GetProperty("financial").GetProperty("amountTtcCents").GetInt32());
+        Assert.Equal(5, body.GetProperty("position").GetProperty("physicalQuantity").GetInt32());
+        Assert.Equal(5, body.GetProperty("position").GetProperty("sellableQuantity").GetInt32());
+
+        using var priceUpdate = await client.PatchAsJsonAsync(
+            "/api/articles/7351353713578",
+            new { priceHtCents = 999 });
+        Assert.Equal(HttpStatusCode.OK, priceUpdate.StatusCode);
+
+        using var readBack = await client.GetAsync($"/api/sales/{operationId}");
+        Assert.Equal(HttpStatusCode.OK, readBack.StatusCode);
+        var readBody = await readBack.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(101, readBody.GetProperty("financial").GetProperty("unitPriceHtCents").GetInt32());
+        Assert.Equal(303, readBody.GetProperty("financial").GetProperty("amountHtCents").GetInt32());
+        Assert.Equal(5, readBody.GetProperty("position").GetProperty("physicalQuantity").GetInt32());
+        Assert.Equal(operationId, readBody.GetProperty("operation").GetProperty("id").GetString());
+        Assert.Equal(
+            1,
+            await factory.ReadFreshAsync(context => context.StockOperations.CountAsync(operation => operation.Type == "SALE")));
+    }
+
+    [Fact]
+    public async Task Reads_each_sale_snapshot_after_a_later_sale_and_sellability_change()
+    {
+        using var factory = new HostFactory(Now);
+        using var client = factory.CreateClient();
+        await factory.SeedArticleAsync(
+            "7351353713578",
+            "Batterie industrielle",
+            type: "nonFood",
+            packaging: "new",
+            physicalQuantity: 8,
+            priceHtCents: 101);
+
+        using var firstResponse = await client.PostAsJsonAsync(
+            "/api/sales",
+            new { ean13 = "7351353713578", quantity = 3 });
+        var firstBody = await firstResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var firstOperationId = firstBody.GetProperty("operation").GetProperty("id").GetString();
+
+        using var secondResponse = await client.PostAsJsonAsync(
+            "/api/sales",
+            new { ean13 = "7351353713578", quantity = 2 });
+        Assert.Equal(HttpStatusCode.Created, secondResponse.StatusCode);
+
+        using var archive = await client.PostAsync("/api/articles/7351353713578/archive", null);
+        Assert.Equal(HttpStatusCode.OK, archive.StatusCode);
+
+        using var firstRead = await client.GetAsync($"/api/sales/{firstOperationId}");
+        Assert.Equal(HttpStatusCode.OK, firstRead.StatusCode);
+        var firstReadBody = await firstRead.Content.ReadFromJsonAsync<JsonElement>();
+        var firstPosition = firstReadBody.GetProperty("position");
+        Assert.Equal(5, firstPosition.GetProperty("physicalQuantity").GetInt32());
+        Assert.Equal(5, firstPosition.GetProperty("sellableQuantity").GetInt32());
+        Assert.True(firstPosition.GetProperty("isActive").GetBoolean());
+        Assert.Equal("AVAILABLE", firstPosition.GetProperty("availability").GetString());
+
+        var secondBody = await secondResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var secondOperationId = secondBody.GetProperty("operation").GetProperty("id").GetString();
+        using var secondRead = await client.GetAsync($"/api/sales/{secondOperationId}");
+        Assert.Equal(HttpStatusCode.OK, secondRead.StatusCode);
+        var secondReadBody = await secondRead.Content.ReadFromJsonAsync<JsonElement>();
+        var secondPosition = secondReadBody.GetProperty("position");
+        Assert.Equal(3, secondPosition.GetProperty("physicalQuantity").GetInt32());
+        Assert.Equal(3, secondPosition.GetProperty("sellableQuantity").GetInt32());
+        Assert.True(secondPosition.GetProperty("isActive").GetBoolean());
+        Assert.Equal("AVAILABLE", secondPosition.GetProperty("availability").GetString());
+    }
+
+    [Fact]
+    public async Task Rejects_a_sale_when_the_catalogue_price_version_changes_after_the_quote()
+    {
+        var quoteGate = new SaleQuoteGate();
+        using var factory = new HostFactory(Now, quoteGate);
+        using var client = factory.CreateClient();
+        await factory.SeedArticleAsync(
+            "7351353713578",
+            "Batterie industrielle",
+            type: "nonFood",
+            packaging: "new",
+            physicalQuantity: 8,
+            priceHtCents: 101);
+
+        var saleTask = client.PostAsJsonAsync(
+            "/api/sales",
+            new { ean13 = "7351353713578", quantity = 1 });
+        var quotedArticle = await quoteGate.Quoted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(0, quotedArticle.Version);
+
+        using var priceUpdate = await client.PatchAsJsonAsync(
+            "/api/articles/7351353713578",
+            new { priceHtCents = 202 });
+        Assert.Equal(HttpStatusCode.OK, priceUpdate.StatusCode);
+        quoteGate.Release.TrySetResult();
+
+        using var response = await saleTask;
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("POSITION_CONFLICT", problem.GetProperty("code").GetString());
+
+        var state = await factory.ReadFreshAsync(async context => new
+        {
+            Position = await context.StockPositions.SingleAsync(),
+            Sales = await context.StockOperations.CountAsync(operation => operation.Type == "SALE")
+        });
+        Assert.Equal(8, state.Position.PhysicalQuantity);
+        Assert.Equal(0, state.Sales);
+    }
+
+    [Fact]
+    public async Task Maps_financial_overflow_to_invalid_input_without_writing()
+    {
+        using var factory = new HostFactory(Now);
+        using var client = factory.CreateClient();
+        await factory.SeedArticleAsync(
+            "7351353713578",
+            "Batterie hors capacité",
+            type: "nonFood",
+            packaging: "new",
+            physicalQuantity: 8,
+            priceHtCents: int.MaxValue);
+
+        using var response = await client.PostAsJsonAsync(
+            "/api/sales",
+            new { ean13 = "7351353713578", quantity = 1 });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("INVALID_INPUT", problem.GetProperty("code").GetString());
+        Assert.Contains("quantity", problem.GetProperty("errors").EnumerateObject()
+            .Select(error => error.Name));
+
+        var state = await factory.ReadFreshAsync(async context => new
+        {
+            Position = await context.StockPositions.SingleAsync(
+                position => position.Ean13 == "7351353713578"),
+            Sales = await context.StockOperations.CountAsync(operation => operation.Type == "SALE")
+        });
+        Assert.Equal(8, state.Position.PhysicalQuantity);
+        Assert.Equal(0, state.Sales);
+    }
+
+    [Fact]
+    public async Task Searches_articles_with_price_and_both_stock_quantities()
+    {
+        using var factory = new HostFactory(Now);
+        using var client = factory.CreateClient();
+        await factory.SeedArticleAsync(
+            "7351353713578",
+            "Batterie industrielle",
+            type: "nonFood",
+            packaging: "new",
+            physicalQuantity: 8,
+            priceHtCents: 101);
+
+        using var response = await client.GetAsync("/api/sales/articles?search=Batterie");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var articles = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var article = Assert.Single(articles.EnumerateArray().ToArray());
+        Assert.Equal("7351353713578", article.GetProperty("ean13").GetString());
+        Assert.Equal("nonFood", article.GetProperty("type").GetString());
+        Assert.Equal(101, article.GetProperty("priceHtCents").GetInt32());
+        Assert.Equal(8, article.GetProperty("physicalQuantity").GetInt32());
+        Assert.Equal(8, article.GetProperty("sellableQuantity").GetInt32());
+
+        using var eanResponse = await client.GetAsync("/api/sales/articles?search=7351353713578");
+        Assert.Equal(HttpStatusCode.OK, eanResponse.StatusCode);
+        var eanArticles = await eanResponse.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("7351353713578", Assert.Single(eanArticles.EnumerateArray().ToArray())
+            .GetProperty("ean13").GetString());
+    }
+
+    [Fact]
+    public async Task Rejects_invalid_sale_input_and_context_without_writes()
+    {
+        using var factory = new HostFactory(Now);
+        using var client = factory.CreateClient();
+        await factory.SeedArticleAsync(
+            "7351353713578",
+            "Batterie industrielle",
+            type: "nonFood",
+            packaging: "new",
+            physicalQuantity: 8,
+            priceHtCents: 101);
+
+        using var invalid = await client.PostAsJsonAsync(
+            "/api/sales",
+            new { ean13 = "7351353713578", quantity = 0, amountHtCents = 303 });
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        Assert.Equal("application/problem+json", invalid.Content.Headers.ContentType?.MediaType);
+        var invalidBody = await invalid.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("INVALID_INPUT", invalidBody.GetProperty("code").GetString());
+        Assert.True(invalidBody.GetProperty("errors").GetProperty("quantity").GetArrayLength() > 0);
+        Assert.True(invalidBody.GetProperty("errors").GetProperty("amountHtCents").GetArrayLength() > 0);
+
+        using var context = await client.PostAsJsonAsync(
+            "/api/sales",
+            new { ean13 = "7351353713578", quantity = 1, context = "takeaway" });
+        Assert.Equal(HttpStatusCode.Conflict, context.StatusCode);
+        var contextBody = await context.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("CONTEXT_UNSUPPORTED", contextBody.GetProperty("code").GetString());
+        Assert.Equal(
+            0,
+            await factory.ReadFreshAsync(db => db.StockOperations.CountAsync(operation => operation.Type == "SALE")));
+        Assert.Equal(
+            8,
+            await factory.ReadFreshAsync(db => db.StockPositions.Select(position => position.PhysicalQuantity).SingleAsync()));
     }
 
     [Fact]
@@ -276,7 +515,44 @@ public sealed class StockSaleContractTests
         return ean13;
     }
 
-    private sealed class HostFactory(DateTimeOffset now) : WebApplicationFactory<Program>
+    private sealed class SaleQuoteGate
+    {
+        public TaskCompletionSource<ArticleSaleSnapshot> Quoted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Release { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    private sealed class BlockingArticleSaleReader(
+        IArticleStore store,
+        SaleQuoteGate gate) : IArticleSaleReader
+    {
+        public async ValueTask<ArticleSaleSnapshot?> FindByEanAsync(
+            Ean13 ean13,
+            CancellationToken cancellationToken = default)
+        {
+            var snapshot = await new ArticleSaleReader(store)
+                .FindByEanAsync(ean13, cancellationToken);
+            if (snapshot is null)
+            {
+                return null;
+            }
+
+            gate.Quoted.TrySetResult(snapshot);
+            await gate.Release.Task.WaitAsync(cancellationToken);
+            return snapshot;
+        }
+
+        public ValueTask<IReadOnlyList<ArticleSaleSnapshot>> SearchAsync(
+            string? search,
+            CancellationToken cancellationToken = default)
+            => new ArticleSaleReader(store).SearchAsync(search, cancellationToken);
+    }
+
+    private sealed class HostFactory(
+        DateTimeOffset now,
+        SaleQuoteGate? saleQuoteGate = null) : WebApplicationFactory<Program>
     {
         private readonly string databasePath = Path.Combine(
             Path.GetTempPath(),
@@ -290,6 +566,14 @@ public sealed class StockSaleContractTests
             {
                 services.RemoveAll<IClock>();
                 services.AddSingleton<IClock>(new FixedClock(now));
+                if (saleQuoteGate is not null)
+                {
+                    services.RemoveAll<IArticleSaleReader>();
+                    services.AddScoped<IArticleSaleReader>(provider =>
+                        new BlockingArticleSaleReader(
+                            provider.GetRequiredService<IArticleStore>(),
+                            saleQuoteGate));
+                }
             });
         }
 
@@ -309,7 +593,8 @@ public sealed class StockSaleContractTests
             string? dlc = null,
             string? packaging = null,
             int physicalQuantity = 0,
-            int positionVersion = 0)
+            int positionVersion = 0,
+            int priceHtCents = 1000)
         {
             using var scope = Services.CreateScope();
             var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>();
@@ -319,8 +604,8 @@ public sealed class StockSaleContractTests
                 Ean13 = ean13,
                 Type = type,
                 Name = name,
-                NameSearchKey = name.ToLowerInvariant(),
-                PriceHtCents = 1000,
+                NameSearchKey = name.ToUpperInvariant(),
+                PriceHtCents = priceHtCents,
                 IsActive = isActive,
                 Version = 0,
                 Dlc = dlc,
@@ -398,6 +683,7 @@ public sealed class StockSaleContractTests
         public async ValueTask PrepareAsync(
             IStockSaleTransaction transaction,
             StockOperation operation,
+            StockPositionView resultingPosition,
             CancellationToken cancellationToken = default)
         {
             OperationId = operation.Id;

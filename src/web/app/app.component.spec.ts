@@ -10,6 +10,316 @@ import { ArticleResponse } from './article-api.service';
 describe('AppComponent', () => {
   afterEach(() => sessionStorage.clear());
 
+  it('searches Articles on the server and renders only the committed sale result', async () => {
+    const fixture = TestBed.configureTestingModule({
+      imports: [AppComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    }).createComponent(AppComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
+    http.expectOne('/api/stock').flush([]);
+    await fixture.whenStable();
+
+    const component = fixture.componentInstance;
+    component.saleSearch.set('Batterie');
+    const search = component.searchSaleArticles();
+    const searchRequest = http.expectOne(
+      (request) => request.method === 'GET'
+        && request.url === '/api/sales/articles'
+        && request.params.get('search') === 'Batterie',
+    );
+    searchRequest.flush([{
+      ean13: '0123456789012',
+      name: 'Batterie industrielle',
+      type: 'nonFood',
+      isActive: true,
+      status: 'active',
+      priceHtCents: 101,
+      physicalQuantity: 8,
+      sellableQuantity: 8,
+      availability: 'AVAILABLE',
+      reason: null,
+      packaging: 'new',
+    }]);
+    await search;
+
+    component.selectSaleArticle(component.saleArticles()[0]);
+    component.saleQuantity.set('3');
+    const submission = component.onSaleSubmit(new Event('submit'));
+    const saleRequest = http.expectOne('/api/sales');
+    expect(saleRequest.request.body).toEqual({ ean13: '0123456789012', quantity: 3 });
+    expect(component.saleReceipt()).toBeNull();
+    saleRequest.flush({
+      operation: {
+        id: 'sale-1',
+        type: 'SALE',
+        ean13: '0123456789012',
+        quantity: 3,
+        occurredAt: '2030-01-15T10:00:00+00:00',
+      },
+      financial: {
+        context: null,
+        unitPriceHtCents: 101,
+        taxRate: { code: 'nonFood', ratio: '1/5', numerator: 1, denominator: 5 },
+        amountHtCents: 303,
+        vatCents: 61,
+        amountTtcCents: 364,
+      },
+      position: {
+        ean13: '0123456789012',
+        name: 'Batterie industrielle',
+        type: 'nonFood',
+        isActive: true,
+        status: 'active',
+        physicalQuantity: 5,
+        sellableQuantity: 5,
+        availability: 'AVAILABLE',
+        reason: null,
+        packaging: 'new',
+      },
+    });
+    await submission;
+    fixture.detectChanges();
+
+    expect(component.saleState()).toBe('success');
+    expect(fixture.nativeElement.querySelector('#sale-result').textContent).toContain('364');
+    expect(component.stockPositions()[0].physicalQuantity).toBe(5);
+    flushUnusedDashboardRequest(http);
+    http.verify();
+  });
+
+  it('ignores a delayed previous sale restore after a newer sale commits', async () => {
+    sessionStorage.setItem('token-warehouse.last-sale-id', 'old-sale');
+    const fixture = TestBed.configureTestingModule({
+      imports: [AppComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    }).createComponent(AppComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
+    http.expectOne('/api/stock').flush([]);
+    const delayedRestore = http.expectOne('/api/sales/old-sale');
+
+    const makeSaleResponse = (id: string, name: string, quantity: number, physicalQuantity: number) => ({
+      operation: {
+        id,
+        type: 'SALE',
+        ean13: '0123456789012',
+        quantity,
+        occurredAt: '2030-01-15T10:00:00+00:00',
+      },
+      financial: {
+        context: null,
+        unitPriceHtCents: 101,
+        taxRate: { code: 'nonFood', ratio: '1/5', numerator: 1, denominator: 5 },
+        amountHtCents: quantity === 2 ? 202 : 101,
+        vatCents: quantity === 2 ? 40 : 20,
+        amountTtcCents: quantity === 2 ? 242 : 121,
+      },
+      position: {
+        ean13: '0123456789012',
+        name,
+        type: 'nonFood',
+        isActive: true,
+        status: 'active',
+        physicalQuantity,
+        sellableQuantity: physicalQuantity,
+        availability: 'AVAILABLE',
+        reason: null,
+        packaging: 'new',
+      },
+    });
+
+    const component = fixture.componentInstance;
+    const article = {
+      ean13: '0123456789012',
+      name: 'Article courant',
+      type: 'nonFood' as const,
+      isActive: true,
+      status: 'active' as const,
+      priceHtCents: 101,
+      physicalQuantity: 8,
+      sellableQuantity: 8,
+      availability: 'AVAILABLE' as const,
+      reason: null,
+      packaging: 'new' as const,
+    };
+    component.saleArticles.set([article]);
+    component.selectSaleArticle(article);
+    component.saleQuantity.set('2');
+
+    const submission = component.onSaleSubmit(new Event('submit'));
+    const saleRequest = http.expectOne('/api/sales');
+    saleRequest.flush(makeSaleResponse('new-sale', 'Article courant', 2, 6));
+    await submission;
+
+    delayedRestore.flush(makeSaleResponse('old-sale', 'Ancienne Vente', 1, 7));
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(component.saleReceipt()?.operation.id).toBe('new-sale');
+    expect(component.selectedSaleArticle()?.name).toBe('Article courant');
+    expect(component.saleQuantity()).toBe('2');
+    expect(component.saleState()).toBe('success');
+    expect(component.stockPositions()[0].physicalQuantity).toBe(6);
+    expect(component.stockPositions()[0].sellableQuantity).toBe(6);
+    expect(fixture.nativeElement.querySelector('#sale-result').textContent).toContain('new-sale');
+    flushUnusedDashboardRequest(http);
+    http.verify();
+  });
+
+  it('ignores an in-flight sale after a newer Article selection', async () => {
+    const fixture = TestBed.configureTestingModule({
+      imports: [AppComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    }).createComponent(AppComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
+    http.expectOne('/api/stock').flush([
+      {
+        ean13: '0123456789012',
+        name: 'Article A',
+        type: 'nonFood',
+        isActive: true,
+        status: 'active',
+        physicalQuantity: 8,
+        sellableQuantity: 8,
+        availability: 'AVAILABLE',
+        reason: null,
+        packaging: 'new',
+      },
+      {
+        ean13: '7351353713578',
+        name: 'Article B',
+        type: 'nonFood',
+        isActive: true,
+        status: 'active',
+        physicalQuantity: 4,
+        sellableQuantity: 4,
+        availability: 'AVAILABLE',
+        reason: null,
+        packaging: 'new',
+      },
+    ]);
+    await fixture.whenStable();
+
+    const component = fixture.componentInstance;
+    const articleA = {
+      ean13: '0123456789012',
+      name: 'Article A',
+      type: 'nonFood' as const,
+      isActive: true,
+      status: 'active' as const,
+      priceHtCents: 101,
+      physicalQuantity: 8,
+      sellableQuantity: 8,
+      availability: 'AVAILABLE' as const,
+      reason: null,
+      packaging: 'new' as const,
+    };
+    const articleB = {
+      ...articleA,
+      ean13: '7351353713578',
+      name: 'Article B',
+      physicalQuantity: 4,
+      sellableQuantity: 4,
+    };
+    component.saleArticles.set([articleA, articleB]);
+    component.selectSaleArticle(articleA);
+    component.saleQuantity.set('2');
+
+    const submission = component.onSaleSubmit(new Event('submit'));
+    const saleRequest = http.expectOne('/api/sales');
+    component.selectSaleArticle(articleB);
+    component.saleQuantity.set('1');
+    saleRequest.flush({
+      operation: {
+        id: 'sale-a',
+        type: 'SALE',
+        ean13: articleA.ean13,
+        quantity: 2,
+        occurredAt: '2030-01-15T10:00:00+00:00',
+      },
+      financial: {
+        context: null,
+        unitPriceHtCents: 101,
+        taxRate: { code: 'nonFood', ratio: '1/5', numerator: 1, denominator: 5 },
+        amountHtCents: 202,
+        vatCents: 40,
+        amountTtcCents: 242,
+      },
+      position: {
+        ...articleA,
+        physicalQuantity: 6,
+        sellableQuantity: 6,
+      },
+    });
+    await submission;
+    fixture.detectChanges();
+
+    expect(component.saleReceipt()).toBeNull();
+    expect(component.selectedSaleArticle()?.ean13).toBe(articleB.ean13);
+    expect(component.selectedSaleArticle()?.name).toBe('Article B');
+    expect(component.saleState()).toBe('ready');
+    expect(component.saleSubmitting()).toBe(false);
+    expect(component.stockPositions().find((position) => position.ean13 === articleA.ean13)?.physicalQuantity).toBe(8);
+    expect(component.stockPositions().find((position) => position.ean13 === articleB.ean13)?.physicalQuantity).toBe(4);
+    flushUnusedDashboardRequest(http);
+    http.verify();
+  });
+
+  it('keeps the sale draft and exposes a conflict after a server rejection', async () => {
+    const fixture = TestBed.configureTestingModule({
+      imports: [AppComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    }).createComponent(AppComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
+    http.expectOne('/api/stock').flush([]);
+    await fixture.whenStable();
+
+    const component = fixture.componentInstance;
+    component.saleArticles.set([{
+      ean13: '0123456789012',
+      name: 'Batterie industrielle',
+      type: 'nonFood',
+      isActive: true,
+      status: 'active',
+      priceHtCents: 101,
+      physicalQuantity: 8,
+      sellableQuantity: 8,
+      availability: 'AVAILABLE',
+      reason: null,
+      packaging: 'new',
+    }]);
+    component.selectSaleArticle(component.saleArticles()[0]);
+    component.saleQuantity.set('9');
+    const submission = component.onSaleSubmit(new Event('submit'));
+    const saleRequest = http.expectOne('/api/sales');
+    saleRequest.flush(
+      {
+        code: 'OUT_OF_STOCK',
+        title: 'Le Stock vendable est insuffisant.',
+        errors: { quantity: ['La quantité demandée dépasse le Stock vendable courant.'] },
+      },
+      { status: 409, statusText: 'Conflict' },
+    );
+    await submission;
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    fixture.detectChanges();
+
+    expect(component.saleQuantity()).toBe('9');
+    expect(component.saleState()).toBe('conflict');
+    expect(component.saleReceipt()).toBeNull();
+    expect(fixture.nativeElement.querySelector('#sale-quantity').value).toBe('9');
+    expect(fixture.nativeElement.querySelector('#sale-quantity')).toBe(document.activeElement);
+    flushUnusedDashboardRequest(http);
+    http.verify();
+  });
+
   it('submits an inventory and renders the server reconciliation receipt', async () => {
     const fixture = TestBed.configureTestingModule({
       imports: [AppComponent],

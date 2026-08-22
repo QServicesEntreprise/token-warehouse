@@ -93,6 +93,32 @@ public sealed class PricingTests
     }
 
     [Fact]
+    public void Calculates_sale_vat_on_the_total_ht_for_a_non_food_article()
+    {
+        var result = PricingPolicy.CalculateSale(CreateNonFood(101), new Quantity(3));
+
+        Assert.True(result.IsSuccess);
+        var snapshot = Assert.IsType<SaleFinancialSnapshot>(result.Snapshot);
+        Assert.Null(snapshot.SaleContext);
+        Assert.Equal(101, snapshot.UnitPriceHt.Cents);
+        Assert.Equal(new TaxRate("nonFood", 1, 5), snapshot.TaxRate);
+        Assert.Equal(303, snapshot.AmountHt.Cents);
+        Assert.Equal(61, snapshot.Vat.Cents);
+        Assert.Equal(364, snapshot.AmountTtc.Cents);
+    }
+
+    [Fact]
+    public void Converts_quote_overflow_into_a_pricing_validation_error()
+    {
+        var result = PricingPolicy.CalculateSale(CreateNonFood(int.MaxValue), new Quantity(1));
+
+        Assert.False(result.IsSuccess);
+        var error = Assert.Single(result.Errors);
+        Assert.Equal("pricing.amount.overflow", error.Code);
+        Assert.Equal("quantity", error.Field);
+    }
+
+    [Fact]
     public void Rejects_a_context_for_non_food_without_producing_a_quote()
     {
         var result = PricingPolicy.Resolve(CreateNonFood(1000), SaleContext.Takeaway);

@@ -314,4 +314,3 @@ namespace TokenWarehouse.Infrastructure.Persistence.Migrations
         }
     }
 }
-

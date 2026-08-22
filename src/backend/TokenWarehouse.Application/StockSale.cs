@@ -7,6 +7,8 @@ public sealed record StockSaleCommand
     public string? Ean13 { get; init; }
 
     public int? Quantity { get; init; }
+
+    internal int? ExpectedArticleVersion { get; init; }
 }
 
 public sealed record StockSaleCommitPlan(
@@ -14,7 +16,8 @@ public sealed record StockSaleCommitPlan(
     StockPosition? CurrentPosition,
     StockPosition Position,
     StockOperation Operation,
-    DateOnly WarehouseDate);
+    DateOnly WarehouseDate,
+    int? ExpectedArticleVersion = null);
 
 public sealed record StockSaleReceipt(
     StockOperation Operation,
@@ -69,6 +72,7 @@ public interface IStockSaleCommitParticipant
     ValueTask PrepareAsync(
         IStockSaleTransaction transaction,
         StockOperation operation,
+        StockPositionView resultingPosition,
         CancellationToken cancellationToken = default);
 }
 
@@ -169,6 +173,16 @@ public sealed class StockSaleApplication(
                     ean13.Value);
             }
 
+            if (command.ExpectedArticleVersion is { } expectedArticleVersion
+                && article.Version != expectedArticleVersion)
+            {
+                return FailureResult(
+                    StockSaleStatus.Conflict,
+                    "POSITION_CONFLICT",
+                    "L’Article a changé pendant la Vente.",
+                    "ean13");
+            }
+
             var currentPosition = await positionReader.FindByEanAsync(ean13, cancellationToken);
             var occurredAt = clock.UtcNow;
             var warehouseDate = clock.WarehouseDate;
@@ -191,7 +205,8 @@ public sealed class StockSaleApplication(
                 currentPosition,
                 nextPosition,
                 operation,
-                warehouseDate);
+                warehouseDate,
+                command.ExpectedArticleVersion ?? article.Version);
             var committed = participant is null
                 ? await committer.CommitAsync(commitPlan, cancellationToken)
                 : await committer.CommitAsync(commitPlan, participant, cancellationToken);

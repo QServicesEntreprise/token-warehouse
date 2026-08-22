@@ -25,6 +25,7 @@ public static class SqlitePersistenceRegistration
         services.AddScoped<IStockMutationCommitter>(services =>
             services.GetRequiredService<SqliteStockMutationCommitter>());
         services.AddScoped<IStockOperationReader, SqliteStockOperationReader>();
+        services.AddScoped<ISaleReader, SqliteSaleReader>();
         services.AddScoped<SqliteHistoryReader>();
         services.AddScoped<IHistoryReader>(services => services.GetRequiredService<SqliteHistoryReader>());
         services.AddHostedService<SqliteMigrationHostedService>();

@@ -34,6 +34,10 @@ builder.Services.AddScoped<IStockOperationReadContract>(services =>
 builder.Services.AddScoped<StockSaleApplication>();
 builder.Services.AddScoped<IStockSaleContract>(services =>
     services.GetRequiredService<StockSaleApplication>());
+builder.Services.AddScoped<IArticleSaleReader, ArticleSaleReader>();
+builder.Services.AddScoped<SaleApplication>();
+builder.Services.AddScoped<ISaleContract>(services =>
+    services.GetRequiredService<SaleApplication>());
 builder.Services.AddScoped<SupplyApplication>();
 builder.Services.AddScoped<IRecordSupplyUseCase>(services => services.GetRequiredService<SupplyApplication>());
 builder.Services.AddScoped<IRecordBulkSupplyUseCase>(services => services.GetRequiredService<SupplyApplication>());
@@ -93,6 +97,7 @@ app.MapSupplyEndpoints();
 app.MapInventoryEndpoints();
 app.MapCounterMovementEndpoints();
 app.MapHistoryEndpoints();
+app.MapSaleEndpoints();
 
 app.Run();
 

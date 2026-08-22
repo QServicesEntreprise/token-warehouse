@@ -872,7 +872,7 @@ test('recovers a failed catalogue request and opens detail with the keyboard', a
   await page.route(/\/api\/articles\?.*/, catalogueRoute);
 
   await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('Catalogue');
+  await expect(catalogPanel.getByRole('alert')).toContainText('Catalogue');
   await expect(page.locator('#catalog-stale')).toContainText('recherche précédente');
   await expect(catalogPanel.getByRole('row', { name: /Article archivé/ })).toBeVisible();
 
