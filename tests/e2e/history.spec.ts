@@ -32,6 +32,7 @@ type BrowserHistoryEntry = {
     sourceOperationId: string;
     context: string | null;
     taxRate: { ratio: string };
+    unitPriceHtCents: number;
     amountHtCents: number;
     vatCents: number;
     amountTtcCents: number;
@@ -621,7 +622,7 @@ test('keeps a committed Sale and its financial correction separately in History'
     id: string;
     type: string;
     financial?: { amountHtCents: number; vatCents: number; amountTtcCents: number };
-    financialReversal?: { sourceOperationId: string; amountHtCents: number; vatCents: number; amountTtcCents: number };
+    financialReversal?: { sourceOperationId: string; unitPriceHtCents: number; amountHtCents: number; vatCents: number; amountTtcCents: number };
   }>;
   const saleEntry = entries.find((entry) => entry.id === sale.operation.id);
   expect(saleEntry).toMatchObject({
@@ -639,6 +640,7 @@ test('keeps a committed Sale and its financial correction separately in History'
     financialReversal: {
       sourceOperationId: sale.operation.id,
       context: 'takeaway',
+      unitPriceHtCents: 100,
       taxRate: { ratio: '11/200' },
       amountHtCents: -200,
       vatCents: -11,
@@ -649,6 +651,9 @@ test('keeps a committed Sale and its financial correction separately in History'
   await expect(page.locator('#history-list')).toContainText('-211 centimes');
   await expect(page.locator(`[aria-labelledby="history-entry-${sale.operation.id}"]`)).toContainText('11/200');
   await expect(page.locator('#history-list')).toContainText('À emporter');
+  const correctionCard = page.locator(`[aria-labelledby="history-entry-${correctionEntry!.id}"]`);
+  await expect(correctionCard).toContainText('Prix HT unitaire historique');
+  await expect(correctionCard).toContainText('100 centimes');
 
   const articleResponsePromise = page.waitForResponse((response) => {
     const url = new URL(response.url());
@@ -666,7 +671,10 @@ test('keeps a committed Sale and its financial correction separately in History'
   await page.getByRole('button', { name: 'Consulter l’Historique de cet Article', exact: true }).click();
   expect((await articleHistoryPromise).status()).toBe(200);
   const articleSaleCard = page.locator(`[aria-labelledby="article-history-entry-${sale.operation.id}"]`);
+  const articleCorrectionCard = page.locator(`[aria-labelledby="article-history-entry-${correctionEntry!.id}"]`);
   await expect(articleSaleCard).toContainText('Contexte À emporter');
+  await expect(articleCorrectionCard).toContainText('Prix HT unitaire historique');
+  await expect(articleCorrectionCard).toContainText('100 centimes');
   await expect(page.locator('#article-history-list')).toContainText('À emporter');
   await expect(page.locator('#article-history-list')).toContainText('11/200');
 });

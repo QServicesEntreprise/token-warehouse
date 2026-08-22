@@ -510,6 +510,9 @@ describe('AppComponent', () => {
     expect(history).toContain('-211 centimes');
     expect(history).toContain('Contexte historiqueÀ emporter');
     expect(history).toContain('Taux de TVA historique11/200');
+    const historyCounter = fixture.nativeElement.querySelector('[aria-labelledby="history-entry-counter-1"]').textContent as string;
+    expect(historyCounter).toContain('Prix HT unitaire historique');
+    expect(historyCounter).toContain('100 centimes');
 
     component.detail.set(foodArticle(100, 6, 106, 10, 110));
     fixture.detectChanges();
@@ -551,7 +554,10 @@ describe('AppComponent', () => {
     fixture.detectChanges();
     const articleHistory = fixture.nativeElement.querySelector('#article-history-list').textContent as string;
     const articleSaleHistory = fixture.nativeElement.querySelector('[aria-labelledby="article-history-entry-sale-1"]').textContent as string;
+    const articleCounterHistory = fixture.nativeElement.querySelector('[aria-labelledby="article-history-entry-counter-1"]').textContent as string;
     expect(articleSaleHistory).toContain('Contexte À emporter');
+    expect(articleCounterHistory).toContain('Prix HT unitaire historique');
+    expect(articleCounterHistory).toContain('100 centimes');
     expect(articleHistory).toContain('Contexte À emporter');
     expect(articleHistory).toContain('Taux 11/200');
     flushUnusedDashboardRequest(http);
