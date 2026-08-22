@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Hosting;
@@ -19,7 +20,7 @@ public sealed class StockSaleContractTests
         new(2030, 1, 15, 10, 0, 0, TimeSpan.Zero);
 
     [Fact]
-    public async Task Commits_a_sale_atomically_and_reloads_it_from_sqlite_without_a_sale_endpoint()
+    public async Task Commits_a_sale_atomically_and_reloads_it_from_sqlite()
     {
         using var factory = new HostFactory(Now);
         using var client = factory.CreateClient();
@@ -91,10 +92,125 @@ public sealed class StockSaleContractTests
             repeatedOperations.Operations.Select(operation => operation.Id));
         Assert.Equal(beforeReads, afterReads);
 
-        using var saleEndpoint = await client.PostAsJsonAsync(
+    }
+
+    [Fact]
+    public async Task Creates_a_sale_with_a_server_financial_snapshot_and_reads_it_back()
+    {
+        using var factory = new HostFactory(Now);
+        using var client = factory.CreateClient();
+        await factory.SeedArticleAsync(
+            "7351353713578",
+            "Batterie industrielle",
+            type: "nonFood",
+            packaging: "new",
+            physicalQuantity: 8,
+            priceHtCents: 101);
+
+        using var response = await client.PostAsJsonAsync(
             "/api/sales",
-            new { ean13 = "0123456789012", quantity = 1 });
-        Assert.Equal(HttpStatusCode.NotFound, saleEndpoint.StatusCode);
+            new { ean13 = "7351353713578", quantity = 3 });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var operationId = body.GetProperty("operation").GetProperty("id").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(operationId));
+        Assert.Equal("SALE", body.GetProperty("operation").GetProperty("type").GetString());
+        Assert.Equal("7351353713578", body.GetProperty("operation").GetProperty("ean13").GetString());
+        Assert.Equal(3, body.GetProperty("operation").GetProperty("quantity").GetInt32());
+        Assert.Equal(101, body.GetProperty("financial").GetProperty("unitPriceHtCents").GetInt32());
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("financial").GetProperty("context").ValueKind);
+        Assert.Equal("nonFood", body.GetProperty("financial").GetProperty("taxRate").GetProperty("code").GetString());
+        Assert.Equal(303, body.GetProperty("financial").GetProperty("amountHtCents").GetInt32());
+        Assert.Equal(61, body.GetProperty("financial").GetProperty("vatCents").GetInt32());
+        Assert.Equal(364, body.GetProperty("financial").GetProperty("amountTtcCents").GetInt32());
+        Assert.Equal(5, body.GetProperty("position").GetProperty("physicalQuantity").GetInt32());
+        Assert.Equal(5, body.GetProperty("position").GetProperty("sellableQuantity").GetInt32());
+
+        using var priceUpdate = await client.PatchAsJsonAsync(
+            "/api/articles/7351353713578",
+            new { priceHtCents = 999 });
+        Assert.Equal(HttpStatusCode.OK, priceUpdate.StatusCode);
+
+        using var readBack = await client.GetAsync($"/api/sales/{operationId}");
+        Assert.Equal(HttpStatusCode.OK, readBack.StatusCode);
+        var readBody = await readBack.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(101, readBody.GetProperty("financial").GetProperty("unitPriceHtCents").GetInt32());
+        Assert.Equal(303, readBody.GetProperty("financial").GetProperty("amountHtCents").GetInt32());
+        Assert.Equal(5, readBody.GetProperty("position").GetProperty("physicalQuantity").GetInt32());
+        Assert.Equal(operationId, readBody.GetProperty("operation").GetProperty("id").GetString());
+        Assert.Equal(
+            1,
+            await factory.ReadFreshAsync(context => context.StockOperations.CountAsync(operation => operation.Type == "SALE")));
+    }
+
+    [Fact]
+    public async Task Searches_articles_with_price_and_both_stock_quantities()
+    {
+        using var factory = new HostFactory(Now);
+        using var client = factory.CreateClient();
+        await factory.SeedArticleAsync(
+            "7351353713578",
+            "Batterie industrielle",
+            type: "nonFood",
+            packaging: "new",
+            physicalQuantity: 8,
+            priceHtCents: 101);
+
+        using var response = await client.GetAsync("/api/sales/articles?search=Batterie");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var articles = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var article = Assert.Single(articles.EnumerateArray().ToArray());
+        Assert.Equal("7351353713578", article.GetProperty("ean13").GetString());
+        Assert.Equal("nonFood", article.GetProperty("type").GetString());
+        Assert.Equal(101, article.GetProperty("priceHtCents").GetInt32());
+        Assert.Equal(8, article.GetProperty("physicalQuantity").GetInt32());
+        Assert.Equal(8, article.GetProperty("sellableQuantity").GetInt32());
+
+        using var eanResponse = await client.GetAsync("/api/sales/articles?search=7351353713578");
+        Assert.Equal(HttpStatusCode.OK, eanResponse.StatusCode);
+        var eanArticles = await eanResponse.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("7351353713578", Assert.Single(eanArticles.EnumerateArray().ToArray())
+            .GetProperty("ean13").GetString());
+    }
+
+    [Fact]
+    public async Task Rejects_invalid_sale_input_and_context_without_writes()
+    {
+        using var factory = new HostFactory(Now);
+        using var client = factory.CreateClient();
+        await factory.SeedArticleAsync(
+            "7351353713578",
+            "Batterie industrielle",
+            type: "nonFood",
+            packaging: "new",
+            physicalQuantity: 8,
+            priceHtCents: 101);
+
+        using var invalid = await client.PostAsJsonAsync(
+            "/api/sales",
+            new { ean13 = "7351353713578", quantity = 0, amountHtCents = 303 });
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        Assert.Equal("application/problem+json", invalid.Content.Headers.ContentType?.MediaType);
+        var invalidBody = await invalid.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("INVALID_INPUT", invalidBody.GetProperty("code").GetString());
+        Assert.True(invalidBody.GetProperty("errors").GetProperty("quantity").GetArrayLength() > 0);
+        Assert.True(invalidBody.GetProperty("errors").GetProperty("amountHtCents").GetArrayLength() > 0);
+
+        using var context = await client.PostAsJsonAsync(
+            "/api/sales",
+            new { ean13 = "7351353713578", quantity = 1, context = "takeaway" });
+        Assert.Equal(HttpStatusCode.Conflict, context.StatusCode);
+        var contextBody = await context.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("CONTEXT_UNSUPPORTED", contextBody.GetProperty("code").GetString());
+        Assert.Equal(
+            0,
+            await factory.ReadFreshAsync(db => db.StockOperations.CountAsync(operation => operation.Type == "SALE")));
+        Assert.Equal(
+            8,
+            await factory.ReadFreshAsync(db => db.StockPositions.Select(position => position.PhysicalQuantity).SingleAsync()));
     }
 
     [Fact]
@@ -309,7 +425,8 @@ public sealed class StockSaleContractTests
             string? dlc = null,
             string? packaging = null,
             int physicalQuantity = 0,
-            int positionVersion = 0)
+            int positionVersion = 0,
+            int priceHtCents = 1000)
         {
             using var scope = Services.CreateScope();
             var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>();
@@ -319,8 +436,8 @@ public sealed class StockSaleContractTests
                 Ean13 = ean13,
                 Type = type,
                 Name = name,
-                NameSearchKey = name.ToLowerInvariant(),
-                PriceHtCents = 1000,
+                NameSearchKey = name.ToUpperInvariant(),
+                PriceHtCents = priceHtCents,
                 IsActive = isActive,
                 Version = 0,
                 Dlc = dlc,

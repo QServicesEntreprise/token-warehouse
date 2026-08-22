@@ -70,6 +70,21 @@ public sealed record PricingResult(
     public bool IsSuccess => Errors.Count == 0;
 }
 
+public sealed record SaleFinancialSnapshot(
+    SaleContext? SaleContext,
+    Money UnitPriceHt,
+    TaxRate TaxRate,
+    Money AmountHt,
+    Money Vat,
+    Money AmountTtc);
+
+public sealed record SalePricingResult(
+    SaleFinancialSnapshot? Snapshot,
+    IReadOnlyList<PricingValidationError> Errors)
+{
+    public bool IsSuccess => Snapshot is not null && Errors.Count == 0;
+}
+
 public static class PricingPolicy
 {
     public static PricingResult Calculate(Article article)
@@ -107,6 +122,55 @@ public static class PricingPolicy
         return quote is null
             ? UnsupportedContext()
             : new([quote], []);
+    }
+
+    public static SalePricingResult CalculateSale(
+        Article article,
+        Quantity quantity,
+        SaleContext? saleContext = null)
+    {
+        ArgumentNullException.ThrowIfNull(article);
+        if (quantity.Value <= 0)
+        {
+            return new(
+                null,
+                [new(
+                    "pricing.quantity.invalid",
+                    "quantity",
+                    "La quantité doit être un entier strictement positif.")]);
+        }
+
+        var resolved = Resolve(article, saleContext);
+        if (!resolved.IsSuccess)
+        {
+            return new(null, resolved.Errors);
+        }
+
+        try
+        {
+            var quote = resolved.Quotes.Single();
+            var amountHt = Money.FromCents(checked((int)((long)article.PriceHt.Cents * quantity.Value)));
+            var vat = quote.TaxRate.CalculateVat(amountHt);
+            var amountTtc = Money.FromCents(checked(amountHt.Cents + vat.Cents));
+            return new(
+                new(
+                    quote.SaleContext,
+                    article.PriceHt,
+                    quote.TaxRate,
+                    amountHt,
+                    vat,
+                    amountTtc),
+                []);
+        }
+        catch (OverflowException)
+        {
+            return new(
+                null,
+                [new(
+                    "pricing.amount.overflow",
+                    "quantity",
+                    "Le montant de la Vente dépasse la capacité financière autorisée.")]);
+        }
     }
 
     private static PricingQuote CreateQuote(Money priceHt, SaleContext? context, TaxRate taxRate)
