@@ -11,7 +11,7 @@ public sealed class SqliteCurrentDashboardReadSource(
     {
         ArgumentNullException.ThrowIfNull(query);
 
-        var result = await stockContract.ListAsync(cancellationToken);
+        var result = await stockContract.ListAsync(query.Selection, cancellationToken);
         if (result.Status != StockReadStatus.Success)
         {
             throw new InvalidOperationException("The Stock read contract could not provide a Dashboard snapshot.");

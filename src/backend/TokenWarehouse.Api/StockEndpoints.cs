@@ -14,7 +14,7 @@ public static class StockEndpoints
             IReadStockUseCase useCase,
             CancellationToken cancellationToken) =>
         {
-            var result = await useCase.ListAsync(cancellationToken);
+            var result = await useCase.ListAsync(cancellationToken: cancellationToken);
             return Results.Ok(result.Positions.Select(StockPositionResponse.From).ToArray());
         });
 

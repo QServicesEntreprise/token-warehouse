@@ -801,6 +801,52 @@ public sealed class ArticleApiTests
         }
     }
 
+    [Fact]
+    public async Task Dashboard_filtered_reads_ignore_unrelated_invalid_sqlite_articles()
+    {
+        using var factory = new ArticleHostFactory(fixedNow: new DateTimeOffset(2030, 1, 15, 10, 0, 0, TimeSpan.Zero));
+        using var client = factory.CreateClient();
+
+        using var create = await client.PostAsJsonAsync("/api/articles", new
+        {
+            ean13 = "0123456789012",
+            type = "food",
+            name = "Article alimentaire valide",
+            priceHtCents = 100,
+            dlc = "2030-01-15",
+            consumptionModes = new[] { "takeaway" }
+        });
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+
+        using var scope = factory.Services.CreateScope();
+        var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>();
+        await using (var context = await contextFactory.CreateDbContextAsync())
+        {
+            context.Articles.Add(new ArticleEntity
+            {
+                Ean13 = "4006381333931",
+                Type = "invalid",
+                Name = "Article hors filtre invalide",
+                NameSearchKey = "article hors filtre invalide",
+                PriceHtCents = 100,
+                IsActive = true
+            });
+            await context.SaveChangesAsync();
+        }
+
+        using var response = await client.GetAsync(
+            "/api/dashboard?from=2030-01-01&to=2030-01-31&type=food");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(
+            ["0123456789012"],
+            body.RootElement.GetProperty("stockByArticle")
+                .EnumerateArray()
+                .Select(row => row.GetProperty("ean13").GetString()!)
+                .ToArray());
+    }
+
     [Theory]
     [InlineData("123")]
     [InlineData("01234567890X2")]
@@ -1872,7 +1918,8 @@ public sealed class ArticleApiTests
     {
         public ValueTask<StockReadSnapshot> ReadAsync(
             Ean13? ean13 = null,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            DashboardArticleSelection? selection = null)
             => throw new InvalidOperationException("database internals");
     }
 
