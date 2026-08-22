@@ -77,6 +77,15 @@ public sealed class SqliteStockOperationReader(
         CancellationToken cancellationToken = default)
     {
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+        return await ListForDashboardInSessionAsync(context, cancellationToken);
+    }
+
+    internal async Task<IReadOnlyList<StockOperationReadFact>> ListForDashboardInSessionAsync(
+        WarehouseDbContext context,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
         var entities = await context.StockOperations
             .AsNoTracking()
             .Include(operation => operation.Lines)

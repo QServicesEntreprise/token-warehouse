@@ -62,7 +62,7 @@ const stopApi = async (server: ChildProcess): Promise<void> => {
 type Fixtures = {
   isolatedApi: void;
   historyReadFailure: boolean;
-  e2eSeed: 'true' | 'empty' | 'flows';
+  e2eSeed: 'true' | 'empty' | 'flows' | 'flows-boundary';
 };
 
 export const test = base.extend<Fixtures>({
@@ -92,6 +92,7 @@ export const test = base.extend<Fixtures>({
           TOKEN_WAREHOUSE_HISTORY_FAILURE: historyReadFailure ? 'true' : 'false',
           TOKEN_WAREHOUSE_WAREHOUSE_DATE: '2030-01-15',
           TOKEN_WAREHOUSE_UTC_NOW: '2030-01-15T10:00:00Z',
+          Warehouse__TimeZoneId: 'Etc/GMT-2',
           ConnectionStrings__Warehouse: `Data Source=${databasePath}`,
         },
         stdio: 'ignore',

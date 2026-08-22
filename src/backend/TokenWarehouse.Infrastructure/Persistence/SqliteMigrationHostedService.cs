@@ -26,15 +26,20 @@ public sealed class SqliteMigrationHostedService(
         if (environment.IsEnvironment("Testing"))
         {
             var seed = Environment.GetEnvironmentVariable("TOKEN_WAREHOUSE_E2E_SEED");
+            var flowSeed = string.Equals(seed, "flows", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(seed, "flows-boundary", StringComparison.OrdinalIgnoreCase);
             if (string.Equals(seed, "true", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(seed, "flows", StringComparison.OrdinalIgnoreCase))
+                || flowSeed)
             {
                 await SeedE2eStockArticlesAsync(context, clock.WarehouseDate, cancellationToken);
             }
 
-            if (string.Equals(seed, "flows", StringComparison.OrdinalIgnoreCase))
+            if (flowSeed)
             {
-                await SeedE2eFlowFactsAsync(context, cancellationToken);
+                await SeedE2eFlowFactsAsync(
+                    context,
+                    cancellationToken,
+                    string.Equals(seed, "flows-boundary", StringComparison.OrdinalIgnoreCase));
             }
         }
     }
@@ -168,7 +173,8 @@ public sealed class SqliteMigrationHostedService(
 
     private static async Task SeedE2eFlowFactsAsync(
         WarehouseDbContext context,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool includeBoundary)
     {
         if (await context.StockOperations.AnyAsync(
                 operation => operation.Id == "e2e-flow-bulk",
@@ -268,6 +274,22 @@ public sealed class SqliteMigrationHostedService(
                 sourceOperationId: "e2e-flow-bulk",
                 sourceOperationType: "SUPPLY",
                 justification: "Test sans effet de flux"));
+        if (includeBoundary)
+        {
+            context.StockOperations.AddRange(
+                Operation(
+                    "e2e-flow-boundary-before",
+                    "supply",
+                    "0123456789012",
+                    "2030-01-10T21:59:59+00:00",
+                    1),
+                Operation(
+                    "e2e-flow-boundary-at",
+                    "supply",
+                    "0123456789012",
+                    "2030-01-10T22:00:00+00:00",
+                    1));
+        }
         context.StockOperationLines.AddRange(
             Line("e2e-flow-bulk", 1, "0123456789012", "supply", 5, 5),
             Line("e2e-flow-bulk", 2, "1234567890128", "supply", 3, 3),
@@ -279,6 +301,12 @@ public sealed class SqliteMigrationHostedService(
             Line("e2e-flow-sale-onsite", 1, "0123456789012", "SALE", 4, -4),
             Line("e2e-flow-inventory", 1, "0123456789012", "INVENTORY", 0, 99, 0, 0, 99, 99, 99),
             Line("e2e-flow-counter", 1, "0123456789012", "COUNTER_MOVEMENT", 0, 99, -99));
+        if (includeBoundary)
+        {
+            context.StockOperationLines.AddRange(
+                Line("e2e-flow-boundary-before", 1, "0123456789012", "supply", 1, 1),
+                Line("e2e-flow-boundary-at", 1, "0123456789012", "supply", 1, 1));
+        }
         await context.SaveChangesAsync(cancellationToken);
     }
 }

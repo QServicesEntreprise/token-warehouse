@@ -27,7 +27,37 @@ public sealed record StockOperationReadView(
     StockOperationType? SourceOperationType,
     string? Justification,
     IReadOnlyList<StockOperationLineReadView> Lines,
-    SaleContext? SaleContext = null);
+    SaleContext? SaleContext = null)
+{
+    public static StockOperationReadView From(StockOperationReadFact fact)
+    {
+        ArgumentNullException.ThrowIfNull(fact);
+        var operation = fact.Operation;
+        return new(
+            operation.Id,
+            operation.Type,
+            operation.Ean13.Value,
+            operation.Quantity.Value,
+            operation.TimestampUtc,
+            operation.SourceOperationId,
+            operation.SourceOperationType,
+            operation.Justification,
+            operation.Lines
+                .OrderBy(line => line.LineNumber)
+                .Select(line => new StockOperationLineReadView(
+                    line.LineNumber,
+                    line.Ean13.Value,
+                    line.Quantity.Value,
+                    line.PreviousPhysicalStock,
+                    line.CountedQuantity,
+                    line.InventoryDifference,
+                    line.ResultingPhysicalStock,
+                    line.StockEffect,
+                    line.InverseEffect))
+                .ToArray(),
+            fact.SaleContext);
+    }
+}
 
 public enum StockOperationReadStatus
 {
@@ -97,30 +127,5 @@ public sealed class StockOperationReadApplication(IStockOperationReader reader)
                 .ToArray());
 
     private static StockOperationReadView ToView(StockOperationReadFact fact)
-    {
-        var operation = fact.Operation;
-        return new(
-            operation.Id,
-            operation.Type,
-            operation.Ean13.Value,
-            operation.Quantity.Value,
-            operation.TimestampUtc,
-            operation.SourceOperationId,
-            operation.SourceOperationType,
-            operation.Justification,
-            operation.Lines
-                .OrderBy(line => line.LineNumber)
-                .Select(line => new StockOperationLineReadView(
-                    line.LineNumber,
-                    line.Ean13.Value,
-                    line.Quantity.Value,
-                    line.PreviousPhysicalStock,
-                    line.CountedQuantity,
-                    line.InventoryDifference,
-                    line.ResultingPhysicalStock,
-                    line.StockEffect,
-                    line.InverseEffect))
-                .ToArray(),
-            fact.SaleContext);
-    }
+        => StockOperationReadView.From(fact);
 }

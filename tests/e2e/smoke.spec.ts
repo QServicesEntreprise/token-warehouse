@@ -564,7 +564,7 @@ test.describe('Dashboard daily flows', () => {
     await expect(flowTable.getByRole('columnheader', { name: 'Approvisionnements' })).toBeVisible();
     await expect(flowTable.getByRole('columnheader', { name: 'Ventes' })).toBeVisible();
     await expect(flowTable.locator('tbody tr')).toHaveCount(31);
-    await expect(flowTable.getByRole('row', { name: /2030-01-10/ })).toContainText('2 unités');
+    await expect(flowTable.getByRole('row', { name: /2030-01-10/ })).toContainText('0 unité');
     await expect(flowTable.getByRole('row', { name: /2030-01-11/ })).toContainText('19 unités');
     await expect(flowTable.getByRole('row', { name: /2030-01-13/ })).toContainText('0 unité');
 
@@ -588,6 +588,45 @@ test.describe('Dashboard daily flows', () => {
     await expect(flowTable.getByRole('row', { name: /2030-01-10/ })).toContainText('0 unité');
     await expect(flowTable.getByRole('row', { name: /2030-01-11/ })).toContainText('5 unités');
     await expect(flowTable.getByRole('row', { name: /2030-01-12/ })).toContainText('4 unités');
+
+    const takeawayResponse = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return response.request().method() === 'GET'
+        && url.pathname === '/api/dashboard'
+        && url.searchParams.get('type') === 'food'
+        && url.searchParams.get('mode') === 'takeaway';
+    });
+    await page.locator('#dashboard-mode').selectOption('takeaway');
+    await page.getByRole('button', { name: 'Lire le Dashboard' }).click();
+    const takeawayView = await (await takeawayResponse).json();
+    expect(takeawayView.flowsByDay.slice(9, 13)).toEqual([
+      { date: '2030-01-10', supplies: 0, sales: 2 },
+      { date: '2030-01-11', supplies: 8, sales: 0 },
+      { date: '2030-01-12', supplies: 2, sales: 1 },
+      { date: '2030-01-13', supplies: 0, sales: 0 },
+    ]);
+  });
+});
+
+test.describe('Dashboard daily flow calendar boundary', () => {
+  test.use({ e2eSeed: 'flows-boundary', timezoneId: 'America/Los_Angeles' });
+
+  test('uses the configured warehouse timezone around UTC midnight', async ({ page }) => {
+    const dashboardResponse = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return response.request().method() === 'GET' && url.pathname === '/api/dashboard';
+    });
+
+    await page.goto('/');
+    const response = await dashboardResponse;
+    expect(response.status()).toBe(200);
+    const view = await response.json();
+    expect(view.flowsByDay.slice(9, 13)).toEqual([
+      { date: '2030-01-10', supplies: 1, sales: 2 },
+      { date: '2030-01-11', supplies: 20, sales: 0 },
+      { date: '2030-01-12', supplies: 2, sales: 5 },
+      { date: '2030-01-13', supplies: 0, sales: 0 },
+    ]);
   });
 });
 

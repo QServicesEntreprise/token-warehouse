@@ -15,6 +15,19 @@ public sealed class SqliteStockReadReader(IDbContextFactory<WarehouseDbContext> 
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
 
+        var snapshot = await ReadInSessionAsync(context, ean13, cancellationToken, selection);
+        await transaction.CommitAsync(cancellationToken);
+        return snapshot;
+    }
+
+    internal async Task<StockReadSnapshot> ReadInSessionAsync(
+        WarehouseDbContext context,
+        Ean13? ean13 = null,
+        CancellationToken cancellationToken = default,
+        DashboardArticleSelection? selection = null)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
         var articlesQuery = context.Articles.AsNoTracking();
         var positionsQuery = context.StockPositions.AsNoTracking();
         if (ean13 is { } value)
@@ -35,8 +48,6 @@ public sealed class SqliteStockReadReader(IDbContextFactory<WarehouseDbContext> 
         var positionEntities = await positionsQuery
             .OrderBy(position => position.Ean13)
             .ToListAsync(cancellationToken);
-
-        await transaction.CommitAsync(cancellationToken);
 
         return new(
             articleEntities

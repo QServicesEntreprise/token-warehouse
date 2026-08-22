@@ -588,7 +588,12 @@ public sealed class ArticleApiTests
     public async Task Dashboard_returns_continuous_filtered_flows_from_accepted_sqlite_facts()
     {
         using var factory = new ArticleHostFactory(
-            fixedNow: new DateTimeOffset(2030, 3, 15, 10, 0, 0, TimeSpan.Zero));
+            fixedNow: new DateTimeOffset(2030, 3, 15, 10, 0, 0, TimeSpan.Zero),
+            warehouseTimeZone: TimeZoneInfo.CreateCustomTimeZone(
+                "Warehouse+02",
+                TimeSpan.FromHours(2),
+                "Warehouse+02",
+                "Warehouse+02"));
         using var client = factory.CreateClient();
 
         async Task CreateArticle(object payload)
@@ -642,8 +647,8 @@ public sealed class ArticleApiTests
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.Equal(
             [
-                ("2030-03-10", 0, 2),
-                ("2030-03-11", 19, 0),
+                ("2030-03-10", 1, 2),
+                ("2030-03-11", 20, 0),
                 ("2030-03-12", 2, 5),
                 ("2030-03-13", 0, 0)
             ],
@@ -656,12 +661,26 @@ public sealed class ArticleApiTests
         using var filteredBody = JsonDocument.Parse(await filtered.Content.ReadAsStringAsync());
         Assert.Equal(
             [
-                ("2030-03-10", 0, 0),
-                ("2030-03-11", 5, 0),
+                ("2030-03-10", 1, 0),
+                ("2030-03-11", 6, 0),
                 ("2030-03-12", 2, 4),
                 ("2030-03-13", 0, 0)
             ],
             ReadFlowDays(filteredBody.RootElement));
+
+        using var takeaway = await client.GetAsync(
+            "/api/dashboard?from=2030-03-10&to=2030-03-13&type=food&mode=takeaway");
+        Assert.Equal(HttpStatusCode.OK, takeaway.StatusCode);
+        Assert.Equal("application/json", takeaway.Content.Headers.ContentType?.MediaType);
+        using var takeawayBody = JsonDocument.Parse(await takeaway.Content.ReadAsStringAsync());
+        Assert.Equal(
+            [
+                ("2030-03-10", 1, 2),
+                ("2030-03-11", 9, 0),
+                ("2030-03-12", 2, 1),
+                ("2030-03-13", 0, 0)
+            ],
+            ReadFlowDays(takeawayBody.RootElement));
         Assert.Equal(operationsBeforeReads, await CountStockOperationsAsync(factory.Services));
     }
 
@@ -1845,6 +1864,8 @@ public sealed class ArticleApiTests
         var bulkTimestamp = "2030-03-11T10:00:00+00:00";
         var nextTimestamp = "2030-03-12T10:00:00+00:00";
         context.StockOperations.AddRange(
+            Operation("boundary-before-midnight", "supply", "0123456789012", "2030-03-10T21:59:59+00:00", 1),
+            Operation("boundary-at-midnight", "supply", "0123456789012", "2030-03-10T22:00:00+00:00", 1),
             Operation("bulk", "supply", "0123456789012", bulkTimestamp, 19),
             Operation("supply", "supply", "0123456789012", nextTimestamp, 2),
             Operation("sale-b", "SALE", "1234567890128", "2030-03-10T10:00:00+00:00", 2,
@@ -1864,6 +1885,8 @@ public sealed class ArticleApiTests
                 sourceOperationType: "SUPPLY",
                 justification: "Test sans effet de flux"));
         context.StockOperationLines.AddRange(
+            Line("boundary-before-midnight", 1, "0123456789012", "supply", 1, 1),
+            Line("boundary-at-midnight", 1, "0123456789012", "supply", 1, 1),
             Line("bulk", 1, "0123456789012", "supply", 5, 5),
             Line("bulk", 2, "1234567890128", "supply", 3, 3),
             Line("bulk", 3, "2345678901234", "supply", 7, 7),
@@ -1916,25 +1939,28 @@ public sealed class ArticleApiTests
         private readonly bool ownsDatabase;
         private readonly CultureInfo? requestCulture;
         private readonly MutableClock? fixedClock;
+        private readonly TimeZoneInfo? warehouseTimeZone;
 
         public ArticleHostFactory(
             CultureInfo? requestCulture = null,
             DateTimeOffset? fixedNow = null,
             string? databasePath = null,
-            bool ownsDatabase = true)
+            bool ownsDatabase = true,
+            TimeZoneInfo? warehouseTimeZone = null)
         {
             this.databasePath = databasePath
                 ?? Path.Combine(Path.GetTempPath(), $"token-warehouse-article-{Guid.NewGuid():N}.db");
             this.ownsDatabase = ownsDatabase;
             this.requestCulture = requestCulture;
             fixedClock = fixedNow is { } now ? new MutableClock(now) : null;
+            this.warehouseTimeZone = warehouseTimeZone;
         }
 
         public void SetNow(DateTimeOffset now)
             => (fixedClock ?? throw new InvalidOperationException("A fixed clock is required.")).Now = now;
 
         public ArticleHostFactory Reopen()
-            => new(requestCulture, fixedClock?.Now, databasePath, false);
+            => new(requestCulture, fixedClock?.Now, databasePath, false, warehouseTimeZone);
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -1952,6 +1978,15 @@ public sealed class ArticleApiTests
                 {
                     services.RemoveAll<IClock>();
                     services.AddSingleton<IClock>(fixedClock);
+                });
+            }
+
+            if (warehouseTimeZone is not null)
+            {
+                builder.ConfigureServices(services =>
+                {
+                    services.RemoveAll<TimeZoneInfo>();
+                    services.AddSingleton(warehouseTimeZone);
                 });
             }
         }
@@ -2118,8 +2153,18 @@ public sealed class ArticleApiTests
                 services.AddScoped<IArticleStore, FailingArticleStore>();
                 services.RemoveAll<IStockReadReader>();
                 services.AddScoped<IStockReadReader, FailingStockReadReader>();
+                services.RemoveAll<ICurrentDashboardReadSource>();
+                services.AddScoped<ICurrentDashboardReadSource, FailingDashboardReadSource>();
             });
         }
+    }
+
+    private sealed class FailingDashboardReadSource : ICurrentDashboardReadSource
+    {
+        public Task<DashboardReadSnapshot> ReadAsync(
+            DashboardQuery query,
+            CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("database internals");
     }
 
     private sealed class FailingStockReadReader : IStockReadReader

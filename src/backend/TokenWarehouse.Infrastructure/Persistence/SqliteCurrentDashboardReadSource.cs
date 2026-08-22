@@ -1,10 +1,13 @@
+using Microsoft.EntityFrameworkCore;
 using TokenWarehouse.Application;
 
 namespace TokenWarehouse.Infrastructure.Persistence;
 
 public sealed class SqliteCurrentDashboardReadSource(
-    IStockPositionReadContract stockContract,
-    IStockOperationReadContract operationContract) : ICurrentDashboardReadSource
+    IDbContextFactory<WarehouseDbContext> contextFactory,
+    SqliteStockReadReader stockReader,
+    SqliteStockOperationReader operationReader,
+    IClock clock) : ICurrentDashboardReadSource
 {
     public async Task<DashboardReadSnapshot> ReadAsync(
         DashboardQuery query,
@@ -12,16 +15,24 @@ public sealed class SqliteCurrentDashboardReadSource(
     {
         ArgumentNullException.ThrowIfNull(query);
 
-        var positions = await stockContract.ListAsync(
-            query.Selection.ForFlowCandidates(),
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+        var stockSnapshot = await stockReader.ReadInSessionAsync(
+            context,
+            cancellationToken: cancellationToken,
+            selection: query.Selection.ForFlowCandidates());
+        var operationFacts = await operationReader.ListForDashboardInSessionAsync(
+            context,
             cancellationToken);
-        var operations = await operationContract.ListForDashboardAsync(cancellationToken);
-        if (positions.Status != StockReadStatus.Success
-            || operations.Status != StockOperationReadStatus.Success)
-        {
-            throw new InvalidOperationException("The Dashboard read contracts could not provide a snapshot.");
-        }
+        await transaction.CommitAsync(cancellationToken);
 
-        return new(positions.Positions, operations.Operations);
+        var positions = StockPositionView.From(stockSnapshot, clock.WarehouseDate);
+        var operations = operationFacts
+            .OrderBy(fact => fact.Operation.TimestampUtc)
+            .ThenBy(fact => fact.Operation.Id, StringComparer.Ordinal)
+            .Select(StockOperationReadView.From)
+            .ToArray();
+
+        return new(positions, operations);
     }
 }
