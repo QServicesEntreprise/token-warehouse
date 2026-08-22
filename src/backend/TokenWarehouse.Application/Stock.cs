@@ -63,11 +63,15 @@ public sealed record StockReadResult(
     StockPositionView? Position,
     IReadOnlyList<ArticleValidationError> Errors);
 
-public interface IReadStockUseCase
+public interface IStockPositionReadContract
 {
     Task<StockReadResult> ListAsync(CancellationToken cancellationToken = default);
 
     Task<StockReadResult> GetAsync(string ean13, CancellationToken cancellationToken = default);
+}
+
+public interface IReadStockUseCase : IStockPositionReadContract
+{
 }
 
 public sealed class StockApplication(

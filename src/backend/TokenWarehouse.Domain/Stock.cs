@@ -28,7 +28,23 @@ public sealed record StockPosition
     public StockPosition Add(Quantity quantity)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(quantity.Value);
-        return new(Ean13, checked(PhysicalQuantity + quantity.Value), Version);
+        return ApplyEffect(quantity.Value);
+    }
+
+    public StockPosition ApplyEffect(int stockEffect)
+    {
+        var resultingQuantity = (long)PhysicalQuantity + stockEffect;
+        if (resultingQuantity < 0)
+        {
+            throw new InvalidOperationException("The stock effect would make the position negative.");
+        }
+
+        if (resultingQuantity > int.MaxValue)
+        {
+            throw new OverflowException("The stock effect exceeds the position capacity.");
+        }
+
+        return new(Ean13, (int)resultingQuantity, Version);
     }
 }
 
@@ -88,12 +104,14 @@ public sealed record StockOperationLine
         int inventoryDifference,
         int resultingPhysicalStock,
         int stockEffect,
-        int inverseEffect)
+        int inverseEffect,
+        int quantity = 0)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(lineNumber, 1);
+        ArgumentOutOfRangeException.ThrowIfNegative(quantity);
         LineNumber = lineNumber;
         Ean13 = ean13;
-        Quantity = new(0);
+        Quantity = new(quantity);
         PreviousPhysicalStock = previousPhysicalStock;
         CountedQuantity = countedQuantity;
         InventoryDifference = inventoryDifference;
@@ -149,7 +167,7 @@ public sealed record StockOperationLine
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(lineNumber, 1);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(quantity.Value);
-        return new(lineNumber, ean13, 0, 0, 0, 0, -quantity.Value, 0);
+        return new(lineNumber, ean13, 0, 0, 0, 0, -quantity.Value, 0, quantity.Value);
     }
 
     public static StockOperationLine CreateCounterMovementLine(
@@ -196,12 +214,13 @@ public sealed record StockOperation
         Quantity = quantity;
         OccurredAt = occurredAt.ToUniversalTime();
         TimestampUtc = OccurredAt;
-        Lines = type switch
+        IReadOnlyList<StockOperationLine> operationLines = type switch
         {
             StockOperationType.Supply => [new StockOperationLine(1, ean13, quantity)],
             StockOperationType.Sale => [StockOperationLine.CreateSaleLine(1, ean13, quantity)],
             _ => []
         };
+        Lines = Array.AsReadOnly(operationLines.ToArray());
         SourceOperationId = null;
         SourceOperationType = null;
         Justification = null;

@@ -28,6 +28,28 @@ public sealed class SupplyTests
     }
 
     [Fact]
+    public void Stock_position_applies_a_signed_sale_effect_without_mutating_the_source()
+    {
+        Assert.True(Ean13.TryCreate("0123456789012", out var ean13));
+        var source = new StockPosition(ean13, 8, 2);
+
+        var result = source.ApplyEffect(-3);
+
+        Assert.Equal(8, source.PhysicalQuantity);
+        Assert.Equal(2, source.Version);
+        Assert.Equal(5, result.PhysicalQuantity);
+        Assert.Equal(2, result.Version);
+    }
+
+    [Fact]
+    public void Stock_position_rejects_a_signed_effect_that_would_make_stock_negative()
+    {
+        Assert.True(Ean13.TryCreate("0123456789012", out var ean13));
+
+        Assert.Throws<InvalidOperationException>(() => new StockPosition(ean13, 2).ApplyEffect(-3));
+    }
+
+    [Fact]
     public void Supply_operation_is_an_immutable_server_fact()
     {
         Assert.True(Ean13.TryCreate("0123456789012", out var ean13));
@@ -41,6 +63,23 @@ public sealed class SupplyTests
         Assert.Equal(ean13, operation.Ean13);
         Assert.Equal(3, operation.Quantity.Value);
         Assert.Equal(occurredAt, operation.OccurredAt);
+    }
+
+    [Fact]
+    public void Sale_operation_keeps_its_positive_quantity_and_signed_stock_effect()
+    {
+        Assert.True(Ean13.TryCreate("0123456789012", out var ean13));
+
+        var operation = StockOperation.CreateSale(
+            "server-sale-1",
+            ean13,
+            new Quantity(3),
+            new DateTimeOffset(2030, 1, 15, 10, 0, 0, TimeSpan.Zero));
+
+        Assert.Equal(3, operation.Quantity.Value);
+        Assert.Equal(3, operation.Lines.Single().Quantity.Value);
+        Assert.Equal(-3, operation.Lines.Single().StockEffect);
+        Assert.False(operation.Lines is StockOperationLine[]);
     }
 
     [Fact]
