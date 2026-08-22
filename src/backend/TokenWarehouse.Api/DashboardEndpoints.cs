@@ -63,7 +63,7 @@ public sealed class DashboardResponse
 
     public IReadOnlyList<DashboardFlowDayResponse> FlowsByDay { get; init; } = [];
 
-    public DashboardFinancialResponse Financial { get; init; } = new();
+    public DashboardFinancialResponse? Financial { get; init; }
 
     public static DashboardResponse From(CurrentDashboardView dashboard) => new()
     {
@@ -94,15 +94,18 @@ public sealed class DashboardFinancialResponse
 
     public IReadOnlyList<DashboardTaxRateSummaryResponse> ByTaxRate { get; init; } = [];
 
-    public static DashboardFinancialResponse From(FinancialSummary financial) => new()
-    {
-        RevenueHtCents = financial.RevenueHt.Cents,
-        RevenueTtcCents = financial.RevenueTtc.Cents,
-        VatCollectedCents = financial.VatCollected.Cents,
-        ByTaxRate = financial.ByTaxRate
-            .Select(DashboardTaxRateSummaryResponse.From)
-            .ToArray()
-    };
+    public static DashboardFinancialResponse? From(FinancialSummary? financial)
+        => financial is null
+            ? null
+            : new()
+            {
+                RevenueHtCents = financial.RevenueHt.Cents,
+                RevenueTtcCents = financial.RevenueTtc.Cents,
+                VatCollectedCents = financial.VatCollected.Cents,
+                ByTaxRate = financial.ByTaxRate
+                    .Select(DashboardTaxRateSummaryResponse.From)
+                    .ToArray()
+            };
 }
 
 public sealed class DashboardTaxRateSummaryResponse

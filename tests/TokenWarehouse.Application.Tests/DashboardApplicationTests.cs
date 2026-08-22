@@ -106,21 +106,22 @@ public sealed class DashboardApplicationTests
             new DashboardQueryRequest("2030-01-20", "2030-01-20", null, null, null));
 
         Assert.Equal((2000, 255, 2255), (
-            all.View!.Financial.RevenueHt.Cents,
+            all.View!.Financial!.RevenueHt.Cents,
             all.View.Financial.VatCollected.Cents,
             all.View.Financial.RevenueTtc.Cents));
         Assert.Equal(
             [(1000, 55, 1055), (0, 0, 0), (1000, 200, 1200)],
-            all.View.Financial.ByTaxRate.Select(line => (
+            all.View.Financial!.ByTaxRate.Select(line => (
                 line.AmountHt.Cents,
                 line.Vat.Cents,
                 line.AmountTtc.Cents)));
         Assert.Equal((0, 0, 0), (
-            onsite.View!.Financial.RevenueHt.Cents,
+            onsite.View!.Financial!.RevenueHt.Cents,
             onsite.View.Financial.VatCollected.Cents,
             onsite.View.Financial.RevenueTtc.Cents));
+        Assert.Equal(3, onsite.View.Financial!.ByTaxRate.Count);
         Assert.Equal((-1000, -100, -1100), (
-            correctionOnly.View!.Financial.RevenueHt.Cents,
+            correctionOnly.View!.Financial!.RevenueHt.Cents,
             correctionOnly.View.Financial.VatCollected.Cents,
             correctionOnly.View.Financial.RevenueTtc.Cents));
     }
@@ -193,6 +194,7 @@ public sealed class DashboardApplicationTests
             result.View.Kpis.PhysicalStock,
             result.View.Kpis.SellableStock,
             result.View.Kpis.NonSellableStock));
+        Assert.Null(result.View.Financial);
     }
 
     [Fact]

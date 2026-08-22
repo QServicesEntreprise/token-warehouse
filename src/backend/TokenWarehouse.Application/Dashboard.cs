@@ -201,7 +201,7 @@ public sealed record CurrentDashboardView(
     IReadOnlyList<DashboardStockLineView> StockByArticle,
     IReadOnlyList<DashboardFlowDayView> FlowsByDay)
 {
-    public FinancialSummary Financial { get; init; } = FinancialSummary.Calculate([]);
+    public FinancialSummary? Financial { get; init; }
 }
 
 public sealed record DashboardFlowDayView(
@@ -284,11 +284,13 @@ public sealed class DashboardApplication(
                 .GroupBy(position => position.Ean13.Value, StringComparer.Ordinal)
                 .ToDictionary(group => group.Key, group => group.Single(), StringComparer.Ordinal);
             var financialPeriod = warehouseCalendar.ToUtcPeriod(query.Period);
-            var financial = FinancialSummary.Calculate(
-                snapshot.FinancialFacts.Where(fact =>
-                    financialPeriod.Contains(fact.TimestampUtc)
-                    && articles.TryGetValue(fact.Ean13.Value, out var article)
-                    && query.Selection.MatchesFinancial(article, fact.SaleContext)));
+            FinancialSummary? financial = rows.Length == 0
+                ? null
+                : FinancialSummary.Calculate(
+                    snapshot.FinancialFacts.Where(fact =>
+                        financialPeriod.Contains(fact.TimestampUtc)
+                        && articles.TryGetValue(fact.Ean13.Value, out var article)
+                        && query.Selection.MatchesFinancial(article, fact.SaleContext)));
 
             var physicalStock = rows.Sum(row => row.PhysicalStock);
             var sellableStock = rows.Sum(row => row.SellableStock);

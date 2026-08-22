@@ -851,6 +851,7 @@ test.describe('Dashboard states', () => {
     releaseLoading();
     await navigation;
     await expect(dashboardState).toContainText('Aucun Article');
+    await expect(page.locator('#dashboard-financial')).toHaveCount(0);
     await page.unroute(dashboardRoute, delayedDashboardRoute);
 
     const stateRoute = async (route: Route) => {

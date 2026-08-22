@@ -73,7 +73,7 @@ export interface DashboardResponse {
     revenueTtcCents: number;
     vatCollectedCents: number;
     byTaxRate: DashboardTaxRateSummaryResponse[];
-  };
+  } | null;
 }
 
 @Injectable({ providedIn: 'root' })

@@ -76,6 +76,13 @@ public sealed class DashboardFinancialApiTests
         Assert.Equal(0, filteredFinancial.GetProperty("revenueHtCents").GetInt32());
         Assert.Equal(0, filteredFinancial.GetProperty("vatCollectedCents").GetInt32());
         Assert.Equal(3, filteredFinancial.GetProperty("byTaxRate").GetArrayLength());
+
+        using var noMatchingArticle = await client.GetAsync(
+            $"/api/dashboard?from={calendar.CurrentMonth.From}&to={calendar.CurrentMonth.To}&type=nonFood&mode=onsite");
+        Assert.Equal(HttpStatusCode.OK, noMatchingArticle.StatusCode);
+        using var noMatchingPayload = JsonDocument.Parse(await noMatchingArticle.Content.ReadAsStringAsync());
+        Assert.Empty(noMatchingPayload.RootElement.GetProperty("stockByArticle").EnumerateArray());
+        Assert.Equal(JsonValueKind.Null, noMatchingPayload.RootElement.GetProperty("financial").ValueKind);
     }
 
     private static async Task CreateFoodArticleAsync(
