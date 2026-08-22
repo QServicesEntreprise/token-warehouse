@@ -12,6 +12,14 @@ type CounterReceipt = {
     justification: string;
     lines: { ean13: string; sourceEffect: number; inverseEffect: number }[];
   };
+  financialReversal?: {
+    sourceOperationId: string;
+    context: string | null;
+    unitPriceHtCents: number;
+    amountHtCents: number;
+    vatCents: number;
+    amountTtcCents: number;
+  };
   positions: { ean13: string; physicalStock: number; sellableStock: number; reason: string | null }[];
 };
 
@@ -104,6 +112,70 @@ test('corrects a committed supply through the real Stock journey', async ({ page
   });
   expect(retry.status()).toBe(409);
   await expect(retry.json()).resolves.toMatchObject({ code: 'SOURCE_ALREADY_CORRECTED' });
+});
+
+test('corrects a Sale from its historical snapshot after the Article price and lifecycle change', async ({ page }) => {
+  const salePanel = page.locator('#sale-panel');
+  await page.goto('/');
+  await salePanel.locator('#sale-search').fill(canonicalEan);
+  await salePanel.locator('#sale-search-form').getByRole('button', { name: 'Rechercher un Article', exact: true }).click();
+  const saleRow = salePanel.getByRole('row', { name: /0123456789012/ });
+  await saleRow.getByRole('button', { name: 'Sélectionner Alimentaire aux deux modes' }).click();
+  await salePanel.getByLabel('À emporter', { exact: true }).check();
+  await salePanel.locator('#sale-quantity').fill('1');
+  const saleResponsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'POST' && url.pathname === '/api/sales';
+  });
+  await salePanel.locator('#sale-submit').click();
+  const saleResponse = await saleResponsePromise;
+  expect(saleResponse.status()).toBe(201);
+  const sale = await saleResponse.json() as {
+    operation: { id: string };
+    financial: { unitPriceHtCents: number; amountHtCents: number; vatCents: number; amountTtcCents: number };
+  };
+  expect(sale.financial).toMatchObject({ unitPriceHtCents: 100, amountHtCents: 100, vatCents: 6, amountTtcCents: 106 });
+
+  const priceResponse = await page.request.patch(`${apiBaseUrl}/api/articles/${canonicalEan}`, {
+    data: { priceHtCents: 250 },
+  });
+  expect(priceResponse.status()).toBe(200);
+  const archiveResponse = await page.request.post(`${apiBaseUrl}/api/articles/${canonicalEan}/archive`);
+  expect(archiveResponse.status()).toBe(200);
+
+  const sourceSelect = await openCounterMovement(page);
+  await sourceSelect.selectOption(sale.operation.id);
+  await expect(page.locator('#counter-movement-source-title').locator('xpath=..')).toContainText('100 centimes');
+  await expect(page.locator('#counter-movement-source-title').locator('xpath=..')).toContainText('106 centimes');
+
+  const counterResponse = await correctSource(page, sale.operation.id, 'Correction financière historique');
+  expect(counterResponse.status()).toBe(201);
+  const receipt = await counterResponse.json() as CounterReceipt;
+  expect(receipt.financialReversal).toMatchObject({
+    sourceOperationId: sale.operation.id,
+    unitPriceHtCents: 100,
+    amountHtCents: -100,
+    vatCents: -6,
+    amountTtcCents: -106,
+  });
+  expect(receipt.positions[0]).toMatchObject({ physicalStock: 5, sellableStock: 0, reason: 'ARCHIVED' });
+  await expect(page.locator('#counter-movement-result')).toContainText('-106 centimes');
+  await expect(page.locator('#counter-movement-result')).toContainText('Article archivé');
+
+  await page.reload();
+  const saleRead = await page.request.get(`${apiBaseUrl}/api/sales/${sale.operation.id}`);
+  expect(saleRead.status()).toBe(200);
+  await expect(saleRead.json()).resolves.toMatchObject({
+    financial: { unitPriceHtCents: 100, amountHtCents: 100, vatCents: 6, amountTtcCents: 106 },
+  });
+  const historyRead = await page.request.get(`${apiBaseUrl}/api/history?ean13=${canonicalEan}`);
+  expect(historyRead.status()).toBe(200);
+  const history = await historyRead.json() as Array<{ type: string; financialReversal?: { amountHtCents: number; vatCents: number; amountTtcCents: number } }>;
+  expect(history.find((entry) => entry.type === 'COUNTER_MOVEMENT')?.financialReversal).toMatchObject({
+    amountHtCents: -100,
+    vatCents: -6,
+    amountTtcCents: -106,
+  });
 });
 
 test('corrects an inventory after a later movement and keeps the source unchanged', async ({ page }) => {

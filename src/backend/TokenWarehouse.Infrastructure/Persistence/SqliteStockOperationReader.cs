@@ -89,7 +89,9 @@ public sealed class SqliteStockOperationReader(
         var entities = await context.StockOperations
             .AsNoTracking()
             .Include(operation => operation.Lines)
-            .Where(operation => operation.Type == "supply" || operation.Type == "SALE")
+            .Where(operation => operation.Type == "supply"
+                || operation.Type == "SALE"
+                || operation.Type == "COUNTER_MOVEMENT")
             .ToListAsync(cancellationToken);
 
         return entities
@@ -219,13 +221,31 @@ public sealed class SqliteStockOperationReader(
                         0);
                 })
                 .ToArray();
+            SaleFinancialReversal? financialReversal = null;
+            if (sourceType == StockOperationType.Sale)
+            {
+                if (!SaleFinancialReversalSerializer.TryDeserialize(
+                        entity.SaleCommitDataType,
+                        entity.SaleCommitDataPayload,
+                        out financialReversal)
+                    || financialReversal.SourceOperationId != entity.SourceOperationId)
+                {
+                    throw new InvalidOperationException("Stored Sale financial reversal data is invalid.");
+                }
+            }
+            else if (entity.SaleCommitDataType is not null || entity.SaleCommitDataPayload is not null)
+            {
+                throw new InvalidOperationException("Stored CounterMovement financial data is invalid.");
+            }
+
             return StockOperation.CreateCounterMovement(
                 entity.Id,
                 entity.SourceOperationId,
                 sourceType,
                 entity.Justification,
                 counterLines,
-                timestampUtc);
+                timestampUtc,
+                financialReversal);
         }
 
         if (!string.Equals(entity.Type, "INVENTORY", StringComparison.Ordinal))

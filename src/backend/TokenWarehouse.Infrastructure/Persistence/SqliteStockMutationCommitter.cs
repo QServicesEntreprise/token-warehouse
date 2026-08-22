@@ -144,6 +144,13 @@ public sealed class SqliteStockMutationCommitter(
                 || plan.Operation.Type != StockOperationType.CounterMovement
                 || plan.Operation.SourceOperationId != plan.SourceOperationId
                 || plan.Operation.SourceOperationType != sourceType
+                || (sourceType == StockOperationType.Sale) != (plan.FinancialReversal is not null)
+                || (plan.FinancialReversal is not null
+                    && (plan.FinancialReversal.SourceOperationId != plan.SourceOperationId
+                        || !SaleFinancialReversalSerializer.TryDeserialize(
+                            SaleFinancialReversalSerializer.Type,
+                            SaleFinancialReversalSerializer.Serialize(plan.FinancialReversal),
+                            out _)))
                 || sourceLines.Length != counterLines.Length
                 || sourceLines.Zip(counterLines).Any(pair =>
                     pair.First.LineNumber != pair.Second.LineNumber
@@ -396,7 +403,13 @@ public sealed class SqliteStockMutationCommitter(
             TimestampUtc = operation.TimestampUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
             SourceOperationId = operation.SourceOperationId,
             SourceOperationType = operation.SourceOperationType?.ToString().ToUpperInvariant(),
-            Justification = operation.Justification
+            Justification = operation.Justification,
+            SaleCommitDataType = operation.FinancialReversal is null
+                ? null
+                : SaleFinancialReversalSerializer.Type,
+            SaleCommitDataPayload = operation.FinancialReversal is { } financialReversal
+                ? SaleFinancialReversalSerializer.Serialize(financialReversal)
+                : null
         };
 
     private static StockOperationLineEntity ToEntity(

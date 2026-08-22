@@ -43,6 +43,7 @@ import {
 } from './inventory-api.service';
 import {
   CounterMovementApiService,
+  CounterMovementFinancialResponse,
   CounterMovementResponse,
   CounterMovementSource,
   CounterMovementReason,
@@ -483,6 +484,11 @@ const lastSaleIdStorageKey = 'token-warehouse.last-sale-id';
                   @if (entry.correctionOperationId) { <div><dt>Correction</dt><dd><code>{{ entry.correctionOperationId }}</code></dd></div> }
                   @if (entry.correctedByOperationId) { <div><dt>Corrigé par</dt><dd><code>{{ entry.correctedByOperationId }}</code></dd></div> }
                   @if (entry.justification) { <div><dt>Justification</dt><dd>{{ entry.justification }}</dd></div> }
+                  @if (entry.financialReversal; as reversal) {
+                    <div><dt>Inversion financière HT</dt><dd>{{ formatCounterMovementEffect(reversal.amountHtCents) }} centimes</dd></div>
+                    <div><dt>Inversion financière TVA</dt><dd>{{ formatCounterMovementEffect(reversal.vatCents) }} centimes</dd></div>
+                    <div><dt>Inversion financière TTC</dt><dd>{{ formatCounterMovementEffect(reversal.amountTtcCents) }} centimes</dd></div>
+                  }
                   @if (entry.previousStatus || entry.nextStatus) { <div><dt>Cycle de vie</dt><dd>{{ entry.previousStatus }} → {{ entry.nextStatus }}</dd></div> }
                 </dl>
 
@@ -728,6 +734,14 @@ const lastSaleIdStorageKey = 'token-warehouse.last-sale-id';
                 <dl>
                   <div><dt>Type</dt><dd>{{ formatCounterMovementSourceType(source.type) }}</dd></div>
                   <div><dt>Timestamp UTC</dt><dd>{{ source.timestampUtc }}</dd></div>
+                  @if (source.financial; as financial) {
+                    <div><dt>Prix HT unitaire historique</dt><dd>{{ financial.unitPriceHtCents }} centimes</dd></div>
+                    <div><dt>Contexte historique</dt><dd>{{ formatCounterMovementFinancialContext(financial.context) }}</dd></div>
+                    <div><dt>Taux de TVA historique</dt><dd>{{ financial.taxRate.ratio }}</dd></div>
+                    <div><dt>Montant HT historique</dt><dd>{{ financial.amountHtCents }} centimes</dd></div>
+                    <div><dt>TVA historique</dt><dd>{{ financial.vatCents }} centimes</dd></div>
+                    <div><dt>Montant TTC historique</dt><dd>{{ financial.amountTtcCents }} centimes</dd></div>
+                  }
                   @for (line of source.lines; track line.lineNumber) {
                     <div><dt>Ligne {{ line.lineNumber }} — {{ line.ean13 }}</dt><dd>{{ formatCounterMovementEffect(line.stockEffect) }}</dd></div>
                   }
@@ -768,6 +782,19 @@ const lastSaleIdStorageKey = 'token-warehouse.last-sale-id';
               <div><dt>Justification</dt><dd>{{ receipt.counterMovement.justification }}</dd></div>
               <div><dt>Timestamp UTC</dt><dd>{{ receipt.counterMovement.timestampUtc }}</dd></div>
             </dl>
+            @if (receipt.financialReversal; as reversal) {
+              <section class="inventory-result-line" aria-labelledby="counter-movement-financial-title">
+                <h4 id="counter-movement-financial-title">Effet financier inverse</h4>
+                <dl>
+                  <div><dt>Vente source</dt><dd><code>{{ reversal.sourceOperationId }}</code></dd></div>
+                  <div><dt>Contexte historique</dt><dd>{{ formatCounterMovementFinancialContext(reversal.context) }}</dd></div>
+                  <div><dt>Taux de TVA historique</dt><dd>{{ reversal.taxRate.ratio }}</dd></div>
+                  <div><dt>Montant HT</dt><dd>{{ formatCounterMovementEffect(reversal.amountHtCents) }} centimes</dd></div>
+                  <div><dt>TVA</dt><dd>{{ formatCounterMovementEffect(reversal.vatCents) }} centimes</dd></div>
+                  <div><dt>Montant TTC</dt><dd>{{ formatCounterMovementEffect(reversal.amountTtcCents) }} centimes</dd></div>
+                </dl>
+              </section>
+            }
             @for (line of receipt.counterMovement.lines; track line.lineNumber) {
               <section class="inventory-result-line" [attr.aria-labelledby]="'counter-movement-result-line-' + line.lineNumber">
                 <h4 [id]="'counter-movement-result-line-' + line.lineNumber">Ligne {{ line.lineNumber }} — {{ line.ean13 }}</h4>
@@ -1953,6 +1980,10 @@ export class AppComponent implements OnInit {
 
   formatCounterMovementReason(reason: CounterMovementReason | null): string {
     return this.formatStockReason(reason);
+  }
+
+  formatCounterMovementFinancialContext(context: CounterMovementFinancialResponse['context']): string {
+    return context === 'takeaway' ? 'À emporter' : context === 'onsite' ? 'Sur place' : 'Non alimentaire';
   }
 
   formatCounterMovementEffect(effect: number): string {

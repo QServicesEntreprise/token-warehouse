@@ -103,6 +103,9 @@ public sealed class HistoryEntryResponse
     public string? Justification { get; init; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public SaleFinancialReversalResponse? FinancialReversal { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? CorrectedByOperationId { get; init; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -141,6 +144,9 @@ public sealed class HistoryEntryResponse
         SourceOperationId = entry.SourceOperationId,
         SourceOperationType = entry.SourceOperationType,
         Justification = entry.Justification,
+        FinancialReversal = entry.FinancialReversal is { } reversal
+            ? SaleFinancialReversalResponse.From(reversal)
+            : null,
         CorrectedByOperationId = entry.CorrectedByOperationId,
         CorrectionOperationId = entry.CorrectionOperationId,
         PreviousStatus = entry.PreviousStatus is { } previous

@@ -21,11 +21,18 @@ public sealed record CounterMovementCommitPlan
     public CounterMovementCommitPlan(
         StockOperation operation,
         string sourceOperationId,
-        IReadOnlyList<CounterMovementCommitLinePlan> lines)
+        IReadOnlyList<CounterMovementCommitLinePlan> lines,
+        SaleFinancialReversal? financialReversal = null)
     {
         ArgumentNullException.ThrowIfNull(operation);
         ArgumentException.ThrowIfNullOrWhiteSpace(sourceOperationId);
         ArgumentNullException.ThrowIfNull(lines);
+        if (financialReversal is not null
+            && financialReversal != operation.FinancialReversal)
+        {
+            throw new ArgumentException("The commit plan financial reversal must match the operation.", nameof(financialReversal));
+        }
+
         if (lines.Count != operation.Lines.Count)
         {
             throw new ArgumentException("The commit plan must contain one entry per operation line.", nameof(lines));
@@ -34,6 +41,7 @@ public sealed record CounterMovementCommitPlan
         Operation = operation;
         SourceOperationId = sourceOperationId;
         Lines = Array.AsReadOnly(lines.ToArray());
+        FinancialReversal = financialReversal ?? operation.FinancialReversal;
     }
 
     public StockOperation Operation { get; }
@@ -41,6 +49,8 @@ public sealed record CounterMovementCommitPlan
     public string SourceOperationId { get; }
 
     public IReadOnlyList<CounterMovementCommitLinePlan> Lines { get; }
+
+    public SaleFinancialReversal? FinancialReversal { get; }
 }
 
 public sealed record CounterMovementLineReceipt(
@@ -53,14 +63,16 @@ public sealed record CounterMovementReceipt(
     StockOperation CounterMovement,
     StockOperation Source,
     IReadOnlyList<CounterMovementLineReceipt> Lines,
-    IReadOnlyList<StockPositionView> Positions);
+    IReadOnlyList<StockPositionView> Positions,
+    SaleFinancialReversal? FinancialReversal = null);
 
 public sealed record CorrectableStockOperationSummary(
     string Id,
     string Type,
     DateTimeOffset TimestampUtc,
     string Ean13,
-    IReadOnlyList<CorrectableStockOperationLineSummary> Lines);
+    IReadOnlyList<CorrectableStockOperationLineSummary> Lines,
+    SaleFinancialSnapshot? Financial = null);
 
 public sealed record CorrectableStockOperationLineSummary(
     int LineNumber,
@@ -75,6 +87,7 @@ public enum CounterMovementRegistrationStatus
     SourceAlreadyCorrected,
     SourceIsCounterMovement,
     SourceTypeUnsupported,
+    SaleFinancialSnapshotInvalid,
     ResultingStockNegative,
     Conflict,
     PersistenceFailed
@@ -113,7 +126,8 @@ public sealed class CounterMovementApplication(
     IStockPositionReader positionReader,
     IStockMutationCommitter committer,
     IStockOperationReader operationReader,
-    IClock clock) : IRegisterCounterMovementUseCase, IReadCorrectableStockOperationsUseCase
+    IClock clock,
+    ISaleReader? saleReader = null) : IRegisterCounterMovementUseCase, IReadCorrectableStockOperationsUseCase
 {
     public async Task<CounterMovementRegistrationResult> CorrectAsync(
         CounterMovementCommand command,
@@ -194,6 +208,50 @@ public sealed class CounterMovementApplication(
                     "Cette Opération source a déjà été corrigée.");
             }
 
+            SaleFinancialReversal? financialReversal = null;
+            if (source.Type == StockOperationType.Sale)
+            {
+                SaleReadRecord? sale;
+                try
+                {
+                    sale = saleReader is null
+                        ? null
+                        : await saleReader.FindByOperationIdAsync(source.Id, cancellationToken);
+                }
+                catch (InvalidOperationException)
+                {
+                    return Failure(
+                        CounterMovementRegistrationStatus.SaleFinancialSnapshotInvalid,
+                        "SALE_FINANCIAL_SNAPSHOT_INVALID",
+                        "sourceOperationId",
+                        "Le snapshot financier historique de la Vente est introuvable ou incohérent.");
+                }
+
+                if (sale is null
+                    || sale.Operation.Id != source.Id
+                    || sale.Operation.Type != StockOperationType.Sale)
+                {
+                    return Failure(
+                        CounterMovementRegistrationStatus.SaleFinancialSnapshotInvalid,
+                        "SALE_FINANCIAL_SNAPSHOT_INVALID",
+                        "sourceOperationId",
+                        "Le snapshot financier historique de la Vente est introuvable ou incohérent.");
+                }
+
+                try
+                {
+                    financialReversal = SaleFinancialReversalPolicy.Create(source.Id, sale.Financial);
+                }
+                catch (ArgumentException)
+                {
+                    return Failure(
+                        CounterMovementRegistrationStatus.SaleFinancialSnapshotInvalid,
+                        "SALE_FINANCIAL_SNAPSHOT_INVALID",
+                        "sourceOperationId",
+                        "Le snapshot financier historique de la Vente est invalide.");
+                }
+            }
+
             var eans = source.Lines.Select(line => line.Ean13).ToArray();
             var positions = await positionReader.FindByEansAsync(eans, cancellationToken);
             var policyPlan = CounterMovementPolicy.CreatePlan(source, positions);
@@ -214,7 +272,8 @@ public sealed class CounterMovementApplication(
                 source.Type,
                 justification.Value,
                 policyPlan.Lines,
-                clock.UtcNow);
+                clock.UtcNow,
+                financialReversal);
             var commitPlan = new CounterMovementCommitPlan(
                 counterMovement,
                 source.Id,
@@ -225,7 +284,8 @@ public sealed class CounterMovementApplication(
                         counterMovement.Lines[index],
                         line.CurrentPositionVersion,
                         articles[line.Ean13].Version))
-                    .ToArray());
+                    .ToArray(),
+                financialReversal);
             var commit = await committer.CommitAsync(commitPlan, cancellationToken);
 
             return commit.Status switch
@@ -282,9 +342,40 @@ public sealed class CounterMovementApplication(
         try
         {
             var sources = await operationReader.ListCorrectableAsync(cancellationToken);
-            return new(
-                CorrectableStockOperationReadStatus.Success,
-                sources.Select(source => new CorrectableStockOperationSummary(
+            var summaries = new List<CorrectableStockOperationSummary>(sources.Count);
+            foreach (var source in sources)
+            {
+                if (source.TimestampUtc > clock.UtcNow)
+                {
+                    continue;
+                }
+
+                SaleFinancialSnapshot? financial = null;
+                if (source.Type == StockOperationType.Sale)
+                {
+                    SaleReadRecord? sale;
+                    try
+                    {
+                        sale = saleReader is null
+                            ? null
+                            : await saleReader.FindByOperationIdAsync(source.Id, cancellationToken);
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        continue;
+                    }
+
+                    if (sale is null
+                        || sale.Operation.Id != source.Id
+                        || sale.Operation.Type != StockOperationType.Sale)
+                    {
+                        continue;
+                    }
+
+                    financial = sale.Financial;
+                }
+
+                summaries.Add(new(
                     source.Id,
                     source.Type.ToString().ToUpperInvariant(),
                     source.TimestampUtc,
@@ -292,9 +383,13 @@ public sealed class CounterMovementApplication(
                     source.Lines.Select(line => new CorrectableStockOperationLineSummary(
                         line.LineNumber,
                         line.Ean13.Value,
-                        line.StockEffect)).ToArray()))
-                    .Where(source => source.TimestampUtc <= clock.UtcNow)
-                    .ToArray());
+                        line.StockEffect)).ToArray(),
+                    financial));
+            }
+
+            return new(
+                CorrectableStockOperationReadStatus.Success,
+                summaries);
         }
         catch (OperationCanceledException)
         {
@@ -327,7 +422,12 @@ public sealed class CounterMovementApplication(
             .ToArray();
         return new(
             CounterMovementRegistrationStatus.Committed,
-            new CounterMovementReceipt(counterMovement, source, lines, lines.Select(line => line.Position).ToArray()),
+            new(
+                counterMovement,
+                source,
+                lines,
+                lines.Select(line => line.Position).ToArray(),
+                counterMovement.FinancialReversal),
             []);
     }
 

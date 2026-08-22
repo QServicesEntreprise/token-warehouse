@@ -37,6 +37,16 @@ export interface HistoryChangeResponse {
   nextValue?: string;
 }
 
+export interface HistoryFinancialReversalResponse {
+  sourceOperationId: string;
+  context: 'takeaway' | 'onsite' | null;
+  unitPriceHtCents: number;
+  taxRate: { code: string; ratio: string; numerator: number; denominator: number };
+  amountHtCents: number;
+  vatCents: number;
+  amountTtcCents: number;
+}
+
 export interface HistoryEntryResponse {
   id: string;
   type: HistoryEntryType;
@@ -53,6 +63,7 @@ export interface HistoryEntryResponse {
   sourceOperationId?: string;
   sourceOperationType?: string;
   justification?: string;
+  financialReversal?: HistoryFinancialReversalResponse;
   correctedByOperationId?: string;
   correctionOperationId?: string;
   previousStatus?: string;

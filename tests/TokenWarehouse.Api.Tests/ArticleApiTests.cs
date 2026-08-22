@@ -1850,7 +1850,8 @@ public sealed class ArticleApiTests
             string? sourceOperationType = null,
             string? justification = null,
             string? saleCommitDataPayload = null)
-            => new()
+        {
+            var operation = new StockOperationEntity
             {
                 Id = id,
                 Type = type,
@@ -1866,6 +1867,30 @@ public sealed class ArticleApiTests
                     : SaleFinancialSnapshotSerializer.Type,
                 SaleCommitDataPayload = saleCommitDataPayload
             };
+
+            if (saleCommitDataPayload is not null
+                && SaleFinancialSnapshotSerializer.TryDeserialize(
+                    SaleFinancialSnapshotSerializer.Type,
+                    saleCommitDataPayload,
+                    out var financial))
+            {
+                operation.SaleFinancialContext = financial.SaleContext switch
+                {
+                    SaleContext.Takeaway => "takeaway",
+                    SaleContext.OnSite => "onsite",
+                    _ => null
+                };
+                operation.SaleFinancialUnitPriceHtCents = financial.UnitPriceHt.Cents;
+                operation.SaleFinancialTaxRateCode = financial.TaxRate.Code;
+                operation.SaleFinancialTaxRateNumerator = financial.TaxRate.Numerator;
+                operation.SaleFinancialTaxRateDenominator = financial.TaxRate.Denominator;
+                operation.SaleFinancialAmountHtCents = financial.AmountHt.Cents;
+                operation.SaleFinancialVatCents = financial.Vat.Cents;
+                operation.SaleFinancialAmountTtcCents = financial.AmountTtc.Cents;
+            }
+
+            return operation;
+        }
 
         static StockOperationLineEntity Line(
             string operationId,
@@ -1902,6 +1927,14 @@ public sealed class ArticleApiTests
                 Money.FromCents(200),
                 Money.FromCents(11),
                 Money.FromCents(211)));
+        var takeawaySingle = SaleFinancialSnapshotSerializer.Serialize(
+            new SaleFinancialSnapshot(
+                SaleContext.Takeaway,
+                Money.FromCents(100),
+                TaxRate.Takeaway,
+                Money.FromCents(100),
+                Money.FromCents(6),
+                Money.FromCents(106)));
         var onsite = SaleFinancialSnapshotSerializer.Serialize(
             new SaleFinancialSnapshot(
                 SaleContext.OnSite,
@@ -1920,7 +1953,7 @@ public sealed class ArticleApiTests
             Operation("sale-b", "SALE", "1234567890128", "2030-03-10T10:00:00+00:00", 2,
                 saleCommitDataPayload: takeaway),
             Operation("sale-takeaway", "SALE", "0123456789012", nextTimestamp, 1,
-                saleCommitDataPayload: takeaway),
+                saleCommitDataPayload: takeawaySingle),
             Operation("sale-onsite", "SALE", "0123456789012", "2030-03-12T11:00:00+00:00", 4,
                 saleCommitDataPayload: onsite),
             Operation("inventory", "INVENTORY", "0123456789012", "2030-03-13T10:00:00+00:00", 0),

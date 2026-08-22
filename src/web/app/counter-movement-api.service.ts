@@ -12,12 +12,23 @@ export interface CounterMovementSourceLine {
   stockEffect: number;
 }
 
+export interface CounterMovementFinancialResponse {
+  sourceOperationId?: string;
+  context: 'takeaway' | 'onsite' | null;
+  unitPriceHtCents: number;
+  taxRate: { code: string; ratio: string; numerator: number; denominator: number };
+  amountHtCents: number;
+  vatCents: number;
+  amountTtcCents: number;
+}
+
 export interface CounterMovementSource {
   id: string;
   type: CounterMovementSourceType;
   timestampUtc: string;
   ean13: string;
   lines: CounterMovementSourceLine[];
+  financial?: CounterMovementFinancialResponse;
 }
 
 export interface CounterMovementPayload {
@@ -52,6 +63,7 @@ export interface CounterMovementResponse {
   };
   source: CounterMovementSource;
   positions: CounterMovementPositionResponse[];
+  financialReversal?: CounterMovementFinancialResponse;
 }
 
 @Injectable({ providedIn: 'root' })
