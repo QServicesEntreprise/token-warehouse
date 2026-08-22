@@ -261,13 +261,18 @@ public sealed class StockSaleApplicationTests
             => ValueTask.FromResult<StockPosition?>(position.Ean13 == ean13 ? position : null);
     }
 
-    private sealed class FakeCommitter : IStockSaleCommitter
+    private sealed class FakeCommitter : IStockMutationCommitter
     {
         public int Calls { get; private set; }
 
         public StockSaleCommitPlan? Plan { get; private set; }
 
         public IStockSaleCommitParticipant? Participant { get; private set; }
+
+        public ValueTask<StockMutationCommitResult> CommitAsync(
+            InventoryCommitPlan plan,
+            CancellationToken cancellationToken = default)
+            => throw new NotSupportedException();
 
         public ValueTask<StockMutationCommitResult> CommitAsync(
             StockSaleCommitPlan plan,

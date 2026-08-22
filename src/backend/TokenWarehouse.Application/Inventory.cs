@@ -137,6 +137,12 @@ public interface IStockMutationCommitter
         StockSaleCommitPlan plan,
         CancellationToken cancellationToken = default)
         => throw new NotSupportedException("This committer does not support Stock sales.");
+
+    ValueTask<StockMutationCommitResult> CommitAsync(
+        StockSaleCommitPlan plan,
+        IStockSaleCommitParticipant participant,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("This committer does not support Stock sale participants.");
 }
 
 public interface IStockOperationReader

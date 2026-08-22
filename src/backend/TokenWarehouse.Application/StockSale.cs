@@ -72,18 +72,6 @@ public interface IStockSaleCommitParticipant
         CancellationToken cancellationToken = default);
 }
 
-public interface IStockSaleCommitter
-{
-    ValueTask<StockMutationCommitResult> CommitAsync(
-        StockSaleCommitPlan plan,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<StockMutationCommitResult> CommitAsync(
-        StockSaleCommitPlan plan,
-        IStockSaleCommitParticipant participant,
-        CancellationToken cancellationToken = default);
-}
-
 public interface IStockSaleContract
 {
     Task<StockSaleCheckResult> CheckSellabilityAsync(
@@ -103,7 +91,7 @@ public interface IStockSaleContract
 public sealed class StockSaleApplication(
     IArticleSellabilityReader articleReader,
     IStockPositionReader positionReader,
-    IStockSaleCommitter committer,
+    IStockMutationCommitter committer,
     IClock clock) : IStockSaleContract
 {
     public async Task<StockSaleCheckResult> CheckSellabilityAsync(

@@ -7,7 +7,7 @@ using TokenWarehouse.Domain;
 namespace TokenWarehouse.Infrastructure.Persistence;
 
 public sealed class SqliteStockMutationCommitter(
-    IDbContextFactory<WarehouseDbContext> contextFactory) : IStockMutationCommitter, IStockSaleCommitter
+    IDbContextFactory<WarehouseDbContext> contextFactory) : IStockMutationCommitter
 {
     public async ValueTask<StockMutationCommitResult> CommitAsync(
         InventoryCommitPlan plan,
