@@ -4,6 +4,8 @@ public sealed class ArticleLifecycleHistoryEntity
 {
     public long Id { get; set; }
 
+    public string FactId { get; set; } = Guid.NewGuid().ToString("N");
+
     public string Ean13 { get; set; } = string.Empty;
 
     public string PreviousStatus { get; set; } = string.Empty;

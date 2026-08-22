@@ -34,6 +34,7 @@ import {
   BulkSupplyPayload,
   SupplyPayload,
 } from './stock-api.service';
+import { DashboardComponent } from './dashboard.component';
 import {
   InventoryApiService,
   BulkInventoryResponse,
@@ -53,6 +54,11 @@ import {
   SaleResponse,
   SalesApiService,
 } from './sales-api.service';
+import {
+  HistoryApiService,
+  HistoryEntryResponse,
+  HistoryEntryType,
+} from './history-api.service';
 
 interface ArticleFormModel {
   ean13: string;
@@ -107,6 +113,7 @@ type InventoryRestoreState = 'loading' | 'ready' | 'empty' | 'error';
 type CounterMovementSourcesState = 'idle' | 'loading' | 'ready' | 'empty' | 'error';
 type SaleSearchState = 'idle' | 'loading' | 'ready' | 'empty' | 'error';
 type SaleState = 'ready' | 'loading' | 'validation' | 'conflict' | 'error' | 'success';
+type HistoryState = 'idle' | 'loading' | 'ready' | 'empty' | 'error';
 
 const initialModel: ArticleFormModel = {
   ean13: '',
@@ -129,7 +136,7 @@ const lastSaleIdStorageKey = 'token-warehouse.last-sale-id';
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [FormField, FormRoot],
+  imports: [DashboardComponent, FormField, FormRoot],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <main aria-labelledby="page-title">
@@ -140,13 +147,17 @@ const lastSaleIdStorageKey = 'token-warehouse.last-sale-id';
       </header>
 
       <nav class="main-nav" aria-label="Navigation principale">
+        <a href="#dashboard-panel">Dashboard</a>
         <a href="#stock-panel">Stock</a>
         <a href="#sale-panel">Vente</a>
         <a href="#supply-panel">Approvisionnement</a>
         <a href="#inventory-title">Inventaire</a>
         <a href="#counter-movement-panel">Contre-mouvement</a>
+        <a href="#history-panel">Historique</a>
         <a href="#catalog-title">Catalogue</a>
       </nav>
+
+      <app-dashboard />
 
       <section id="stock-panel" class="panel" aria-labelledby="stock-title">
         <div>
@@ -371,6 +382,92 @@ const lastSaleIdStorageKey = 'token-warehouse.last-sale-id';
               <div><dt>Stock vendable résultant</dt><dd>{{ receipt.position.sellableQuantity }} unités</dd></div>
             </dl>
           </article>
+        }
+      </section>
+
+      <section id="history-panel" class="panel" aria-labelledby="history-title">
+        <div>
+          <p class="eyebrow">Lecture immuable</p>
+          <h2 id="history-title">Historique</h2>
+        </div>
+        <p>Les faits engagés sont présentés du plus récent au plus ancien, sans recalculer le Stock courant.</p>
+
+        <form id="history-filter-form" class="lookup" (submit)="onHistorySubmit($event)">
+          <label for="history-ean13">Filtrer par EAN-13</label>
+          <input
+            id="history-ean13"
+            autocomplete="off"
+            inputmode="numeric"
+            pattern="[0-9]{13}"
+            [value]="historyFilterEan()"
+            (input)="setHistoryFilter($event)" />
+          <button type="submit" [disabled]="historyState() === 'loading'">Filtrer l’Historique</button>
+          <button type="button" class="secondary-button" (click)="loadHistory('')">Historique global</button>
+        </form>
+
+        <div id="history-state" class="catalog-state" role="status" aria-live="polite">
+          @switch (historyState()) {
+            @case ('idle') { <p>Consultez l’Historique global ou filtrez par Article.</p> }
+            @case ('loading') { <p>Chargement de l’Historique…</p> }
+            @case ('ready') { <p>{{ historyEntries().length }} fait{{ historyEntries().length > 1 ? 's' : '' }} trouvé{{ historyEntries().length > 1 ? 's' : '' }}.</p> }
+            @case ('empty') { <p>Aucun fait historique ne correspond à cette requête.</p> }
+            @case ('error') {
+              <p class="form-error" role="alert">{{ historyError() }}</p>
+              <button type="button" class="secondary-button" (click)="retryHistory()">Réessayer</button>
+            }
+          }
+        </div>
+
+        @if (historyEntries().length > 0) {
+          <div id="history-list" class="history-list">
+            @for (entry of historyEntries(); track entry.id) {
+              <article class="history-entry" [attr.aria-labelledby]="'history-entry-' + entry.id">
+                <h3 [id]="'history-entry-' + entry.id">
+                  {{ formatHistoryType(entry.type) }} — {{ entry.timestampUtc }}
+                </h3>
+                <dl>
+                  <div><dt>Identifiant</dt><dd><code>{{ entry.id }}</code></dd></div>
+                  <div><dt>Article(s)</dt><dd>{{ formatHistoryArticles(entry) }}</dd></div>
+                  @if (entry.quantity !== undefined) { <div><dt>Quantité utile</dt><dd>{{ entry.quantity }} unités</dd></div> }
+                  @if (entry.stockEffect !== undefined) { <div><dt>Effet Stock</dt><dd>{{ formatHistoryEffect(entry.stockEffect) }}</dd></div> }
+                  @if (entry.type !== 'COUNTER_MOVEMENT' && entry.previousPhysicalStock !== undefined) { <div><dt>Stock physique précédent</dt><dd>{{ entry.previousPhysicalStock }} unités</dd></div> }
+                  @if (entry.countedQuantity !== undefined) { <div><dt>Quantité comptée</dt><dd>{{ entry.countedQuantity }} unités</dd></div> }
+                  @if (entry.difference !== undefined) { <div><dt>Écart</dt><dd>{{ formatHistoryEffect(entry.difference) }}</dd></div> }
+                  @if (entry.resultingPhysicalStock !== undefined) { <div><dt>Stock physique résultant</dt><dd>{{ entry.resultingPhysicalStock }} unités</dd></div> }
+                  @if (entry.sourceOperationId) { <div><dt>Source</dt><dd><code>{{ entry.sourceOperationId }}</code> — {{ entry.sourceOperationType }}</dd></div> }
+                  @if (entry.correctionOperationId) { <div><dt>Correction</dt><dd><code>{{ entry.correctionOperationId }}</code></dd></div> }
+                  @if (entry.correctedByOperationId) { <div><dt>Corrigé par</dt><dd><code>{{ entry.correctedByOperationId }}</code></dd></div> }
+                  @if (entry.justification) { <div><dt>Justification</dt><dd>{{ entry.justification }}</dd></div> }
+                  @if (entry.previousStatus || entry.nextStatus) { <div><dt>Cycle de vie</dt><dd>{{ entry.previousStatus }} → {{ entry.nextStatus }}</dd></div> }
+                </dl>
+
+                @if (entry.changes?.length) {
+                  <ul aria-label="Valeurs modifiées">
+                    @for (change of entry.changes; track change.field) {
+                      <li>{{ change.field }} : {{ change.before ?? change.previousValue ?? '—' }} → {{ change.after ?? change.nextValue ?? '—' }}</li>
+                    }
+                  </ul>
+                }
+
+                @if (entry.lines.length > 0) {
+                  <h4>Lignes</h4>
+                  <ul aria-label="Lignes de l’opération">
+                    @for (line of entry.lines; track line.lineNumber) {
+                      <li>
+                        Ligne {{ line.lineNumber }} — {{ line.ean13 }}
+                        @if (line.quantity !== undefined) { · {{ line.quantity }} unités }
+                        @if (line.stockEffect !== undefined) { · effet {{ formatHistoryEffect(line.stockEffect) }} }
+                        @if (line.inverseEffect !== undefined) { · effet inverse {{ formatHistoryEffect(line.inverseEffect) }} }
+                        @if (line.countedQuantity !== undefined) { · comptée {{ line.countedQuantity }} }
+                        @if (line.difference !== undefined) { · écart {{ formatHistoryEffect(line.difference) }} }
+                        @if (line.resultingPhysicalStock !== undefined) { · résultat {{ line.resultingPhysicalStock }} }
+                      </li>
+                    }
+                  </ul>
+                }
+              </article>
+            }
+          </div>
         }
       </section>
 
@@ -1026,6 +1123,60 @@ const lastSaleIdStorageKey = 'token-warehouse.last-sale-id';
                 }
               </div>
             </section>
+
+            <section id="article-history-panel" aria-labelledby="article-history-title" tabindex="-1">
+              <h4 id="article-history-title">Historique de l’Article</h4>
+              <button type="button" class="secondary-button" [disabled]="articleHistoryState() === 'loading'" (click)="loadArticleHistory(article.ean13)">
+                {{ articleHistoryState() === 'loading' ? 'Chargement…' : 'Consulter l’Historique de cet Article' }}
+              </button>
+              <div id="article-history-state" role="status" aria-live="polite">
+                @switch (articleHistoryState()) {
+                  @case ('loading') { <p>Chargement de l’Historique de l’Article…</p> }
+                  @case ('empty') { <p>Aucun fait historique pour cet Article.</p> }
+                  @case ('error') { <p class="form-error" role="alert">{{ articleHistoryError() }}</p> }
+                  @case ('ready') { <p>{{ articleHistoryEntries().length }} fait{{ articleHistoryEntries().length > 1 ? 's' : '' }} trouvé{{ articleHistoryEntries().length > 1 ? 's' : '' }}.</p> }
+                }
+              </div>
+              @if (articleHistoryEntries().length > 0 && articleHistoryEan() === article.ean13) {
+                <div id="article-history-list" class="history-list">
+                  @for (entry of articleHistoryEntries(); track entry.id) {
+                    <article class="history-entry" [attr.aria-labelledby]="'article-history-entry-' + entry.id">
+                      <h5 [id]="'article-history-entry-' + entry.id">{{ formatHistoryType(entry.type) }} — {{ entry.timestampUtc }}</h5>
+                      <p>{{ formatHistoryArticles(entry) }}</p>
+                      @if (entry.countedQuantity !== undefined) { <p>Quantité comptée : {{ entry.countedQuantity }} ; Écart : {{ formatHistoryEffect(entry.difference) }}</p> }
+                      @if (entry.stockEffect !== undefined) { <p>Effet Stock : {{ formatHistoryEffect(entry.stockEffect) }} ; résultat : {{ entry.resultingPhysicalStock }} unités</p> }
+                      @if (entry.previousStatus || entry.nextStatus) { <p>Cycle de vie : {{ entry.previousStatus }} → {{ entry.nextStatus }}</p> }
+                      @if (entry.sourceOperationId) { <p>Source : <code>{{ entry.sourceOperationId }}</code> ; justification : {{ entry.justification }}</p> }
+                      @if (entry.correctionOperationId) { <p>Correction : <code>{{ entry.correctionOperationId }}</code></p> }
+                      @if (entry.correctedByOperationId) { <p>Corrigé par : <code>{{ entry.correctedByOperationId }}</code></p> }
+                      @if (entry.lines.length > 0) {
+                        <ul aria-label="Lignes de l’opération">
+                          @for (line of entry.lines; track line.lineNumber) {
+                            <li>
+                              Ligne {{ line.lineNumber }} — {{ line.ean13 }}
+                              @if (line.quantity !== undefined) { · {{ line.quantity }} unités }
+                              @if (line.stockEffect !== undefined) { · effet {{ formatHistoryEffect(line.stockEffect) }} }
+                              @if (line.inverseEffect !== undefined) { · effet inverse {{ formatHistoryEffect(line.inverseEffect) }} }
+                              @if (entry.type !== 'COUNTER_MOVEMENT' && line.previousPhysicalStock !== undefined) { · précédent {{ line.previousPhysicalStock }} }
+                              @if (line.countedQuantity !== undefined) { · comptée {{ line.countedQuantity }} }
+                              @if (line.difference !== undefined) { · écart {{ formatHistoryEffect(line.difference) }} }
+                              @if (line.resultingPhysicalStock !== undefined) { · résultat {{ line.resultingPhysicalStock }} }
+                            </li>
+                          }
+                        </ul>
+                      }
+                      @if (entry.changes?.length) {
+                        <ul>
+                          @for (change of entry.changes; track change.field) {
+                            <li>{{ change.field }} : {{ change.before ?? change.previousValue ?? '—' }} → {{ change.after ?? change.nextValue ?? '—' }}</li>
+                          }
+                        </ul>
+                      }
+                    </article>
+                  }
+                </div>
+              }
+            </section>
           </article>
         }
       </section>
@@ -1038,6 +1189,7 @@ export class AppComponent implements OnInit {
   private readonly inventoryApi = inject(InventoryApiService);
   private readonly counterMovementApi = inject(CounterMovementApiService);
   private readonly salesApi = inject(SalesApiService);
+  private readonly historyApi = inject(HistoryApiService);
 
   readonly model = signal<ArticleFormModel>({ ...initialModel, consumptionModes: [] });
   readonly supplyModel = signal<SupplyFormModel>({ ean13: '', quantity: '' });
@@ -1143,6 +1295,15 @@ export class AppComponent implements OnInit {
   readonly counterMovementError = signal('');
   readonly counterMovementReceipt = signal<CounterMovementResponse | null>(null);
   readonly counterMovementSubmitting = signal(false);
+  readonly historyEntries = signal<HistoryEntryResponse[]>([]);
+  readonly historyState = signal<HistoryState>('idle');
+  readonly historyError = signal('');
+  readonly historyFilterEan = signal('');
+  readonly historyLoaded = signal(false);
+  readonly articleHistoryEntries = signal<HistoryEntryResponse[]>([]);
+  readonly articleHistoryState = signal<HistoryState>('idle');
+  readonly articleHistoryError = signal('');
+  readonly articleHistoryEan = signal<string | null>(null);
 
   private catalogRequestId = 0;
   private stockRequestId = 0;
@@ -1153,6 +1314,8 @@ export class AppComponent implements OnInit {
   private inventoryRestoreRequestId = 0;
   private counterMovementRequestId = 0;
   private saleRequestId = 0;
+  private historyRequestId = 0;
+  private articleHistoryRequestId = 0;
 
   ngOnInit(): void {
     void this.loadCatalog();
@@ -1436,6 +1599,109 @@ export class AppComponent implements OnInit {
     };
   }
 
+  setHistoryFilter(event: Event): void {
+    this.historyFilterEan.set((event.target as HTMLInputElement).value);
+  }
+
+  async onHistorySubmit(event: Event): Promise<void> {
+    event.preventDefault();
+    await this.loadHistory();
+  }
+
+  retryHistory(): void {
+    void this.loadHistory();
+  }
+
+  async loadHistory(ean13?: string): Promise<void> {
+    const requestId = ++this.historyRequestId;
+    const filter = (ean13 ?? this.historyFilterEan()).trim();
+    if (ean13 !== undefined) {
+      this.historyFilterEan.set(ean13);
+    }
+    this.historyLoaded.set(true);
+    this.historyState.set('loading');
+    this.historyError.set('');
+    this.historyEntries.set([]);
+    try {
+      const entries = await firstValueFrom(this.historyApi.list(filter || undefined));
+      if (requestId !== this.historyRequestId) {
+        return;
+      }
+      this.historyEntries.set(entries);
+      this.historyState.set(entries.length > 0 ? 'ready' : 'empty');
+    } catch (error) {
+      if (requestId !== this.historyRequestId) {
+        return;
+      }
+      this.historyState.set('error');
+      this.historyError.set(this.problemMessage(error, 'L’Historique ne peut pas être chargé. Réessayez.'));
+    }
+  }
+
+  async loadArticleHistory(ean13: string): Promise<void> {
+    const requestId = ++this.articleHistoryRequestId;
+    this.articleHistoryEan.set(ean13);
+    this.articleHistoryState.set('loading');
+    this.articleHistoryError.set('');
+    this.articleHistoryEntries.set([]);
+    try {
+      const entries = await firstValueFrom(this.historyApi.list(ean13));
+      if (requestId !== this.articleHistoryRequestId) {
+        return;
+      }
+      this.articleHistoryEntries.set(entries);
+      this.articleHistoryState.set(entries.length > 0 ? 'ready' : 'empty');
+      setTimeout(() => document.getElementById('article-history-panel')?.focus());
+    } catch (error) {
+      if (requestId !== this.articleHistoryRequestId) {
+        return;
+      }
+      this.articleHistoryState.set('error');
+      this.articleHistoryError.set(this.problemMessage(error, 'L’Historique de l’Article ne peut pas être chargé.'));
+    }
+  }
+
+  formatHistoryType(type: HistoryEntryType): string {
+    return type === 'SUPPLY'
+      ? 'Approvisionnement'
+      : type === 'INVENTORY'
+        ? 'Inventaire'
+        : type === 'SALE_STOCK'
+          ? 'Vente Stock'
+          : type === 'COUNTER_MOVEMENT'
+            ? 'Contre-mouvement'
+            : type === 'CATALOG_ARCHIVE'
+              ? 'Archivage Catalogue'
+              : type === 'CATALOG_REACTIVATE'
+                ? 'Réactivation Catalogue'
+                : type === 'CATALOG_DLC_CHANGE'
+                  ? 'Changement de DLC'
+                  : type === 'CATALOG_PACKAGING_CHANGE'
+                    ? 'Changement de Packaging'
+                    : 'Changement Catalogue';
+  }
+
+  formatHistoryEffect(effect: number | null | undefined): string {
+    if (effect === undefined || effect === null) {
+      return '—';
+    }
+    return effect > 0 ? `+${effect}` : String(effect);
+  }
+
+  formatHistoryArticles(entry: HistoryEntryResponse): string {
+    return entry.articles.map((article) => article.ean13).join(', ');
+  }
+
+  private refreshHistoryAfterChange(): void {
+    if (this.historyLoaded()) {
+      void this.loadHistory();
+    }
+    const ean13 = this.articleHistoryEan();
+    if (ean13) {
+      void this.loadArticleHistory(ean13);
+    }
+  }
+
   async onInventorySubmit(event: Event): Promise<void> {
     event.preventDefault();
     this.inventoryError.set('');
@@ -1551,6 +1817,7 @@ export class AppComponent implements OnInit {
       this.counterMovementModel.update((model) => ({ ...model, sourceOperationId: '' }));
       this.counterMovementSourcesState.set(this.counterMovementSources().length > 0 ? 'ready' : 'empty');
       await this.loadStock();
+      this.refreshHistoryAfterChange();
       setTimeout(() => document.getElementById('counter-movement-result')?.focus());
       return true;
     } catch (error) {
@@ -1798,6 +2065,7 @@ export class AppComponent implements OnInit {
       this.supplyMessage.set(
         `Approvisionnement ${operation.id} enregistré le ${operation.occurredAt}.`,
       );
+      this.refreshHistoryAfterChange();
       setTimeout(() => document.getElementById('supply-status')?.focus());
     } catch (error) {
       if (requestId !== this.supplyRequestId) {
@@ -1898,6 +2166,7 @@ export class AppComponent implements OnInit {
         );
       }
       await this.loadCatalog();
+      this.refreshHistoryAfterChange();
     } catch (error) {
       if (requestId !== this.lifecycleRequestId) {
         return;
@@ -2045,6 +2314,7 @@ export class AppComponent implements OnInit {
 
       this.showDetail(updated);
       this.attributeUpdateError.set(`Les attributs de ${updated.name} ont été mis à jour.`);
+      this.refreshHistoryAfterChange();
     } catch (error) {
       if (requestId !== this.attributeRequestId) {
         return;
@@ -2108,6 +2378,7 @@ export class AppComponent implements OnInit {
       sessionStorage.setItem(lastInventoryIdStorageKey, receipt.operation.id);
       setTimeout(() => document.getElementById('inventory-result')?.focus());
       void this.loadStock();
+      this.refreshHistoryAfterChange();
       return true;
     } catch (error) {
       const problem = this.problemDetails(error, 'L’Inventaire n’a pas pu être enregistré.');
@@ -2464,6 +2735,13 @@ export class AppComponent implements OnInit {
   }
 
   private setDetail(article: ArticleResponse): void {
+    if (this.articleHistoryEan() !== null && this.articleHistoryEan() !== article.ean13) {
+      this.articleHistoryRequestId += 1;
+      this.articleHistoryEan.set(null);
+      this.articleHistoryEntries.set([]);
+      this.articleHistoryState.set('idle');
+      this.articleHistoryError.set('');
+    }
     this.detail.set(article);
     this.priceHtDraft.set(String(article.priceHtCents));
     this.priceUpdateError.set('');

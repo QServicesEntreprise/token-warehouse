@@ -28,6 +28,9 @@ public sealed class WarehouseDbContext(DbContextOptions<WarehouseDbContext> opti
 
         var history = modelBuilder.Entity<ArticleLifecycleHistoryEntity>();
         history.HasKey(entity => entity.Id);
+        history.HasIndex(entity => entity.FactId).IsUnique();
+        history.HasIndex(entity => new { entity.OccurredAt, entity.Id });
+        history.Property(entity => entity.FactId).IsRequired();
         history.Property(entity => entity.Ean13).IsRequired();
         history.Property(entity => entity.PreviousStatus).IsRequired();
         history.Property(entity => entity.NextStatus).IsRequired();
@@ -68,6 +71,7 @@ public sealed class WarehouseDbContext(DbContextOptions<WarehouseDbContext> opti
         operation.Property(entity => entity.SaleCommitDataType);
         operation.Property(entity => entity.SaleCommitDataPayload);
         operation.HasIndex(entity => entity.Ean13);
+        operation.HasIndex(entity => new { entity.TimestampUtc, entity.Id });
         operation.HasIndex(entity => entity.SourceOperationId).IsUnique();
         operation.ToTable("StockOperations", table =>
         {
@@ -85,10 +89,10 @@ public sealed class WarehouseDbContext(DbContextOptions<WarehouseDbContext> opti
                 "ResultingPhysicalStock >= 0");
             table.HasCheckConstraint(
                 "CK_StockOperations_InventoryDifference_Formula",
-                "InventoryDifference = CountedQuantity - PreviousPhysicalStock");
+                "Type <> 'INVENTORY' OR InventoryDifference = CountedQuantity - PreviousPhysicalStock");
             table.HasCheckConstraint(
                 "CK_StockOperations_ResultingPhysicalStock_Formula",
-                "ResultingPhysicalStock = CountedQuantity");
+                "Type <> 'INVENTORY' OR ResultingPhysicalStock = CountedQuantity");
             table.HasCheckConstraint(
                 "CK_StockOperations_CounterMovement_Fields",
                 "Type <> 'COUNTER_MOVEMENT' OR (SourceOperationId IS NOT NULL AND length(trim(SourceOperationId)) > 0 AND SourceOperationType IS NOT NULL AND SourceOperationType IN ('SUPPLY', 'INVENTORY', 'SALE') AND Justification IS NOT NULL AND length(trim(Justification)) > 0)");
@@ -141,10 +145,10 @@ public sealed class WarehouseDbContext(DbContextOptions<WarehouseDbContext> opti
                 "ResultingPhysicalStock >= 0");
             table.HasCheckConstraint(
                 "CK_StockOperationLines_InventoryDifference_Formula",
-                "InventoryDifference = CountedQuantity - PreviousPhysicalStock");
+                "OperationType <> 'INVENTORY' OR InventoryDifference = CountedQuantity - PreviousPhysicalStock");
             table.HasCheckConstraint(
                 "CK_StockOperationLines_ResultingPhysicalStock_Formula",
-                "ResultingPhysicalStock = CountedQuantity");
+                "OperationType <> 'INVENTORY' OR ResultingPhysicalStock = CountedQuantity");
             table.HasCheckConstraint(
                 "CK_StockOperationLines_CounterMovement_Inverse",
                 "OperationType <> 'COUNTER_MOVEMENT' OR InverseEffect = -SourceEffect");

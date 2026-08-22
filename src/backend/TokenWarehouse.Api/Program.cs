@@ -11,11 +11,23 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 var connectionString = builder.Configuration.GetConnectionString("Warehouse")
     ?? "Data Source=token-warehouse.db";
 builder.Services.AddSqlitePersistence(connectionString);
+if (builder.Environment.IsEnvironment("Testing")
+    && string.Equals(
+        Environment.GetEnvironmentVariable("TOKEN_WAREHOUSE_HISTORY_FAILURE"),
+        "true",
+        StringComparison.OrdinalIgnoreCase))
+{
+    builder.Services.AddScoped<IHistoryReader>(services =>
+        new FailingHistoryReader(services.GetRequiredService<SqliteHistoryReader>()));
+}
 builder.Services.AddScoped<ArticleApplication>();
 builder.Services.AddScoped<StockApplication>();
+builder.Services.AddScoped<DashboardApplication>();
 builder.Services.AddScoped<InventoryApplication>();
 builder.Services.AddScoped<IReadStockUseCase>(services => services.GetRequiredService<StockApplication>());
 builder.Services.AddScoped<IStockPositionReadContract>(services => services.GetRequiredService<StockApplication>());
+builder.Services.AddScoped<IReadCurrentDashboardUseCase>(services =>
+    services.GetRequiredService<DashboardApplication>());
 builder.Services.AddScoped<StockOperationReadApplication>();
 builder.Services.AddScoped<IStockOperationReadContract>(services =>
     services.GetRequiredService<StockOperationReadApplication>());
@@ -45,6 +57,8 @@ builder.Services.AddScoped<IUpdateArticleAttributesUseCase>(services => services
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddScoped<IChangeArticleLifecycleUseCase>(services => services.GetRequiredService<ArticleApplication>());
 builder.Services.AddScoped<IGetArticleHistoryUseCase>(services => services.GetRequiredService<ArticleApplication>());
+builder.Services.AddScoped<HistoryApplication>();
+builder.Services.AddScoped<IReadHistoryUseCase>(services => services.GetRequiredService<HistoryApplication>());
 
 builder.Services.AddSingleton<RuntimeReadiness>();
 
@@ -78,13 +92,26 @@ app.MapGet("/health", async (RuntimeReadiness readiness, CancellationToken cance
 
 app.MapArticleEndpoints();
 app.MapStockEndpoints();
+app.MapDashboardEndpoints();
 app.MapSupplyEndpoints();
 app.MapInventoryEndpoints();
 app.MapCounterMovementEndpoints();
+app.MapHistoryEndpoints();
 app.MapSaleEndpoints();
 
 app.Run();
 
 public partial class Program
 {
+}
+
+file sealed class FailingHistoryReader(SqliteHistoryReader inner) : IHistoryReader
+{
+    public async ValueTask<HistoryReadResult> ReadAsync(
+        HistoryQuery query,
+        CancellationToken cancellationToken = default)
+    {
+        await inner.ReadAsync(query, cancellationToken);
+        throw new InvalidOperationException("controlled history failure");
+    }
 }

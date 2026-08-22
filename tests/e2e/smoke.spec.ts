@@ -29,16 +29,14 @@ test('searches and filters the catalogue, including an archived detail', async (
 
   await page.locator('#catalog-status').selectOption('archived');
   await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
-  await expect(catalogPanel.getByRole('row', { name: /Biscuit historique/ })).toBeVisible();
-  await expect(catalogPanel.getByRole('row', { name: /Lampe historique/ })).toBeVisible();
-  await page.getByRole('button', { name: 'Consulter Biscuit historique' }).click();
-  await expect(page.getByRole('heading', { name: 'Biscuit historique' })).toBeVisible();
-  await expect(page.locator('section[aria-labelledby="lookup-title"]').getByText('Archivé')).toBeVisible();
+  await expect(catalogPanel.getByRole('row', { name: /Article archivé/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Consulter Article archivé' }).click();
+  await expect(page.getByRole('heading', { name: 'Article archivé' })).toBeVisible();
+  await expect(page.locator('section[aria-labelledby="lookup-title"]').getByText('Archivé', { exact: true })).toBeVisible();
 
   await page.locator('#catalog-status').selectOption('all');
   await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
-  await expect(catalogPanel.getByRole('row', { name: /Biscuit historique/ })).toBeVisible();
-  await expect(catalogPanel.getByRole('row', { name: /Lampe historique/ })).toBeVisible();
+  await expect(catalogPanel.getByRole('row', { name: /Article archivé/ })).toBeVisible();
 
   await page.locator('#catalog-status').selectOption('active');
   await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
@@ -234,7 +232,7 @@ test('searches and filters the catalogue, including an archived detail', async (
   await page.locator('#catalog-packaging').selectOption('refurbished');
   await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
   await expect(articleRow(nonFoodEan)).toBeVisible();
-  await expect(catalogPanel.getByRole('row', { name: /Lampe historique/ })).toHaveCount(0);
+  await expect(catalogPanel.getByRole('row', { name: /Article archivé/ })).toHaveCount(0);
 
   await page.reload();
   await page.locator('#lookupEan13').fill(nonFoodEan);
@@ -291,7 +289,7 @@ test('searches and filters the catalogue, including an archived detail', async (
 
 test('recomputes sellable stock after food DLC and non-food packaging updates', async ({ page }) => {
   const foodEan = '0123456789012';
-  const nonFoodEan = '4012345678901';
+  const nonFoodEan = '4567890123456';
   const today = '2030-01-15';
   const yesterday = '2030-01-14';
   const detailStock = (quantity: number) => page.locator('.article-detail').getByText(`${quantity} unités`, { exact: true });
@@ -299,38 +297,38 @@ test('recomputes sellable stock after food DLC and non-food packaging updates', 
   await page.goto('/');
   await page.locator('#lookupEan13').fill(foodEan);
   await page.getByRole('button', { name: 'Consulter', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'DLC de démonstration' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Alimentaire aux deux modes' })).toBeVisible();
   await page.locator('#detailDlc').fill(today);
   await page.getByRole('button', { name: 'Enregistrer les attributs' }).click();
   await expect(page.locator('#attribute-update-error')).toContainText('mis à jour');
-  await expect(detailStock(8)).toHaveCount(2);
+  await expect(detailStock(5)).toHaveCount(2);
 
   await page.locator('#detailDlc').fill(yesterday);
   await page.getByRole('button', { name: 'Enregistrer les attributs' }).click();
   await expect(page.locator('#attribute-update-error')).toContainText('mis à jour');
   await expect(page.locator('.article-detail').getByText(yesterday, { exact: true })).toBeVisible();
-  await expect(detailStock(8)).toHaveCount(1);
+  await expect(detailStock(5)).toHaveCount(1);
   await expect(detailStock(0)).toHaveCount(1);
 
   await page.locator('#lookupEan13').fill(nonFoodEan);
   await page.getByRole('button', { name: 'Consulter', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Packaging de démonstration' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Article actif vendable' })).toBeVisible();
   await page.locator('#detailPackaging').selectOption('new');
   await page.getByRole('button', { name: 'Enregistrer les attributs' }).click();
   await expect(page.locator('#attribute-update-error')).toContainText('mis à jour');
-  await expect(detailStock(7)).toHaveCount(2);
+  await expect(detailStock(8)).toHaveCount(2);
 
   await page.locator('#detailPackaging').selectOption('unsellable');
   await page.getByRole('button', { name: 'Enregistrer les attributs' }).click();
   await expect(page.locator('#attribute-update-error')).toContainText('mis à jour');
   await expect(page.locator('.article-detail').getByText('unsellable', { exact: true })).toBeVisible();
-  await expect(detailStock(7)).toHaveCount(1);
+  await expect(detailStock(8)).toHaveCount(1);
   await expect(detailStock(0)).toHaveCount(1);
 
   await page.reload();
   await page.locator('#lookupEan13').fill(nonFoodEan);
   await page.getByRole('button', { name: 'Consulter', exact: true }).click();
-  await expect(detailStock(7)).toHaveCount(1);
+  await expect(detailStock(8)).toHaveCount(1);
   await expect(detailStock(0)).toHaveCount(1);
 });
 
@@ -339,39 +337,153 @@ test('consults Stock positions, distinguishes blocked quantities and opens detai
 
   await page.goto('/');
   await expect(stockPanel.getByText(/Articles trouvés/)).toBeVisible();
-  await expect(stockPanel.getByRole('row', { name: /DLC de démonstration/ })).toContainText('0123456789012');
-  await expect(stockPanel.getByRole('row', { name: /DLC de démonstration/ })).toContainText('8 unités');
-  await expect(stockPanel.getByRole('row', { name: /Alimentaire expiré/ })).toContainText('7 unités');
-  await expect(stockPanel.getByRole('row', { name: /Alimentaire expiré/ })).toContainText('DLC dépassée');
-  await expect(stockPanel.getByRole('row', { name: /Biscuit historique/ })).toContainText('4 unités');
-  await expect(stockPanel.getByRole('row', { name: /Biscuit historique/ })).toContainText('Article archivé');
-  await expect(stockPanel.getByRole('row', { name: /^Packaging invendable / })).toContainText('3 unités');
-  await expect(stockPanel.getByRole('row', { name: /^Packaging invendable / })).toContainText('Packaging invendable');
-  await expect(stockPanel.getByRole('row', { name: /Article sans position/ })).toContainText('0 unités');
-  await expect(stockPanel.getByRole('row', { name: /Article sans position/ })).toContainText('Rupture');
+  await expect(stockPanel.getByRole('row', { name: /Alimentaire aux deux modes/ })).toContainText('0123456789012');
+  await expect(stockPanel.getByRole('row', { name: /Alimentaire aux deux modes/ })).toContainText('5 unités');
+  await expect(stockPanel.getByRole('row', { name: /Alimentaire à DLC dépassée/ })).toContainText('7 unités');
+  await expect(stockPanel.getByRole('row', { name: /Alimentaire à DLC dépassée/ })).toContainText('DLC dépassée');
+  await expect(stockPanel.getByRole('row', { name: /Article archivé/ })).toContainText('4 unités');
+  await expect(stockPanel.getByRole('row', { name: /Article archivé/ })).toContainText('Article archivé');
+  await expect(stockPanel.getByRole('row', { name: /^Non alimentaire au Packaging Invendable / })).toContainText('3 unités');
+  await expect(stockPanel.getByRole('row', { name: /^Non alimentaire au Packaging Invendable / })).toContainText('Packaging invendable');
+  await expect(stockPanel.getByRole('row', { name: /Article actif sans position/ })).toContainText('0 unités');
+  await expect(stockPanel.getByRole('row', { name: /Article actif sans position/ })).toContainText('Rupture');
 
-  const expiredDetail = stockPanel.getByRole('button', { name: 'Consulter le détail du Stock de Alimentaire expiré' });
+  const expiredDetail = stockPanel.getByRole('button', { name: 'Consulter le détail du Stock de Alimentaire à DLC dépassée' });
   await expiredDetail.focus();
   await page.keyboard.press('Enter');
-  await expect(stockPanel.getByRole('heading', { name: /Détail du Stock — Alimentaire expiré/ })).toBeVisible();
+  await expect(stockPanel.getByRole('heading', { name: /Détail du Stock — Alimentaire à DLC dépassée/ })).toBeVisible();
   await expect(stockPanel.locator('#stock-detail')).toContainText('7 unités');
   await expect(stockPanel.locator('#stock-detail')).toContainText('0 unités');
   await expect(stockPanel.locator('#stock-detail')).toContainText('DLC dépassée');
 
   await page.reload();
   const reloadedStockPanel = page.locator('#stock-panel');
-  await expect(reloadedStockPanel.getByRole('row', { name: /Alimentaire expiré/ })).toContainText('DLC dépassée');
-  const reloadedExpiredDetail = reloadedStockPanel.getByRole('button', { name: 'Consulter le détail du Stock de Alimentaire expiré' });
+  await expect(reloadedStockPanel.getByRole('row', { name: /Alimentaire à DLC dépassée/ })).toContainText('DLC dépassée');
+  const reloadedExpiredDetail = reloadedStockPanel.getByRole('button', { name: 'Consulter le détail du Stock de Alimentaire à DLC dépassée' });
   await reloadedExpiredDetail.focus();
   await page.keyboard.press('Enter');
   await expect(reloadedStockPanel.locator('#stock-detail')).toContainText('7 unités');
   await expect(reloadedStockPanel.locator('#stock-detail')).toContainText('DLC dépassée');
 });
 
+test('consults the current Dashboard with aligned KPIs, alerts and keyboard links', async ({ page }) => {
+  const dashboard = page.locator('#dashboard-panel');
+  const dashboardResponse = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'GET' && url.pathname === '/api/dashboard';
+  });
+
+  await page.goto('/');
+  const firstResponse = await dashboardResponse;
+  expect(firstResponse.status()).toBe(200);
+  const firstView = await firstResponse.json();
+  expect(firstView.stockByArticle).toHaveLength(6);
+  expect(firstView.stockByArticle.map((row: { ean13: string }) => row.ean13)).toEqual([
+    '0123456789012',
+    '1234567890128',
+    '2345678901234',
+    '3456789012340',
+    '4567890123456',
+    '5678901234562',
+  ]);
+  expect(firstView.alerts.outOfStock.map((row: { ean13: string }) => row.ean13)).toEqual(['5678901234562']);
+  expect(firstView.alerts.notSellable.map((row: { ean13: string }) => row.ean13)).toEqual([
+    '1234567890128',
+    '2345678901234',
+    '3456789012340',
+  ]);
+  await expect(dashboard.locator('#dashboard-state')).toContainText('Articles suivis');
+  await expect(dashboard.locator('#dashboard-kpi-physical')).toContainText('27 unités');
+  await expect(dashboard.locator('#dashboard-kpi-sellable')).toContainText('13 unités');
+  await expect(dashboard.locator('#dashboard-kpi-non-sellable')).toContainText('14 unités');
+
+  await expect(dashboard.locator('#dashboard-table').getByRole('row', { name: /Alimentaire aux deux modes/ }))
+    .toContainText('0123456789012');
+  await expect(dashboard.locator('#dashboard-table').getByRole('row', { name: /Alimentaire aux deux modes/ }))
+    .toContainText('5 unités');
+  await expect(dashboard.locator('#dashboard-table').getByRole('row', { name: /Article archivé/ }))
+    .toContainText('Archivé');
+  await expect(dashboard.locator('#dashboard-table').getByRole('row', { name: /Article archivé/ }))
+    .toContainText('4 unités');
+  await expect(dashboard.locator('#dashboard-table').getByRole('row', { name: /Article actif sans position/ }))
+    .toContainText('0 unités');
+
+  await expect(dashboard.locator('#dashboard-alert-out-of-stock')).toContainText('Article actif sans position');
+  await expect(dashboard.locator('#dashboard-alert-not-sellable')).toContainText('Alimentaire à DLC dépassée');
+  await expect(dashboard.locator('#dashboard-alert-not-sellable')).toContainText('Article archivé');
+  await expect(dashboard.locator('#dashboard-alert-not-sellable')).toContainText('Non alimentaire au Packaging Invendable');
+
+  const alertLink = dashboard.locator('#dashboard-alert-out-of-stock').getByRole('link');
+  await alertLink.focus();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/#dashboard-row-5678901234562$/);
+  await expect(dashboard.locator('#dashboard-row-5678901234562')).toBeVisible();
+
+  const reloadResponse = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === 'GET' && url.pathname === '/api/dashboard';
+  });
+  await page.reload();
+  const secondView = await (await reloadResponse).json();
+  expect(secondView).toEqual(firstView);
+  await expect(page.locator('#dashboard-panel #dashboard-kpi-physical')).toContainText('27 unités');
+});
+
+test.describe('Dashboard states', () => {
+  test.use({ e2eSeed: 'empty' });
+
+  test('announces Dashboard loading, empty and error states', async ({ page }) => {
+    const dashboardState = page.locator('#dashboard-state');
+    const dashboardRoute = /\/api\/dashboard$/;
+    let releaseLoading!: () => void;
+    const loading = new Promise<void>((resolve) => {
+      releaseLoading = resolve;
+    });
+    const delayedDashboardRoute = async (route: Route) => {
+      await loading;
+      await route.continue();
+    };
+
+    await page.route(dashboardRoute, delayedDashboardRoute);
+    const navigation = page.goto('/');
+    await expect(dashboardState).toContainText('Chargement du Dashboard');
+    releaseLoading();
+    await navigation;
+    await expect(dashboardState).toContainText('Aucun Article');
+    await page.unroute(dashboardRoute, delayedDashboardRoute);
+
+    const stateRoute = async (route: Route) => {
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/problem+json',
+        body: JSON.stringify({ title: 'Le Dashboard est indisponible.', code: 'internal_error' }),
+      });
+    };
+    await page.route(dashboardRoute, stateRoute);
+
+    await page.reload();
+    await expect(dashboardState.locator('[role="alert"]')).toContainText('indisponible');
+    await expect(page.locator('#dashboard-table')).toHaveCount(0);
+    await page.unroute(dashboardRoute, stateRoute);
+
+    await page.locator('#ean13').fill('0123456789012');
+    await page.locator('#name').fill('Article Dashboard');
+    await page.locator('#priceHtCents').fill('1000');
+    await page.locator('#dlc').fill('2030-01-15');
+    await page.locator('#consumptionModes').getByLabel('À emporter').check();
+    await page.getByRole('button', { name: 'Créer l’Article' }).click();
+    await expect(page.getByRole('heading', { name: 'Article Dashboard' })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Réessayer', exact: true }).click();
+    await expect(dashboardState).toContainText('Article suivi');
+    await expect(page.locator('#dashboard-table')).toContainText('Article Dashboard');
+  });
+});
+
 test('records a unit supply and shows the committed stocks after reload', async ({ page }) => {
-  const ean13 = '9876543210982';
+  const ean13 = '4567890123456';
   const expiredEan13 = '1234567890128';
-  const unsellableEan13 = '1111111111116';
+  const unsellableEan13 = '3456789012340';
   const supplyPanel = page.locator('#supply-panel');
   const stockRow = (articleEan13: string) => page.locator('#stock-table').getByRole('row', { name: new RegExp(articleEan13) });
 
@@ -546,7 +658,7 @@ test('records a unit supply and shows the committed stocks after reload', async 
   await expect(supplyPanel.locator('#supplyEan13')).toHaveValue('4006381333931');
   await expect(supplyPanel.locator('#supplyQuantity')).toHaveValue('2');
 
-  await supplyPanel.locator('#supplyEan13').fill('5901234123457');
+  await supplyPanel.locator('#supplyEan13').fill('2345678901234');
   const archivedResponsePromise = page.waitForResponse((response) => {
     const url = new URL(response.url());
     return response.request().method() === 'POST' && url.pathname === '/api/supplies';
@@ -557,7 +669,7 @@ test('records a unit supply and shows the committed stocks after reload', async 
   expect(archivedResponse.headers()['content-type']).toContain('application/problem+json');
   await expect(supplyPanel.locator('#supply-status')).toContainText('archivé');
   await expect(supplyPanel.locator('#supplyEan13')).toBeFocused();
-  await expect(supplyPanel.locator('#supplyEan13')).toHaveValue('5901234123457');
+  await expect(supplyPanel.locator('#supplyEan13')).toHaveValue('2345678901234');
   await expect(supplyPanel.locator('#supplyQuantity')).toHaveValue('2');
 
   const supplyFailureRoute = /\/api\/supplies$/;
@@ -588,8 +700,8 @@ test('records a unit supply and shows the committed stocks after reload', async 
 });
 
 test('records a multi-Article supply atomically and keeps all drafts after rejection', async ({ page }) => {
-  const firstEan13 = '9876543210982';
-  const secondEan13 = '0360002914522';
+  const firstEan13 = '4567890123456';
+  const secondEan13 = '5678901234562';
   const unknownEan13 = '4006381333931';
   const supplyPanel = page.locator('#supply-panel');
   const firstStockRow = page.locator('#stock-table').getByRole('row', { name: new RegExp(firstEan13) });
@@ -739,19 +851,19 @@ test('recovers a failed catalogue request and opens detail with the keyboard', a
   await expect(page.getByRole('heading', { name: 'Créer et consulter un Article' })).toBeVisible();
 
   await page.locator('#catalog-status').selectOption('archived');
-  await page.locator('#catalog-search').fill('Biscuit');
+  await page.locator('#catalog-search').fill('Article archivé');
   await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
-  await expect(catalogPanel.getByRole('row', { name: /Biscuit historique/ })).toBeVisible();
+  await expect(catalogPanel.getByRole('row', { name: /Article archivé/ })).toBeVisible();
 
-  const detailAction = page.getByRole('button', { name: 'Consulter Biscuit historique' });
+  const detailAction = page.getByRole('button', { name: 'Consulter Article archivé' });
   await detailAction.focus();
   await page.keyboard.press('Enter');
-  await expect(page.getByRole('heading', { name: 'Biscuit historique' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Article archivé' })).toBeVisible();
 
   let failCatalogueRequest = true;
   const catalogueRoute = async (route: Route) => {
     const requestUrl = new URL(route.request().url());
-    if (failCatalogueRequest && requestUrl.searchParams.get('search') === 'Biscuit') {
+    if (failCatalogueRequest && requestUrl.searchParams.get('search') === 'Article archivé') {
       await route.abort();
       return;
     }
@@ -760,9 +872,9 @@ test('recovers a failed catalogue request and opens detail with the keyboard', a
   await page.route(/\/api\/articles\?.*/, catalogueRoute);
 
   await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('Catalogue');
+  await expect(catalogPanel.getByRole('alert')).toContainText('Catalogue');
   await expect(page.locator('#catalog-stale')).toContainText('recherche précédente');
-  await expect(catalogPanel.getByRole('row', { name: /Biscuit historique/ })).toBeVisible();
+  await expect(catalogPanel.getByRole('row', { name: /Article archivé/ })).toBeVisible();
 
   failCatalogueRequest = false;
   await page.getByRole('button', { name: 'Réessayer', exact: true }).click();

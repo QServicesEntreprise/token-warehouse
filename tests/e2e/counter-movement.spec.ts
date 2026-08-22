@@ -2,7 +2,7 @@ import { expect } from '@playwright/test';
 import { test } from './fixtures';
 
 const canonicalEan = '0123456789012';
-const archivedEan = '5012345678900';
+const archivedEan = '2345678901234';
 const apiBaseUrl = 'http://127.0.0.1:5100';
 
 type CounterReceipt = {
@@ -47,7 +47,7 @@ const correctSource = async (
 
 test('corrects a committed supply through the real Stock journey', async ({ page }) => {
   await page.goto('/');
-  await expect(page.locator('#stock-table').getByRole('row', { name: /DLC de démonstration/ })).toContainText('8 unités');
+  await expect(page.locator('#stock-table').getByRole('row', { name: /Alimentaire aux deux modes/ })).toContainText('5 unités');
 
   const supplyResponsePromise = page.waitForResponse((response) => {
     const url = new URL(response.url());
@@ -88,7 +88,7 @@ test('corrects a committed supply through the real Stock journey', async ({ page
   expect(receipt.counterMovement.justification).toBe('Correction après contrôle');
   expect(receipt.counterMovement.lines[0]?.sourceEffect).toBe(2);
   expect(receipt.counterMovement.lines[0]?.inverseEffect).toBe(-2);
-  expect(receipt.positions[0]?.physicalStock).toBe(8);
+  expect(receipt.positions[0]?.physicalStock).toBe(5);
 
   const result = page.locator('#counter-movement-result');
   await expect(result).toBeVisible();
@@ -96,7 +96,7 @@ test('corrects a committed supply through the real Stock journey', async ({ page
   await expect(result).toContainText(sourceId);
   await expect(result).toContainText('Correction après contrôle');
   await expect(result).toContainText('Effet inverse-2');
-  await expect(result).toContainText('8 unités');
+  await expect(result).toContainText('5 unités');
   await expect(sourceSelect.locator(`option[value="${sourceId}"]`)).toHaveCount(0);
 
   const retry = await page.request.post(`${apiBaseUrl}/api/stock/counter-movements`, {
@@ -121,7 +121,7 @@ test('corrects an inventory after a later movement and keeps the source unchange
     operation: { id: string; previousPhysicalStock: number; countedQuantity: number; inventoryDifference: number };
   };
   const inventoryId = inventoryReceipt.operation.id;
-  expect(inventoryReceipt.operation).toMatchObject({ previousPhysicalStock: 8, countedQuantity: 11, inventoryDifference: 3 });
+  expect(inventoryReceipt.operation).toMatchObject({ previousPhysicalStock: 5, countedQuantity: 11, inventoryDifference: 6 });
 
   const supplyResponsePromise = page.waitForResponse((response) => {
     const url = new URL(response.url());
@@ -136,19 +136,19 @@ test('corrects an inventory after a later movement and keeps the source unchange
   const counterResponse = await correctSource(page, inventoryId, 'Correction après mouvement ultérieur');
   expect(counterResponse.status()).toBe(201);
   const receipt = await counterResponse.json() as CounterReceipt;
-  expect(receipt.counterMovement.lines[0]?.inverseEffect).toBe(-3);
-  expect(receipt.positions[0]?.physicalStock).toBe(10);
+  expect(receipt.counterMovement.lines[0]?.inverseEffect).toBe(-6);
+  expect(receipt.positions[0]?.physicalStock).toBe(7);
 
   const sourceResponse = await page.request.get(`${apiBaseUrl}/api/inventories/${inventoryId}`);
   expect(sourceResponse.status()).toBe(200);
   await expect(sourceResponse.json()).resolves.toMatchObject({
     id: inventoryId,
-    previousPhysicalStock: 8,
+    previousPhysicalStock: 5,
     countedQuantity: 11,
-    inventoryDifference: 3,
+    inventoryDifference: 6,
   });
   await page.reload();
-  await expect(page.locator('#stock-table').getByRole('row', { name: /DLC de démonstration/ })).toContainText('10 unités');
+  await expect(page.locator('#stock-table').getByRole('row', { name: /Alimentaire aux deux modes/ })).toContainText('7 unités');
 });
 
 test('corrects every line of a bulk supply as one visible counter-movement', async ({ page }) => {
@@ -156,7 +156,7 @@ test('corrects every line of a bulk supply as one visible counter-movement', asy
   await page.locator('#supplyEan13').fill(canonicalEan);
   await page.locator('#supplyQuantity').fill('2');
   await page.locator('#supply-form button[type="button"]').click();
-  await page.locator('#supplyEan13-1').fill('7351353713578');
+  await page.locator('#supplyEan13-1').fill('4567890123456');
   await page.locator('#supplyQuantity-1').fill('1');
   const supplyResponsePromise = page.waitForResponse((response) => {
     const url = new URL(response.url());
@@ -186,7 +186,7 @@ test('rejects a bulk counter-movement atomically when one line would go negative
   await page.locator('#supplyEan13').fill(canonicalEan);
   await page.locator('#supplyQuantity').fill('2');
   await page.locator('#supply-form button[type="button"]').click();
-  await page.locator('#supplyEan13-1').fill('7351353713578');
+  await page.locator('#supplyEan13-1').fill('4567890123456');
   await page.locator('#supplyQuantity-1').fill('1');
   const supplyResponsePromise = page.waitForResponse((response) => {
     const url = new URL(response.url());
@@ -216,7 +216,7 @@ test('rejects a bulk counter-movement atomically when one line would go negative
   await expect(page.locator('#counter-movement-result')).toHaveCount(0);
 
   const canonicalStock = await page.request.get(`${apiBaseUrl}/api/stock/${canonicalEan}`);
-  const secondStock = await page.request.get(`${apiBaseUrl}/api/stock/7351353713578`);
+  const secondStock = await page.request.get(`${apiBaseUrl}/api/stock/4567890123456`);
   await expect(canonicalStock.json()).resolves.toMatchObject({ physicalQuantity: 1 });
   await expect(secondStock.json()).resolves.toMatchObject({ physicalQuantity: 9 });
 });
