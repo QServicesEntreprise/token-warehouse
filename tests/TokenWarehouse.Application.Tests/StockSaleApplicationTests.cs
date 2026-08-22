@@ -50,6 +50,39 @@ public sealed class StockSaleApplicationTests
     }
 
     [Fact]
+    public async Task Forwards_a_commit_participant_to_the_stock_committer()
+    {
+        var ean13 = ParseEan("0123456789012");
+        var committer = new FakeCommitter();
+        var participant = new RecordingParticipant();
+        var application = new StockSaleApplication(
+            new FakeArticleReader(new ArticleSellabilitySnapshot(
+                ean13,
+                "Article vendable",
+                ArticleType.NonFood,
+                true,
+                null,
+                [],
+                PackagingCondition.New,
+                4)),
+            new FakePositionReader(new StockPosition(ean13, 8, 2)),
+            committer,
+            new FixedClock());
+
+        var result = await application.RecordAsync(
+            new StockSaleCommand
+            {
+                Ean13 = ean13.Value,
+                Quantity = 3
+            },
+            participant);
+
+        Assert.Equal(StockSaleStatus.Committed, result.Status);
+        Assert.Same(participant, committer.Participant);
+        Assert.NotNull(participant.Transaction);
+    }
+
+    [Fact]
     public async Task Rejects_each_non_sellable_case_without_committing()
     {
         var cases = new[]
@@ -226,16 +259,13 @@ public sealed class StockSaleApplicationTests
             => ValueTask.FromResult<StockPosition?>(position.Ean13 == ean13 ? position : null);
     }
 
-    private sealed class FakeCommitter : IStockMutationCommitter
+    private sealed class FakeCommitter : IStockSaleCommitter
     {
         public int Calls { get; private set; }
 
         public StockSaleCommitPlan? Plan { get; private set; }
 
-        public ValueTask<StockMutationCommitResult> CommitAsync(
-            InventoryCommitPlan plan,
-            CancellationToken cancellationToken = default)
-            => throw new NotSupportedException();
+        public IStockSaleCommitParticipant? Participant { get; private set; }
 
         public ValueTask<StockMutationCommitResult> CommitAsync(
             StockSaleCommitPlan plan,
@@ -244,6 +274,41 @@ public sealed class StockSaleApplicationTests
             Calls++;
             Plan = plan;
             return ValueTask.FromResult(StockMutationCommitResult.Committed(plan.Position));
+        }
+
+        public ValueTask<StockMutationCommitResult> CommitAsync(
+            StockSaleCommitPlan plan,
+            IStockSaleCommitParticipant participant,
+            CancellationToken cancellationToken = default)
+            => CommitWithParticipantAsync(plan, participant, cancellationToken);
+
+        private async ValueTask<StockMutationCommitResult> CommitWithParticipantAsync(
+            StockSaleCommitPlan plan,
+            IStockSaleCommitParticipant participant,
+            CancellationToken cancellationToken)
+        {
+            Calls++;
+            Plan = plan;
+            Participant = participant;
+            await participant.PrepareAsync(new FakeTransaction(), cancellationToken);
+            return StockMutationCommitResult.Committed(plan.Position);
+        }
+    }
+
+    private sealed class FakeTransaction : IStockSaleTransaction
+    {
+    }
+
+    private sealed class RecordingParticipant : IStockSaleCommitParticipant
+    {
+        public IStockSaleTransaction? Transaction { get; private set; }
+
+        public ValueTask PrepareAsync(
+            IStockSaleTransaction transaction,
+            CancellationToken cancellationToken = default)
+        {
+            Transaction = transaction;
+            return ValueTask.CompletedTask;
         }
     }
 }

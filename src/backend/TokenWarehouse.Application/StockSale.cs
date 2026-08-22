@@ -42,6 +42,30 @@ public sealed record StockSaleResult(
     StockSaleReceipt? Receipt,
     IReadOnlyList<ArticleValidationError> Errors);
 
+public interface IStockSaleTransaction
+{
+    // Intentionally opaque: the Stock committer owns the transaction lifecycle.
+}
+
+public interface IStockSaleCommitParticipant
+{
+    ValueTask PrepareAsync(
+        IStockSaleTransaction transaction,
+        CancellationToken cancellationToken = default);
+}
+
+public interface IStockSaleCommitter
+{
+    ValueTask<StockMutationCommitResult> CommitAsync(
+        StockSaleCommitPlan plan,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<StockMutationCommitResult> CommitAsync(
+        StockSaleCommitPlan plan,
+        IStockSaleCommitParticipant participant,
+        CancellationToken cancellationToken = default);
+}
+
 public interface IStockSaleContract
 {
     Task<StockSaleCheckResult> CheckSellabilityAsync(
@@ -51,12 +75,17 @@ public interface IStockSaleContract
     Task<StockSaleResult> RecordAsync(
         StockSaleCommand command,
         CancellationToken cancellationToken = default);
+
+    Task<StockSaleResult> RecordAsync(
+        StockSaleCommand command,
+        IStockSaleCommitParticipant participant,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class StockSaleApplication(
     IArticleSellabilityReader articleReader,
     IStockPositionReader positionReader,
-    IStockMutationCommitter committer,
+    IStockSaleCommitter committer,
     IClock clock) : IStockSaleContract
 {
     public async Task<StockSaleCheckResult> CheckSellabilityAsync(
@@ -98,9 +127,24 @@ public sealed class StockSaleApplication(
         }
     }
 
-    public async Task<StockSaleResult> RecordAsync(
+    public Task<StockSaleResult> RecordAsync(
         StockSaleCommand command,
         CancellationToken cancellationToken = default)
+        => RecordCoreAsync(command, null, cancellationToken);
+
+    public Task<StockSaleResult> RecordAsync(
+        StockSaleCommand command,
+        IStockSaleCommitParticipant participant,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(participant);
+        return RecordCoreAsync(command, participant, cancellationToken);
+    }
+
+    private async Task<StockSaleResult> RecordCoreAsync(
+        StockSaleCommand command,
+        IStockSaleCommitParticipant? participant,
+        CancellationToken cancellationToken)
     {
         if (!TryParse(command, out var ean13, out var quantity, out var errors))
         {
@@ -136,14 +180,15 @@ public sealed class StockSaleApplication(
                 occurredAt);
             var nextPosition = (currentPosition ?? new StockPosition(ean13, 0))
                 .ApplyEffect(operation.Lines.Single().StockEffect);
-            var committed = await committer.CommitAsync(
-                new StockSaleCommitPlan(
-                    article,
-                    currentPosition,
-                    nextPosition,
-                    operation,
-                    warehouseDate),
-                cancellationToken);
+            var commitPlan = new StockSaleCommitPlan(
+                article,
+                currentPosition,
+                nextPosition,
+                operation,
+                warehouseDate);
+            var committed = participant is null
+                ? await committer.CommitAsync(commitPlan, cancellationToken)
+                : await committer.CommitAsync(commitPlan, participant, cancellationToken);
 
             return committed.Status switch
             {

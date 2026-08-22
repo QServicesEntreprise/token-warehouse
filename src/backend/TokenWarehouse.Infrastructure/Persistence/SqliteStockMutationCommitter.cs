@@ -7,7 +7,7 @@ using TokenWarehouse.Domain;
 namespace TokenWarehouse.Infrastructure.Persistence;
 
 public sealed class SqliteStockMutationCommitter(
-    IDbContextFactory<WarehouseDbContext> contextFactory) : IStockMutationCommitter
+    IDbContextFactory<WarehouseDbContext> contextFactory) : IStockMutationCommitter, IStockSaleCommitter
 {
     public async ValueTask<StockMutationCommitResult> CommitAsync(
         InventoryCommitPlan plan,
@@ -243,9 +243,24 @@ public sealed class SqliteStockMutationCommitter(
         }
     }
 
-    public async ValueTask<StockMutationCommitResult> CommitAsync(
+    public ValueTask<StockMutationCommitResult> CommitAsync(
         StockSaleCommitPlan plan,
         CancellationToken cancellationToken = default)
+        => CommitSaleAsync(plan, null, cancellationToken);
+
+    public ValueTask<StockMutationCommitResult> CommitAsync(
+        StockSaleCommitPlan plan,
+        IStockSaleCommitParticipant participant,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(participant);
+        return CommitSaleAsync(plan, participant, cancellationToken);
+    }
+
+    private async ValueTask<StockMutationCommitResult> CommitSaleAsync(
+        StockSaleCommitPlan plan,
+        IStockSaleCommitParticipant? participant,
+        CancellationToken cancellationToken)
     {
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
@@ -306,6 +321,14 @@ public sealed class SqliteStockMutationCommitter(
             context.StockOperationLines.AddRange(
                 plan.Operation.Lines.Select(line => ToEntity(plan.Operation, line)));
             await context.SaveChangesAsync(cancellationToken);
+            if (participant is not null)
+            {
+                await participant.PrepareAsync(
+                    new SqliteStockSaleTransaction(context),
+                    cancellationToken);
+                await context.SaveChangesAsync(cancellationToken);
+            }
+
             await transaction.CommitAsync(cancellationToken);
 
             return StockMutationCommitResult.Committed(
@@ -405,4 +428,14 @@ public sealed class SqliteStockMutationCommitter(
         && (message.Contains("StockPositions", StringComparison.OrdinalIgnoreCase)
             || message.Contains("SourceOperationId", StringComparison.OrdinalIgnoreCase)
             || message.Contains("StockOperationLines", StringComparison.OrdinalIgnoreCase));
+}
+
+internal interface ISqliteStockSaleTransaction : IStockSaleTransaction
+{
+    WarehouseDbContext Context { get; }
+}
+
+internal sealed class SqliteStockSaleTransaction(WarehouseDbContext context) : ISqliteStockSaleTransaction
+{
+    public WarehouseDbContext Context { get; } = context;
 }

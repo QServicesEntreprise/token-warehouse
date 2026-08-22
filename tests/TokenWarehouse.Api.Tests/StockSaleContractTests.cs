@@ -27,13 +27,16 @@ public sealed class StockSaleContractTests
 
         using var scope = factory.Services.CreateScope();
         var contract = scope.ServiceProvider.GetRequiredService<IStockSaleContract>();
+        var participant = new RecordingCommitParticipant();
         var result = await contract.RecordAsync(new StockSaleCommand
         {
             Ean13 = "0123456789012",
             Quantity = 3
-        });
+        }, participant);
 
         Assert.Equal(StockSaleStatus.Committed, result.Status);
+        Assert.True(participant.Prepared);
+        Assert.NotNull(participant.Transaction);
         Assert.Equal(-3, result.Receipt?.Operation.Lines.Single().StockEffect);
         Assert.Equal(5, result.Receipt?.Position.PhysicalQuantity);
 
@@ -86,6 +89,37 @@ public sealed class StockSaleContractTests
             "/api/sales",
             new { ean13 = "0123456789012", quantity = 1 });
         Assert.Equal(HttpStatusCode.NotFound, saleEndpoint.StatusCode);
+    }
+
+    [Fact]
+    public async Task Rolls_back_prepared_stock_when_the_commit_participant_fails()
+    {
+        using var factory = new HostFactory(Now);
+        await factory.SeedAsync();
+
+        using var scope = factory.Services.CreateScope();
+        var contract = scope.ServiceProvider.GetRequiredService<IStockSaleContract>();
+        var participant = new FailingCommitParticipant();
+        var result = await contract.RecordAsync(
+            new StockSaleCommand
+            {
+                Ean13 = "0123456789012",
+                Quantity = 3
+            },
+            participant);
+
+        Assert.Equal(StockSaleStatus.PersistenceFailed, result.Status);
+        Assert.Null(result.Receipt);
+        Assert.NotNull(participant.Transaction);
+
+        var state = await factory.ReadFreshAsync(async context => new
+        {
+            Operations = await context.StockOperations.CountAsync(),
+            Position = await context.StockPositions.SingleAsync()
+        });
+        Assert.Equal(0, state.Operations);
+        Assert.Equal(8, state.Position.PhysicalQuantity);
+        Assert.Equal(2, state.Position.Version);
     }
 
     [Fact]
@@ -337,6 +371,35 @@ public sealed class StockSaleContractTests
     private sealed class FixedClock(DateTimeOffset now) : IClock
     {
         public DateTimeOffset UtcNow => now;
+    }
+
+    private sealed class FailingCommitParticipant : IStockSaleCommitParticipant
+    {
+        public IStockSaleTransaction? Transaction { get; private set; }
+
+        public ValueTask PrepareAsync(
+            IStockSaleTransaction transaction,
+            CancellationToken cancellationToken = default)
+        {
+            Transaction = transaction;
+            return ValueTask.FromException(new InvalidOperationException("financial write failed"));
+        }
+    }
+
+    private sealed class RecordingCommitParticipant : IStockSaleCommitParticipant
+    {
+        public bool Prepared { get; private set; }
+
+        public IStockSaleTransaction? Transaction { get; private set; }
+
+        public ValueTask PrepareAsync(
+            IStockSaleTransaction transaction,
+            CancellationToken cancellationToken = default)
+        {
+            Transaction = transaction;
+            Prepared = true;
+            return ValueTask.CompletedTask;
+        }
     }
 
 }
