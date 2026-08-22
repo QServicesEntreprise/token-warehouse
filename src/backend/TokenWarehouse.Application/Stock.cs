@@ -54,7 +54,8 @@ public interface IStockReadReader
 {
     ValueTask<StockReadSnapshot> ReadAsync(
         Ean13? ean13 = null,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        DashboardArticleSelection? selection = null);
 }
 
 public sealed record StockReadResult(
@@ -65,7 +66,9 @@ public sealed record StockReadResult(
 
 public interface IStockPositionReadContract
 {
-    Task<StockReadResult> ListAsync(CancellationToken cancellationToken = default);
+    Task<StockReadResult> ListAsync(
+        DashboardArticleSelection? selection = null,
+        CancellationToken cancellationToken = default);
 
     Task<StockReadResult> GetAsync(string ean13, CancellationToken cancellationToken = default);
 }
@@ -78,9 +81,13 @@ public sealed class StockApplication(
     IStockReadReader stockReader,
     IClock clock) : IReadStockUseCase
 {
-    public async Task<StockReadResult> ListAsync(CancellationToken cancellationToken = default)
+    public async Task<StockReadResult> ListAsync(
+        DashboardArticleSelection? selection = null,
+        CancellationToken cancellationToken = default)
     {
-        var snapshot = await stockReader.ReadAsync(cancellationToken: cancellationToken);
+        var snapshot = await stockReader.ReadAsync(
+            cancellationToken: cancellationToken,
+            selection: selection);
         var positions = snapshot.Positions
             .GroupBy(position => position.Ean13)
             .ToDictionary(group => group.Key, group => group.First());

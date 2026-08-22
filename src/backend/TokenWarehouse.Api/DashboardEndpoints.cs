@@ -8,13 +8,23 @@ public static class DashboardEndpoints
     public static void MapDashboardEndpoints(this WebApplication app)
     {
         app.MapGet("/api/dashboard", async (
+            string? from,
+            string? to,
+            string? type,
+            string? mode,
+            string? packaging,
             IReadCurrentDashboardUseCase useCase,
             CancellationToken cancellationToken) =>
         {
-            var result = await useCase.ReadAsync(cancellationToken);
-            return result.Status == DashboardReadStatus.Success
-                ? Results.Ok(DashboardResponse.From(result.View!))
-                : PersistenceProblem();
+            var result = await useCase.ReadAsync(
+                new DashboardQueryRequest(from, to, type, mode, packaging),
+                cancellationToken);
+            return result.Status switch
+            {
+                DashboardReadStatus.Success => Results.Ok(DashboardResponse.From(result.View!)),
+                DashboardReadStatus.ValidationFailed => ValidationProblem(result.Errors),
+                _ => PersistenceProblem()
+            };
         });
     }
 
@@ -25,6 +35,21 @@ public static class DashboardEndpoints
             extensions: new Dictionary<string, object?>
             {
                 ["code"] = "dashboard.persistence_failure"
+            });
+
+    private static IResult ValidationProblem(IReadOnlyList<ArticleValidationError> errors)
+        => Results.Problem(
+            statusCode: StatusCodes.Status400BadRequest,
+            title: "La requête du Dashboard est invalide.",
+            extensions: new Dictionary<string, object?>
+            {
+                ["code"] = errors.FirstOrDefault()?.Code ?? "dashboard.invalid_request",
+                ["errors"] = errors
+                    .GroupBy(error => error.Field, StringComparer.Ordinal)
+                    .ToDictionary(
+                        group => group.Key,
+                        group => group.Select(error => error.Message).ToArray(),
+                        StringComparer.Ordinal)
             });
 }
 

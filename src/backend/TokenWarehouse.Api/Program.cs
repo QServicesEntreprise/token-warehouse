@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Globalization;
 using TokenWarehouse.Application;
 using TokenWarehouse.Api;
 using TokenWarehouse.Infrastructure.Persistence;
@@ -7,6 +8,10 @@ using TokenWarehouse.Infrastructure.Persistence;
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.NumberHandling = JsonNumberHandling.Strict);
+
+var warehouseTimeZone = TimeZoneInfo.FindSystemTimeZoneById(
+    builder.Configuration["Warehouse:TimeZoneId"] ?? TimeZoneInfo.Utc.Id);
+builder.Services.AddSingleton(warehouseTimeZone);
 
 var connectionString = builder.Configuration.GetConnectionString("Warehouse")
     ?? "Data Source=token-warehouse.db";
@@ -55,6 +60,7 @@ builder.Services.AddScoped<IListArticlesUseCase>(services => services.GetRequire
 builder.Services.AddScoped<IUpdateArticlePriceUseCase>(services => services.GetRequiredService<ArticleApplication>());
 builder.Services.AddScoped<IUpdateArticleAttributesUseCase>(services => services.GetRequiredService<ArticleApplication>());
 builder.Services.AddSingleton<IClock, SystemClock>();
+builder.Services.AddSingleton<IWarehouseCalendar, WarehouseCalendar>();
 builder.Services.AddScoped<IChangeArticleLifecycleUseCase>(services => services.GetRequiredService<ArticleApplication>());
 builder.Services.AddScoped<IGetArticleHistoryUseCase>(services => services.GetRequiredService<ArticleApplication>());
 builder.Services.AddScoped<HistoryApplication>();
@@ -80,11 +86,24 @@ app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
         context.RequestAborted);
 }));
 
-app.MapGet("/health", async (RuntimeReadiness readiness, CancellationToken cancellationToken) =>
+app.MapGet("/health", async (
+    RuntimeReadiness readiness,
+    IWarehouseCalendar calendar,
+    CancellationToken cancellationToken) =>
 {
     var status = await readiness.CheckAsync(cancellationToken);
     return status.IsReady
-        ? Results.Ok(new { status = "ok", provider = status.Provider })
+        ? Results.Ok(new
+        {
+            status = "ok",
+            provider = status.Provider,
+            warehouseDate = calendar.WarehouseDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            currentMonth = new
+            {
+                from = calendar.CurrentMonth.From.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                to = calendar.CurrentMonth.To.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+            }
+        })
         : Results.Problem(
             statusCode: StatusCodes.Status503ServiceUnavailable,
             title: "Persistence unavailable");

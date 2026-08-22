@@ -668,7 +668,8 @@ public sealed class ArticleApplicationTests
 
         public ValueTask<StockReadSnapshot> ReadAsync(
             Ean13? ean13 = null,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            DashboardArticleSelection? selection = null)
         {
             Calls++;
             return ValueTask.FromResult(new StockReadSnapshot(articles, positions));

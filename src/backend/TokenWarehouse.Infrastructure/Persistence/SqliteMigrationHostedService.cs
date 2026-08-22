@@ -92,7 +92,7 @@ public sealed class SqliteMigrationHostedService(
                 NameSearchKey = ArticleNameSearchKey.From("Article archivé"),
                 PriceHtCents = 100,
                 IsActive = false,
-                Packaging = "new"
+                Packaging = "refurbished"
             },
             new ArticleEntity
             {
@@ -123,7 +123,7 @@ public sealed class SqliteMigrationHostedService(
                 PriceHtCents = 100,
                 IsActive = true,
                 Dlc = today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-                ConsumptionModes = "takeaway"
+                ConsumptionModes = "onsite"
             }
         };
 

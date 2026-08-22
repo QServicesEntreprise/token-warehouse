@@ -3,8 +3,10 @@ using TokenWarehouse.Application;
 
 namespace TokenWarehouse.Infrastructure.Persistence;
 
-public sealed class SystemClock : IClock
+public sealed class SystemClock(TimeZoneInfo warehouseTimeZone) : IClock
 {
+    private readonly TimeZoneInfo warehouseTimeZone = warehouseTimeZone;
+
     public DateTimeOffset UtcNow
         => DateTimeOffset.TryParse(
             Environment.GetEnvironmentVariable("TOKEN_WAREHOUSE_UTC_NOW"),
@@ -19,5 +21,5 @@ public sealed class SystemClock : IClock
             Environment.GetEnvironmentVariable("TOKEN_WAREHOUSE_WAREHOUSE_DATE"),
             out var configuredDate)
             ? configuredDate
-            : DateOnly.FromDateTime(DateTime.Now);
+            : DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(UtcNow, warehouseTimeZone).DateTime);
 }
