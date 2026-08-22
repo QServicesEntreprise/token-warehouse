@@ -585,6 +585,155 @@ public sealed class ArticleApiTests
     }
 
     [Fact]
+    public async Task Dashboard_returns_continuous_filtered_flows_from_accepted_sqlite_facts()
+    {
+        using var factory = new ArticleHostFactory(
+            fixedNow: new DateTimeOffset(2030, 3, 15, 10, 0, 0, TimeSpan.Zero),
+            warehouseTimeZone: TimeZoneInfo.CreateCustomTimeZone(
+                "Warehouse+02",
+                TimeSpan.FromHours(2),
+                "Warehouse+02",
+                "Warehouse+02"));
+        using var client = factory.CreateClient();
+
+        async Task CreateArticle(object payload)
+        {
+            using var response = await client.PostAsJsonAsync("/api/articles", payload);
+            Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        }
+
+        await CreateArticle(new
+        {
+            ean13 = "0123456789012",
+            type = "food",
+            name = "A",
+            priceHtCents = 100,
+            dlc = "2030-03-31",
+            consumptionModes = new[] { "takeaway", "onsite" }
+        });
+        await CreateArticle(new
+        {
+            ean13 = "1234567890128",
+            type = "food",
+            name = "B",
+            priceHtCents = 100,
+            dlc = "2030-03-31",
+            consumptionModes = new[] { "takeaway" }
+        });
+        await CreateArticle(new
+        {
+            ean13 = "2345678901234",
+            type = "nonFood",
+            name = "C",
+            priceHtCents = 100,
+            packaging = "new"
+        });
+        await CreateArticle(new
+        {
+            ean13 = "3456789012340",
+            type = "nonFood",
+            name = "D",
+            priceHtCents = 100,
+            packaging = "refurbished"
+        });
+
+        await SeedDashboardFlowFactsAsync(factory);
+        var operationsBeforeReads = await CountStockOperationsAsync(factory.Services);
+
+        using var response = await client.GetAsync(
+            "/api/dashboard?from=2030-03-10&to=2030-03-13");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(
+            [
+                ("2030-03-10", 1, 2),
+                ("2030-03-11", 20, 0),
+                ("2030-03-12", 2, 5),
+                ("2030-03-13", 0, 0)
+            ],
+            ReadFlowDays(body.RootElement));
+
+        using var filtered = await client.GetAsync(
+            "/api/dashboard?from=2030-03-10&to=2030-03-13&type=food&mode=onsite");
+        Assert.Equal(HttpStatusCode.OK, filtered.StatusCode);
+        Assert.Equal("application/json", filtered.Content.Headers.ContentType?.MediaType);
+        using var filteredBody = JsonDocument.Parse(await filtered.Content.ReadAsStringAsync());
+        Assert.Equal(
+            [
+                ("2030-03-10", 1, 0),
+                ("2030-03-11", 6, 0),
+                ("2030-03-12", 2, 4),
+                ("2030-03-13", 0, 0)
+            ],
+            ReadFlowDays(filteredBody.RootElement));
+
+        using var takeaway = await client.GetAsync(
+            "/api/dashboard?from=2030-03-10&to=2030-03-13&type=food&mode=takeaway");
+        Assert.Equal(HttpStatusCode.OK, takeaway.StatusCode);
+        Assert.Equal("application/json", takeaway.Content.Headers.ContentType?.MediaType);
+        using var takeawayBody = JsonDocument.Parse(await takeaway.Content.ReadAsStringAsync());
+        Assert.Equal(
+            [
+                ("2030-03-10", 1, 2),
+                ("2030-03-11", 9, 0),
+                ("2030-03-12", 2, 1),
+                ("2030-03-13", 0, 0)
+            ],
+            ReadFlowDays(takeawayBody.RootElement));
+
+        async Task AssertFlowsAsync(
+            string filters,
+            params (string Date, int Supplies, int Sales)[] expected)
+        {
+            using var filteredResponse = await client.GetAsync(
+                $"/api/dashboard?from=2030-03-10&to=2030-03-13&{filters}");
+            Assert.Equal(HttpStatusCode.OK, filteredResponse.StatusCode);
+            Assert.Equal("application/json", filteredResponse.Content.Headers.ContentType?.MediaType);
+            using var filteredBody = JsonDocument.Parse(await filteredResponse.Content.ReadAsStringAsync());
+            Assert.Equal(expected, ReadFlowDays(filteredBody.RootElement));
+        }
+
+        await AssertFlowsAsync(
+            "type=nonFood",
+            ("2030-03-10", 0, 0),
+            ("2030-03-11", 11, 0),
+            ("2030-03-12", 0, 0),
+            ("2030-03-13", 0, 0));
+        await AssertFlowsAsync(
+            "packaging=new",
+            ("2030-03-10", 0, 0),
+            ("2030-03-11", 7, 0),
+            ("2030-03-12", 0, 0),
+            ("2030-03-13", 0, 0));
+        await AssertFlowsAsync(
+            "packaging=refurbished",
+            ("2030-03-10", 0, 0),
+            ("2030-03-11", 4, 0),
+            ("2030-03-12", 0, 0),
+            ("2030-03-13", 0, 0));
+        await AssertFlowsAsync(
+            "packaging=unsellable",
+            ("2030-03-10", 0, 0),
+            ("2030-03-11", 0, 0),
+            ("2030-03-12", 0, 0),
+            ("2030-03-13", 0, 0));
+        await AssertFlowsAsync(
+            "type=food&packaging=new",
+            ("2030-03-10", 0, 0),
+            ("2030-03-11", 0, 0),
+            ("2030-03-12", 0, 0),
+            ("2030-03-13", 0, 0));
+        await AssertFlowsAsync(
+            "type=nonFood&mode=takeaway",
+            ("2030-03-10", 0, 0),
+            ("2030-03-11", 0, 0),
+            ("2030-03-12", 0, 0),
+            ("2030-03-13", 0, 0));
+        Assert.Equal(operationsBeforeReads, await CountStockOperationsAsync(factory.Services));
+    }
+
+    [Fact]
     public async Task Dashboard_returns_empty_collections_and_zero_kpis_for_an_empty_catalogue()
     {
         using var factory = new ArticleHostFactory();
@@ -601,6 +750,11 @@ public sealed class ArticleApiTests
         Assert.Empty(root.GetProperty("alerts").GetProperty("outOfStock").EnumerateArray());
         Assert.Empty(root.GetProperty("alerts").GetProperty("notSellable").EnumerateArray());
         Assert.Empty(root.GetProperty("stockByArticle").EnumerateArray());
+        var flowDays = ReadFlowDays(root);
+        Assert.Equal(31, flowDays.Length);
+        Assert.Equal("2030-01-01", flowDays[0].Date);
+        Assert.Equal("2030-01-31", flowDays[^1].Date);
+        Assert.All(flowDays, day => Assert.Equal((0, 0), (day.Supplies, day.Sales)));
     }
 
     [Fact]
@@ -1680,6 +1834,130 @@ public sealed class ArticleApiTests
         await context.SaveChangesAsync();
     }
 
+    private static async Task SeedDashboardFlowFactsAsync(ArticleHostFactory factory)
+    {
+        using var scope = factory.Services.CreateScope();
+        var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>();
+        await using var context = await contextFactory.CreateDbContextAsync();
+
+        static StockOperationEntity Operation(
+            string id,
+            string type,
+            string ean13,
+            string timestamp,
+            int quantity,
+            string? sourceOperationId = null,
+            string? sourceOperationType = null,
+            string? justification = null,
+            string? saleCommitDataPayload = null)
+            => new()
+            {
+                Id = id,
+                Type = type,
+                Ean13 = ean13,
+                Quantity = quantity,
+                OccurredAt = timestamp,
+                TimestampUtc = timestamp,
+                SourceOperationId = sourceOperationId,
+                SourceOperationType = sourceOperationType,
+                Justification = justification,
+                SaleCommitDataType = saleCommitDataPayload is null
+                    ? null
+                    : SaleFinancialSnapshotSerializer.Type,
+                SaleCommitDataPayload = saleCommitDataPayload
+            };
+
+        static StockOperationLineEntity Line(
+            string operationId,
+            int lineNumber,
+            string ean13,
+            string operationType,
+            int quantity,
+            int sourceEffect,
+            int inverseEffect = 0,
+            int previousPhysicalStock = 0,
+            int countedQuantity = 0,
+            int inventoryDifference = 0,
+            int resultingPhysicalStock = 0)
+            => new()
+            {
+                OperationId = operationId,
+                LineNumber = lineNumber,
+                Ean13 = ean13,
+                OperationType = operationType,
+                Quantity = quantity,
+                SourceEffect = sourceEffect,
+                InverseEffect = inverseEffect,
+                PreviousPhysicalStock = previousPhysicalStock,
+                CountedQuantity = countedQuantity,
+                InventoryDifference = inventoryDifference,
+                ResultingPhysicalStock = resultingPhysicalStock
+            };
+
+        var takeaway = SaleFinancialSnapshotSerializer.Serialize(
+            new SaleFinancialSnapshot(
+                SaleContext.Takeaway,
+                Money.FromCents(100),
+                TaxRate.Takeaway,
+                Money.FromCents(200),
+                Money.FromCents(11),
+                Money.FromCents(211)));
+        var onsite = SaleFinancialSnapshotSerializer.Serialize(
+            new SaleFinancialSnapshot(
+                SaleContext.OnSite,
+                Money.FromCents(100),
+                TaxRate.OnSite,
+                Money.FromCents(400),
+                Money.FromCents(40),
+                Money.FromCents(440)));
+        var bulkTimestamp = "2030-03-11T10:00:00+00:00";
+        var nextTimestamp = "2030-03-12T10:00:00+00:00";
+        context.StockOperations.AddRange(
+            Operation("boundary-before-midnight", "supply", "0123456789012", "2030-03-10T21:59:59+00:00", 1),
+            Operation("boundary-at-midnight", "supply", "0123456789012", "2030-03-10T22:00:00+00:00", 1),
+            Operation("bulk", "supply", "0123456789012", bulkTimestamp, 19),
+            Operation("supply", "supply", "0123456789012", nextTimestamp, 2),
+            Operation("sale-b", "SALE", "1234567890128", "2030-03-10T10:00:00+00:00", 2,
+                saleCommitDataPayload: takeaway),
+            Operation("sale-takeaway", "SALE", "0123456789012", nextTimestamp, 1,
+                saleCommitDataPayload: takeaway),
+            Operation("sale-onsite", "SALE", "0123456789012", "2030-03-12T11:00:00+00:00", 4,
+                saleCommitDataPayload: onsite),
+            Operation("inventory", "INVENTORY", "0123456789012", "2030-03-13T10:00:00+00:00", 0),
+            Operation(
+                "counter",
+                "COUNTER_MOVEMENT",
+                "0123456789012",
+                "2030-03-11T11:00:00+00:00",
+                0,
+                sourceOperationId: "bulk",
+                sourceOperationType: "SUPPLY",
+                justification: "Test sans effet de flux"));
+        context.StockOperationLines.AddRange(
+            Line("boundary-before-midnight", 1, "0123456789012", "supply", 1, 1),
+            Line("boundary-at-midnight", 1, "0123456789012", "supply", 1, 1),
+            Line("bulk", 1, "0123456789012", "supply", 5, 5),
+            Line("bulk", 2, "1234567890128", "supply", 3, 3),
+            Line("bulk", 3, "2345678901234", "supply", 7, 7),
+            Line("bulk", 4, "3456789012340", "supply", 4, 4),
+            Line("supply", 1, "0123456789012", "supply", 2, 2),
+            Line("sale-b", 1, "1234567890128", "SALE", 2, -2),
+            Line("sale-takeaway", 1, "0123456789012", "SALE", 1, -1),
+            Line("sale-onsite", 1, "0123456789012", "SALE", 4, -4),
+            Line("inventory", 1, "0123456789012", "INVENTORY", 0, 99, 0, 0, 99, 99, 99),
+            Line("counter", 1, "0123456789012", "COUNTER_MOVEMENT", 0, 99, -99));
+        await context.SaveChangesAsync();
+    }
+
+    private static (string Date, int Supplies, int Sales)[] ReadFlowDays(JsonElement root)
+        => root.GetProperty("flowsByDay")
+            .EnumerateArray()
+            .Select(day => (
+                day.GetProperty("date").GetString()!,
+                day.GetProperty("supplies").GetInt32(),
+                day.GetProperty("sales").GetInt32()))
+            .ToArray();
+
     private static async Task<int> CountStockPositionsAsync(IServiceProvider services, string ean13)
     {
         using var scope = services.CreateScope();
@@ -1710,25 +1988,28 @@ public sealed class ArticleApiTests
         private readonly bool ownsDatabase;
         private readonly CultureInfo? requestCulture;
         private readonly MutableClock? fixedClock;
+        private readonly TimeZoneInfo? warehouseTimeZone;
 
         public ArticleHostFactory(
             CultureInfo? requestCulture = null,
             DateTimeOffset? fixedNow = null,
             string? databasePath = null,
-            bool ownsDatabase = true)
+            bool ownsDatabase = true,
+            TimeZoneInfo? warehouseTimeZone = null)
         {
             this.databasePath = databasePath
                 ?? Path.Combine(Path.GetTempPath(), $"token-warehouse-article-{Guid.NewGuid():N}.db");
             this.ownsDatabase = ownsDatabase;
             this.requestCulture = requestCulture;
             fixedClock = fixedNow is { } now ? new MutableClock(now) : null;
+            this.warehouseTimeZone = warehouseTimeZone;
         }
 
         public void SetNow(DateTimeOffset now)
             => (fixedClock ?? throw new InvalidOperationException("A fixed clock is required.")).Now = now;
 
         public ArticleHostFactory Reopen()
-            => new(requestCulture, fixedClock?.Now, databasePath, false);
+            => new(requestCulture, fixedClock?.Now, databasePath, false, warehouseTimeZone);
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -1746,6 +2027,15 @@ public sealed class ArticleApiTests
                 {
                     services.RemoveAll<IClock>();
                     services.AddSingleton<IClock>(fixedClock);
+                });
+            }
+
+            if (warehouseTimeZone is not null)
+            {
+                builder.ConfigureServices(services =>
+                {
+                    services.RemoveAll<TimeZoneInfo>();
+                    services.AddSingleton(warehouseTimeZone);
                 });
             }
         }
@@ -1912,8 +2202,18 @@ public sealed class ArticleApiTests
                 services.AddScoped<IArticleStore, FailingArticleStore>();
                 services.RemoveAll<IStockReadReader>();
                 services.AddScoped<IStockReadReader, FailingStockReadReader>();
+                services.RemoveAll<ICurrentDashboardReadSource>();
+                services.AddScoped<ICurrentDashboardReadSource, FailingDashboardReadSource>();
             });
         }
+    }
+
+    private sealed class FailingDashboardReadSource : ICurrentDashboardReadSource
+    {
+        public Task<DashboardReadSnapshot> ReadAsync(
+            DashboardQuery query,
+            CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("database internals");
     }
 
     private sealed class FailingStockReadReader : IStockReadReader

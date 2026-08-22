@@ -204,6 +204,34 @@ const initialFilters: DashboardFilters = {
           </section>
         </div>
 
+        @if (current.flowsByDay.length > 0) {
+          <section id="dashboard-flows" aria-labelledby="dashboard-flows-title">
+            <h3 id="dashboard-flows-title">Flux quotidiens</h3>
+            <p>Quantités acceptées selon le calendrier de l’Entrepôt.</p>
+            <div class="table-wrap">
+              <table id="dashboard-flows-table">
+                <caption class="sr-only">Approvisionnements et Ventes par jour</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Date</th>
+                    <th scope="col">Approvisionnements</th>
+                    <th scope="col">Ventes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                @for (day of current.flowsByDay; track day.date) {
+                    <tr>
+                      <th scope="row">{{ day.date }}</th>
+                      <td>{{ day.supplies }} unité{{ day.supplies > 1 ? 's' : '' }}</td>
+                      <td>{{ day.sales }} unité{{ day.sales > 1 ? 's' : '' }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          </section>
+        }
+
         @if (current.stockByArticle.length > 0) {
           <div class="table-wrap">
             <table id="dashboard-table">

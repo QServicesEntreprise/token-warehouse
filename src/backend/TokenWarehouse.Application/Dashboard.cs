@@ -18,9 +18,39 @@ public sealed record DashboardArticleSelection(
     PackagingCondition? Packaging)
 {
     public bool Matches(StockPositionView position)
-        => (Type is null || position.Type == Type)
+        => MatchesArticle(position)
             && (Mode is null
-                || (position.Type == ArticleType.Food && position.ConsumptionModes.Contains(Mode.Value)))
+                || (position.Type == ArticleType.Food && position.ConsumptionModes.Contains(Mode.Value)));
+
+    public bool MatchesFlow(
+        StockPositionView position,
+        StockOperationType operationType,
+        SaleContext? saleContext)
+    {
+        if (!MatchesArticle(position) || Mode is null)
+        {
+            return MatchesArticle(position);
+        }
+
+        return operationType == StockOperationType.Sale
+            ? position.Type == ArticleType.Food
+                && saleContext == (Mode == ConsumptionMode.Takeaway
+                    ? SaleContext.Takeaway
+                    : SaleContext.OnSite)
+            : position.Type == ArticleType.Food && position.ConsumptionModes.Contains(Mode.Value);
+    }
+
+    public DashboardArticleSelection ForFlowCandidates()
+        => this with
+        {
+            Type = Type
+                ?? (Mode is not null ? ArticleType.Food
+                    : Packaging is not null ? ArticleType.NonFood : null),
+            Mode = null
+        };
+
+    private bool MatchesArticle(StockPositionView position)
+        => (Type is null || position.Type == Type)
             && (Packaging is null
                 || (position.Type == ArticleType.NonFood && position.Packaging == Packaging.Value));
 }
@@ -147,7 +177,17 @@ public sealed record DashboardAlertsView(
 public sealed record CurrentDashboardView(
     DashboardKpiView Kpis,
     DashboardAlertsView Alerts,
-    IReadOnlyList<DashboardStockLineView> StockByArticle);
+    IReadOnlyList<DashboardStockLineView> StockByArticle,
+    IReadOnlyList<DashboardFlowDayView> FlowsByDay);
+
+public sealed record DashboardFlowDayView(
+    DateOnly Date,
+    int Supplies,
+    int Sales);
+
+public sealed record DashboardReadSnapshot(
+    IReadOnlyList<StockPositionView> Positions,
+    IReadOnlyList<StockOperationReadView> Operations);
 
 public enum DashboardReadStatus
 {
@@ -170,7 +210,7 @@ public interface IReadCurrentDashboardUseCase
 
 public interface ICurrentDashboardReadSource
 {
-    Task<IReadOnlyList<StockPositionView>> ReadAsync(
+    Task<DashboardReadSnapshot> ReadAsync(
         DashboardQuery query,
         CancellationToken cancellationToken = default);
 }
@@ -201,7 +241,8 @@ public sealed class DashboardApplication(
 
         try
         {
-            var rows = (await readSource.ReadAsync(query, cancellationToken))
+            var snapshot = await readSource.ReadAsync(query, cancellationToken);
+            var rows = snapshot.Positions
                 .Where(query.Selection.Matches)
                 .OrderBy(position => position.Ean13.Value, StringComparer.Ordinal)
                 .Select(ToLine)
@@ -231,7 +272,8 @@ public sealed class DashboardApplication(
                             && row.PhysicalStock > 0
                             && row.SellableStock == 0)
                         .ToArray()),
-                rows);
+                rows,
+                AggregateFlowsByDay(query, snapshot.Positions, snapshot.Operations));
 
             return new(DashboardReadStatus.Success, view, []);
         }
@@ -280,6 +322,60 @@ public sealed class DashboardApplication(
 
     private static DashboardReadResult Failure()
         => new(DashboardReadStatus.PersistenceFailed, null, []);
+
+    private IReadOnlyList<DashboardFlowDayView> AggregateFlowsByDay(
+        DashboardQuery query,
+        IReadOnlyList<StockPositionView> positions,
+        IReadOnlyList<StockOperationReadView> operations)
+    {
+        var days = new Dictionary<DateOnly, (int Supplies, int Sales)>();
+        for (var date = query.Period.From; ; date = date.AddDays(1))
+        {
+            days.Add(date, (0, 0));
+            if (date == query.Period.To)
+            {
+                break;
+            }
+        }
+
+        var articles = positions
+            .GroupBy(position => position.Ean13.Value, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Single(), StringComparer.Ordinal);
+
+        foreach (var operation in operations)
+        {
+            if (operation.Type is not (StockOperationType.Supply or StockOperationType.Sale))
+            {
+                continue;
+            }
+
+            var date = warehouseCalendar.ToWarehouseDate(operation.TimestampUtc);
+            if (!days.ContainsKey(date))
+            {
+                continue;
+            }
+
+            foreach (var line in operation.Lines.OrderBy(line => line.LineNumber))
+            {
+                if (line.Quantity < 0
+                    || !articles.TryGetValue(line.Ean13, out var article)
+                    || !query.Selection.MatchesFlow(article, operation.Type, operation.SaleContext))
+                {
+                    continue;
+                }
+
+                var bucket = days[date];
+                days[date] = operation.Type == StockOperationType.Supply
+                    ? (checked(bucket.Supplies + line.Quantity), bucket.Sales)
+                    : (bucket.Supplies, checked(bucket.Sales + line.Quantity));
+            }
+        }
+
+        return days
+            .OrderBy(day => day.Key)
+            .Select(day => new DashboardFlowDayView(day.Key, day.Value.Supplies, day.Value.Sales))
+            .ToArray();
+    }
 
     private static DashboardArticleSelection ParseSelection(
         DashboardQueryRequest request,

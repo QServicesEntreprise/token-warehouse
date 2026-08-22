@@ -237,6 +237,149 @@ public sealed class DashboardApplicationTests
             calendar.ToWarehouseDate(new DateTimeOffset(2030, 3, 15, 23, 30, 0, TimeSpan.Zero)));
     }
 
+    [Fact]
+    public async Task Aggregates_accepted_supply_and_sale_facts_into_continuous_filtered_days()
+    {
+        var rows = new[]
+        {
+            View("0123456789012", "A", ArticleType.Food, true, 5, 5,
+                StockAvailability.Available, null, [ConsumptionMode.Takeaway, ConsumptionMode.OnSite]),
+            View("1234567890128", "B", ArticleType.Food, true, 2, 2,
+                StockAvailability.Available, null, [ConsumptionMode.Takeaway]),
+            View("2345678901234", "C", ArticleType.NonFood, true, 7, 7,
+                StockAvailability.Available, null),
+            View("3456789012340", "D", ArticleType.NonFood, false, 4, 0,
+                StockAvailability.NotSellable, SellabilityReason.Archived,
+                packaging: PackagingCondition.Refurbished)
+        };
+        var operations = new[]
+        {
+            Operation("bulk", StockOperationType.Supply, "0123456789012", "2030-03-10T22:30:00Z", null,
+                Line(1, "0123456789012", 5),
+                Line(2, "1234567890128", 3),
+                Line(3, "2345678901234", 7),
+                Line(4, "3456789012340", 4)),
+            Operation("supply", StockOperationType.Supply, "0123456789012", "2030-03-11T22:30:00Z", null,
+                Line(1, "0123456789012", 2)),
+            Operation("sale-b", StockOperationType.Sale, "1234567890128", "2030-03-09T22:30:00Z", SaleContext.Takeaway,
+                Line(1, "1234567890128", 2)),
+            Operation("sale-takeaway", StockOperationType.Sale, "0123456789012", "2030-03-11T23:30:00Z", SaleContext.Takeaway,
+                Line(1, "0123456789012", 1)),
+            Operation("sale-onsite", StockOperationType.Sale, "0123456789012", "2030-03-12T00:30:00Z", SaleContext.OnSite,
+                Line(1, "0123456789012", 4)),
+            Operation("inventory", StockOperationType.Inventory, "0123456789012", "2030-03-12T23:30:00Z", null,
+                Line(1, "0123456789012", 99)),
+            Operation("counter", StockOperationType.CounterMovement, "0123456789012", "2030-03-10T23:00:00Z", null,
+                Line(1, "0123456789012", 99))
+        };
+        var calendar = new WarehouseCalendar(
+            new FixedClock(new DateTimeOffset(2030, 3, 15, 10, 0, 0, TimeSpan.Zero)),
+            TimeZoneInfo.CreateCustomTimeZone("Warehouse", TimeSpan.FromHours(2), "Warehouse", "Warehouse"));
+        var application = new DashboardApplication(
+            new FakeDashboardSource(rows, operations),
+            calendar);
+
+        var result = await application.ReadAsync(
+            new DashboardQueryRequest("2030-03-10", "2030-03-13", null, null, null));
+
+        Assert.Equal(DashboardReadStatus.Success, result.Status);
+        Assert.Equal(
+            [
+                new DashboardFlowDayView(new DateOnly(2030, 3, 10), 0, 2),
+                new DashboardFlowDayView(new DateOnly(2030, 3, 11), 19, 0),
+                new DashboardFlowDayView(new DateOnly(2030, 3, 12), 2, 5),
+                new DashboardFlowDayView(new DateOnly(2030, 3, 13), 0, 0)
+            ],
+            result.View!.FlowsByDay);
+
+        var filtered = await application.ReadAsync(
+            new DashboardQueryRequest("2030-03-10", "2030-03-13", "food", "onsite", null));
+
+        Assert.Equal(
+            [
+                new DashboardFlowDayView(new DateOnly(2030, 3, 10), 0, 0),
+                new DashboardFlowDayView(new DateOnly(2030, 3, 11), 5, 0),
+                new DashboardFlowDayView(new DateOnly(2030, 3, 12), 2, 4),
+                new DashboardFlowDayView(new DateOnly(2030, 3, 13), 0, 0)
+            ],
+            filtered.View!.FlowsByDay);
+
+        async Task AssertFlowsAsync(
+            string? type,
+            string? mode,
+            string? packaging,
+            params DashboardFlowDayView[] expected)
+        {
+            var read = await application.ReadAsync(
+                new DashboardQueryRequest("2030-03-10", "2030-03-13", type, mode, packaging));
+
+            Assert.Equal(DashboardReadStatus.Success, read.Status);
+            Assert.Equal(expected, read.View!.FlowsByDay);
+        }
+
+        await AssertFlowsAsync(
+            "nonFood",
+            null,
+            null,
+            new DashboardFlowDayView(new DateOnly(2030, 3, 10), 0, 0),
+            new DashboardFlowDayView(new DateOnly(2030, 3, 11), 11, 0),
+            new DashboardFlowDayView(new DateOnly(2030, 3, 12), 0, 0),
+            new DashboardFlowDayView(new DateOnly(2030, 3, 13), 0, 0));
+        await AssertFlowsAsync(
+            null,
+            null,
+            "new",
+            new DashboardFlowDayView(new DateOnly(2030, 3, 10), 0, 0),
+            new DashboardFlowDayView(new DateOnly(2030, 3, 11), 7, 0),
+            new DashboardFlowDayView(new DateOnly(2030, 3, 12), 0, 0),
+            new DashboardFlowDayView(new DateOnly(2030, 3, 13), 0, 0));
+        await AssertFlowsAsync(
+            null,
+            null,
+            "refurbished",
+            new DashboardFlowDayView(new DateOnly(2030, 3, 10), 0, 0),
+            new DashboardFlowDayView(new DateOnly(2030, 3, 11), 4, 0),
+            new DashboardFlowDayView(new DateOnly(2030, 3, 12), 0, 0),
+            new DashboardFlowDayView(new DateOnly(2030, 3, 13), 0, 0));
+        await AssertFlowsAsync(
+            "food",
+            null,
+            "new",
+            new DashboardFlowDayView(new DateOnly(2030, 3, 10), 0, 0),
+            new DashboardFlowDayView(new DateOnly(2030, 3, 11), 0, 0),
+            new DashboardFlowDayView(new DateOnly(2030, 3, 12), 0, 0),
+            new DashboardFlowDayView(new DateOnly(2030, 3, 13), 0, 0));
+        await AssertFlowsAsync(
+            "nonFood",
+            "takeaway",
+            null,
+            new DashboardFlowDayView(new DateOnly(2030, 3, 10), 0, 0),
+            new DashboardFlowDayView(new DateOnly(2030, 3, 11), 0, 0),
+            new DashboardFlowDayView(new DateOnly(2030, 3, 12), 0, 0),
+            new DashboardFlowDayView(new DateOnly(2030, 3, 13), 0, 0));
+
+        var currentCatalogueRows = rows
+            .Select(row => row.Ean13.Value == "0123456789012"
+                ? row with { ConsumptionModes = [ConsumptionMode.Takeaway] }
+                : row)
+            .ToArray();
+        var historicalContextApplication = new DashboardApplication(
+            new FakeDashboardSource(currentCatalogueRows, operations),
+            calendar);
+
+        var historicalContext = await historicalContextApplication.ReadAsync(
+            new DashboardQueryRequest("2030-03-10", "2030-03-13", "food", "onsite", null));
+
+        Assert.Equal(
+            [
+                new DashboardFlowDayView(new DateOnly(2030, 3, 10), 0, 0),
+                new DashboardFlowDayView(new DateOnly(2030, 3, 11), 0, 0),
+                new DashboardFlowDayView(new DateOnly(2030, 3, 12), 0, 4),
+                new DashboardFlowDayView(new DateOnly(2030, 3, 13), 0, 0)
+            ],
+            historicalContext.View!.FlowsByDay);
+    }
+
     private static StockPositionView View(
         string ean13,
         string name,
@@ -246,7 +389,8 @@ public sealed class DashboardApplicationTests
         int sellableStock,
         StockAvailability availability,
         SellabilityReason? reason,
-        IReadOnlyList<ConsumptionMode>? consumptionModes = null)
+        IReadOnlyList<ConsumptionMode>? consumptionModes = null,
+        PackagingCondition? packaging = null)
     {
         Assert.True(Ean13.TryCreate(ean13, out var parsed));
         return new(
@@ -256,28 +400,54 @@ public sealed class DashboardApplicationTests
             isActive,
             type == ArticleType.Food ? new DateOnly(2030, 1, 15) : null,
             type == ArticleType.Food ? consumptionModes ?? [ConsumptionMode.Takeaway] : [],
-            type == ArticleType.NonFood ? PackagingCondition.New : null,
+            type == ArticleType.NonFood ? packaging ?? PackagingCondition.New : null,
             physicalStock,
             sellableStock,
             availability,
             reason);
     }
 
-    private sealed class FakeDashboardSource(IReadOnlyList<StockPositionView> rows) : ICurrentDashboardReadSource
+    private sealed class FakeDashboardSource(
+        IReadOnlyList<StockPositionView> rows,
+        IReadOnlyList<StockOperationReadView>? operations = null) : ICurrentDashboardReadSource
     {
+        private readonly DashboardReadSnapshot snapshot = new(rows, operations ?? []);
+
         public int Calls { get; private set; }
 
         public DashboardQuery? LastQuery { get; private set; }
 
-        public Task<IReadOnlyList<StockPositionView>> ReadAsync(
+        public Task<DashboardReadSnapshot> ReadAsync(
             DashboardQuery query,
             CancellationToken cancellationToken = default)
         {
             Calls++;
             LastQuery = query;
-            return Task.FromResult(rows);
+            return Task.FromResult(snapshot);
         }
     }
+
+    private static StockOperationReadView Operation(
+        string id,
+        StockOperationType type,
+        string ean13,
+        string timestamp,
+        SaleContext? saleContext,
+        params StockOperationLineReadView[] lines)
+        => new(
+            id,
+            type,
+            ean13,
+            lines.Sum(line => line.Quantity),
+            DateTimeOffset.Parse(timestamp),
+            null,
+            null,
+            null,
+            lines,
+            saleContext);
+
+    private static StockOperationLineReadView Line(int lineNumber, string ean13, int quantity)
+        => new(lineNumber, ean13, quantity, 0, 0, 0, 0, quantity, 0);
 
     private static DashboardQueryRequest AllQuery()
         => new("2030-01-01", "2030-01-31", null, null, null);

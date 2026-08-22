@@ -1,24 +1,38 @@
+using Microsoft.EntityFrameworkCore;
 using TokenWarehouse.Application;
 
 namespace TokenWarehouse.Infrastructure.Persistence;
 
 public sealed class SqliteCurrentDashboardReadSource(
-    IStockPositionReadContract stockContract) : ICurrentDashboardReadSource
+    IDbContextFactory<WarehouseDbContext> contextFactory,
+    SqliteStockReadReader stockReader,
+    SqliteStockOperationReader operationReader,
+    IClock clock) : ICurrentDashboardReadSource
 {
-    public async Task<IReadOnlyList<StockPositionView>> ReadAsync(
+    public async Task<DashboardReadSnapshot> ReadAsync(
         DashboardQuery query,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(query);
 
-        var result = await stockContract.ListAsync(query.Selection, cancellationToken);
-        if (result.Status != StockReadStatus.Success)
-        {
-            throw new InvalidOperationException("The Stock read contract could not provide a Dashboard snapshot.");
-        }
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+        var stockSnapshot = await stockReader.ReadInSessionAsync(
+            context,
+            cancellationToken: cancellationToken,
+            selection: query.Selection.ForFlowCandidates());
+        var operationFacts = await operationReader.ListForDashboardInSessionAsync(
+            context,
+            cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
 
-        return result.Positions
-            .Where(query.Selection.Matches)
+        var positions = StockPositionView.From(stockSnapshot, clock.WarehouseDate);
+        var operations = operationFacts
+            .OrderBy(fact => fact.Operation.TimestampUtc)
+            .ThenBy(fact => fact.Operation.Id, StringComparer.Ordinal)
+            .Select(StockOperationReadView.From)
             .ToArray();
+
+        return new(positions, operations);
     }
 }

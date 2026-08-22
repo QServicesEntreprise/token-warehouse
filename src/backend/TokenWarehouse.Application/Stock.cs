@@ -15,6 +15,21 @@ public sealed record StockPositionView(
     StockAvailability Availability,
     SellabilityReason? Reason)
 {
+    public static IReadOnlyList<StockPositionView> From(
+        StockReadSnapshot snapshot,
+        DateOnly warehouseDate)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+
+        var positions = snapshot.Positions
+            .GroupBy(position => position.Ean13)
+            .ToDictionary(group => group.Key, group => group.First());
+        return snapshot.Articles
+            .OrderBy(article => article.Ean13.Value, StringComparer.Ordinal)
+            .Select(article => From(article, positions.GetValueOrDefault(article.Ean13), warehouseDate))
+            .ToArray();
+    }
+
     public static StockPositionView From(
         ArticleSellabilitySnapshot article,
         StockPosition? position,
@@ -88,16 +103,11 @@ public sealed class StockApplication(
         var snapshot = await stockReader.ReadAsync(
             cancellationToken: cancellationToken,
             selection: selection);
-        var positions = snapshot.Positions
-            .GroupBy(position => position.Ean13)
-            .ToDictionary(group => group.Key, group => group.First());
+        var positions = StockPositionView.From(snapshot, clock.WarehouseDate);
 
         return new(
             StockReadStatus.Success,
-            snapshot.Articles
-                .OrderBy(article => article.Ean13.Value, StringComparer.Ordinal)
-                .Select(article => ToView(article, positions.GetValueOrDefault(article.Ean13)))
-                .ToArray(),
+            positions,
             null,
             []);
     }

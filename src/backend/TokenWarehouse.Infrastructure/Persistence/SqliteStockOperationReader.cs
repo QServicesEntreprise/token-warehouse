@@ -73,6 +73,34 @@ public sealed class SqliteStockOperationReader(
             .ToArray();
     }
 
+    public async ValueTask<IReadOnlyList<StockOperationReadFact>> ListForDashboardAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+        return await ListForDashboardInSessionAsync(context, cancellationToken);
+    }
+
+    internal async Task<IReadOnlyList<StockOperationReadFact>> ListForDashboardInSessionAsync(
+        WarehouseDbContext context,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        var entities = await context.StockOperations
+            .AsNoTracking()
+            .Include(operation => operation.Lines)
+            .Where(operation => operation.Type == "supply" || operation.Type == "SALE")
+            .ToListAsync(cancellationToken);
+
+        return entities
+            .Select(entity => new StockOperationReadFact(
+                ToDomain(entity, entity.Lines.OrderBy(line => line.LineNumber).ToArray()),
+                ReadSaleContext(entity)))
+            .OrderBy(fact => fact.Operation.TimestampUtc)
+            .ThenBy(fact => fact.Operation.Id, StringComparer.Ordinal)
+            .ToArray();
+    }
+
     public async ValueTask<IReadOnlyList<StockOperation>> ListCorrectableAsync(
         CancellationToken cancellationToken = default)
     {
@@ -243,4 +271,13 @@ public sealed class SqliteStockOperationReader(
 
         return StockOperation.CreateInventory(entity.Id, inventoryLines, timestampUtc);
     }
+
+    private static SaleContext? ReadSaleContext(StockOperationEntity entity)
+        => string.Equals(entity.Type, "SALE", StringComparison.OrdinalIgnoreCase)
+            && SaleFinancialSnapshotSerializer.TryDeserialize(
+                entity.SaleCommitDataType,
+                entity.SaleCommitDataPayload,
+                out var financial)
+            ? financial.SaleContext
+            : null;
 }

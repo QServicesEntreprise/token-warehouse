@@ -61,6 +61,8 @@ public sealed class DashboardResponse
 
     public IReadOnlyList<DashboardStockLineResponse> StockByArticle { get; init; } = [];
 
+    public IReadOnlyList<DashboardFlowDayResponse> FlowsByDay { get; init; } = [];
+
     public static DashboardResponse From(CurrentDashboardView dashboard) => new()
     {
         Kpis = new()
@@ -74,7 +76,24 @@ public sealed class DashboardResponse
             OutOfStock = dashboard.Alerts.OutOfStock.Select(DashboardStockLineResponse.From).ToArray(),
             NotSellable = dashboard.Alerts.NotSellable.Select(DashboardStockLineResponse.From).ToArray()
         },
-        StockByArticle = dashboard.StockByArticle.Select(DashboardStockLineResponse.From).ToArray()
+        StockByArticle = dashboard.StockByArticle.Select(DashboardStockLineResponse.From).ToArray(),
+        FlowsByDay = dashboard.FlowsByDay.Select(DashboardFlowDayResponse.From).ToArray()
+    };
+}
+
+public sealed class DashboardFlowDayResponse
+{
+    public string Date { get; init; } = string.Empty;
+
+    public int Supplies { get; init; }
+
+    public int Sales { get; init; }
+
+    public static DashboardFlowDayResponse From(DashboardFlowDayView day) => new()
+    {
+        Date = day.Date.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+        Supplies = day.Supplies,
+        Sales = day.Sales
     };
 }
 

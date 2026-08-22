@@ -818,8 +818,12 @@ describe('AppComponent', () => {
         sellableStock: 0,
         nonSellableStock: 4,
         availability: 'NOT_SELLABLE',
-        reason: 'ARCHIVED',
-      }],
+          reason: 'ARCHIVED',
+        }],
+      flowsByDay: [
+        { date: '2030-01-01', supplies: 3, sales: 1 },
+        { date: '2030-01-02', supplies: 0, sales: 0 },
+      ],
     });
     await fixture.whenStable();
     fixture.detectChanges();
@@ -837,6 +841,12 @@ describe('AppComponent', () => {
       .toContain('Stock non vendable');
     expect(fixture.nativeElement.querySelector('#dashboard-table').textContent)
       .toContain('4 unités');
+    expect(fixture.nativeElement.querySelector('#dashboard-flows-table').textContent)
+      .toContain('2030-01-02');
+    expect(fixture.nativeElement.querySelector('#dashboard-flows-table').textContent)
+      .toContain('3 unités');
+    expect(fixture.nativeElement.querySelector('#dashboard-flows-table').textContent)
+      .toContain('1 unité');
     http.verify();
   });
 
@@ -864,6 +874,7 @@ describe('AppComponent', () => {
       kpis: { physicalStock: 0, sellableStock: 0, nonSellableStock: 0 },
       alerts: { outOfStock: [], notSellable: [] },
       stockByArticle: [],
+      flowsByDay: [],
     });
     await fixture.whenStable();
     fixture.detectChanges();
@@ -896,6 +907,7 @@ describe('AppComponent', () => {
         availability: 'AVAILABLE',
         reason: null,
       }],
+      flowsByDay: [],
     });
     await fixture.whenStable();
     fixture.detectChanges();
@@ -932,6 +944,7 @@ describe('AppComponent', () => {
       kpis: { physicalStock: 0, sellableStock: 0, nonSellableStock: 0 },
       alerts: { outOfStock: [], notSellable: [] },
       stockByArticle: [],
+      flowsByDay: [],
     });
     await fixture.whenStable();
 
@@ -998,6 +1011,7 @@ describe('AppComponent', () => {
       kpis: { physicalStock: 0, sellableStock: 0, nonSellableStock: 0 },
       alerts: { outOfStock: [], notSellable: [] },
       stockByArticle: [],
+      flowsByDay: [],
     });
     await fixture.whenStable();
 
@@ -1029,6 +1043,7 @@ describe('AppComponent', () => {
         availability: 'AVAILABLE',
         reason: null,
       }],
+      flowsByDay: [],
     });
     await fixture.whenStable();
     older.flush({
@@ -1045,6 +1060,7 @@ describe('AppComponent', () => {
         availability: 'AVAILABLE',
         reason: null,
       }],
+      flowsByDay: [],
     });
     await fixture.whenStable();
     fixture.detectChanges();
@@ -1080,6 +1096,7 @@ describe('AppComponent', () => {
       kpis: { physicalStock: 0, sellableStock: 0, nonSellableStock: 0 },
       alerts: { outOfStock: [], notSellable: [] },
       stockByArticle: [],
+      flowsByDay: [],
     });
     await fixture.whenStable();
     fixture.detectChanges();
@@ -2531,6 +2548,7 @@ async function flushUnusedDashboardRequest(http: HttpTestingController): Promise
       kpis: { physicalStock: 0, sellableStock: 0, nonSellableStock: 0 },
       alerts: { outOfStock: [], notSellable: [] },
       stockByArticle: [],
+      flowsByDay: [],
     });
   }
 }

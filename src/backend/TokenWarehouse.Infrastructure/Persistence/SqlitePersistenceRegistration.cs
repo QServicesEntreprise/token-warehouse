@@ -15,7 +15,9 @@ public static class SqlitePersistenceRegistration
         services.AddScoped<IArticleSellabilityReader, SqliteArticleSellabilityReader>();
         services.AddScoped<IArticleSellabilityBatchReader>(services =>
             (IArticleSellabilityBatchReader)services.GetRequiredService<IArticleSellabilityReader>());
-        services.AddScoped<IStockReadReader, SqliteStockReadReader>();
+        services.AddScoped<SqliteStockReadReader>();
+        services.AddScoped<IStockReadReader>(services =>
+            services.GetRequiredService<SqliteStockReadReader>());
         services.AddScoped<ICurrentDashboardReadSource, SqliteCurrentDashboardReadSource>();
         services.AddScoped<IStockPositionReader, SqliteStockPositionReader>();
         services.AddScoped<SqliteSupplyCommitter>();
@@ -24,7 +26,9 @@ public static class SqlitePersistenceRegistration
         services.AddScoped<SqliteStockMutationCommitter>();
         services.AddScoped<IStockMutationCommitter>(services =>
             services.GetRequiredService<SqliteStockMutationCommitter>());
-        services.AddScoped<IStockOperationReader, SqliteStockOperationReader>();
+        services.AddScoped<SqliteStockOperationReader>();
+        services.AddScoped<IStockOperationReader>(services =>
+            services.GetRequiredService<SqliteStockOperationReader>());
         services.AddScoped<ISaleReader, SqliteSaleReader>();
         services.AddScoped<SqliteHistoryReader>();
         services.AddScoped<IHistoryReader>(services => services.GetRequiredService<SqliteHistoryReader>());
