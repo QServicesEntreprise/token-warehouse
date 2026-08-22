@@ -140,14 +140,14 @@ public static class PricingPolicy
                     "La quantité doit être un entier strictement positif.")]);
         }
 
-        var resolved = Resolve(article, saleContext);
-        if (!resolved.IsSuccess)
-        {
-            return new(null, resolved.Errors);
-        }
-
         try
         {
+            var resolved = Resolve(article, saleContext);
+            if (!resolved.IsSuccess)
+            {
+                return new(null, resolved.Errors);
+            }
+
             var quote = resolved.Quotes.Single();
             var amountHt = Money.FromCents(checked((int)((long)article.PriceHt.Cents * quantity.Value)));
             var vat = quote.TaxRate.CalculateVat(amountHt);

@@ -69,6 +69,7 @@ public interface IStockSaleCommitParticipant
     ValueTask PrepareAsync(
         IStockSaleTransaction transaction,
         StockOperation operation,
+        StockPositionView resultingPosition,
         CancellationToken cancellationToken = default);
 }
 

@@ -132,7 +132,6 @@ public sealed class SaleApplicationTests
         {
             Calls++;
             var operation = StockOperation.CreateSale("sale-1", ean13, new Quantity(command.Quantity!.Value), Now);
-            await participant.PrepareAsync(new RecordingTransaction(this), operation, cancellationToken);
             var article = new ArticleSellabilitySnapshot(
                 ean13,
                 "Article",
@@ -153,6 +152,11 @@ public sealed class SaleApplicationTests
                 resultingPhysical,
                 StockAvailability.Available,
                 null);
+            await participant.PrepareAsync(
+                new RecordingTransaction(this),
+                operation,
+                position,
+                cancellationToken);
             return new(
                 StockSaleStatus.Committed,
                 new StockSaleReceipt(operation, position),

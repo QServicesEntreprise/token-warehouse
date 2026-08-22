@@ -158,8 +158,7 @@ public sealed record SaleResult(
 public sealed record SaleReadRecord(
     StockOperation Operation,
     SaleFinancialSnapshot Financial,
-    ArticleSellabilitySnapshot Article,
-    StockPosition? Position);
+    StockPositionView Position);
 
 public interface ISaleReader
 {
@@ -376,22 +375,10 @@ public sealed class SaleApplication(
                     "operationId");
             }
 
-            return stored.Position is null
-                ? Failure(
-                    SaleStatus.PersistenceFailed,
-                    "PERSISTENCE_FAILURE",
-                    "La Vente engagée ne possède plus sa position Stock.",
-                    "operationId")
-                : new(
-                    SaleStatus.Committed,
-                    new(
-                        stored.Operation,
-                        stored.Financial,
-                        StockPositionView.From(
-                            stored.Article,
-                            stored.Position,
-                            clock.WarehouseDate)),
-                    []);
+            return new(
+                SaleStatus.Committed,
+                new(stored.Operation, stored.Financial, stored.Position),
+                []);
         }
         catch (OperationCanceledException)
         {
@@ -454,11 +441,12 @@ public sealed class SaleApplication(
         public ValueTask PrepareAsync(
             IStockSaleTransaction transaction,
             StockOperation operation,
+            StockPositionView resultingPosition,
             CancellationToken cancellationToken = default)
             => transaction.StageAsync(
                 new StockSaleCommitData(
                     SaleFinancialSnapshotSerializer.Type,
-                    SaleFinancialSnapshotSerializer.Serialize(snapshot)),
+                    SaleFinancialSnapshotSerializer.Serialize(snapshot, resultingPosition)),
                 cancellationToken);
     }
 
@@ -485,7 +473,21 @@ public sealed record SaleFinancialSnapshotPayload(
     [property: JsonPropertyName("taxRateDenominator")] int TaxRateDenominator,
     [property: JsonPropertyName("amountHtCents")] int AmountHtCents,
     [property: JsonPropertyName("vatCents")] int VatCents,
-    [property: JsonPropertyName("amountTtcCents")] int AmountTtcCents);
+    [property: JsonPropertyName("amountTtcCents")] int AmountTtcCents,
+    [property: JsonPropertyName("position")] SalePositionSnapshotPayload? Position = null);
+
+public sealed record SalePositionSnapshotPayload(
+    [property: JsonPropertyName("ean13")] string Ean13,
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("type")] string Type,
+    [property: JsonPropertyName("isActive")] bool IsActive,
+    [property: JsonPropertyName("dlc")] string? Dlc,
+    [property: JsonPropertyName("consumptionModes")] IReadOnlyList<string> ConsumptionModes,
+    [property: JsonPropertyName("packaging")] string? Packaging,
+    [property: JsonPropertyName("physicalQuantity")] int PhysicalQuantity,
+    [property: JsonPropertyName("sellableQuantity")] int SellableQuantity,
+    [property: JsonPropertyName("availability")] string Availability,
+    [property: JsonPropertyName("reason")] string? Reason);
 
 public static class SaleFinancialSnapshotSerializer
 {
@@ -496,7 +498,9 @@ public static class SaleFinancialSnapshotSerializer
         NumberHandling = JsonNumberHandling.Strict
     };
 
-    public static string Serialize(SaleFinancialSnapshot snapshot)
+    public static string Serialize(
+        SaleFinancialSnapshot snapshot,
+        StockPositionView? position = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         return JsonSerializer.Serialize(
@@ -513,7 +517,8 @@ public static class SaleFinancialSnapshotSerializer
                 snapshot.TaxRate.Denominator,
                 snapshot.AmountHt.Cents,
                 snapshot.Vat.Cents,
-                snapshot.AmountTtc.Cents),
+                snapshot.AmountTtc.Cents,
+                position is null ? null : ToPayload(position)),
             Options);
     }
 
@@ -521,8 +526,16 @@ public static class SaleFinancialSnapshotSerializer
         string? type,
         string? payload,
         out SaleFinancialSnapshot snapshot)
+        => TryDeserialize(type, payload, out snapshot, out _);
+
+    public static bool TryDeserialize(
+        string? type,
+        string? payload,
+        out SaleFinancialSnapshot snapshot,
+        out StockPositionView? position)
     {
         snapshot = default!;
+        position = null;
         if (!string.Equals(type, Type, StringComparison.Ordinal)
             || string.IsNullOrWhiteSpace(payload))
         {
@@ -554,6 +567,13 @@ public static class SaleFinancialSnapshotSerializer
                 Money.FromCents(data.AmountHtCents),
                 Money.FromCents(data.VatCents),
                 Money.FromCents(data.AmountTtcCents));
+            if (data.Position is not null
+                && !TryCreatePosition(data.Position, out position))
+            {
+                snapshot = default!;
+                return false;
+            }
+
             return true;
         }
         catch (JsonException)
@@ -564,5 +584,148 @@ public static class SaleFinancialSnapshotSerializer
         {
             return false;
         }
+    }
+
+    private static SalePositionSnapshotPayload ToPayload(StockPositionView position)
+        => new(
+            position.Ean13.Value,
+            position.Name,
+            position.Type == ArticleType.Food ? "food" : "nonFood",
+            position.IsActive,
+            position.Dlc?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            position.ConsumptionModes
+                .Select(mode => mode == ConsumptionMode.Takeaway ? "takeaway" : "onsite")
+                .ToArray(),
+            position.Packaging switch
+            {
+                PackagingCondition.New => "new",
+                PackagingCondition.Refurbished => "refurbished",
+                PackagingCondition.Unsellable => "unsellable",
+                _ => null
+            },
+            position.PhysicalQuantity,
+            position.SellableQuantity,
+            position.Availability switch
+            {
+                StockAvailability.Available => "AVAILABLE",
+                StockAvailability.OutOfStock => "OUT_OF_STOCK",
+                _ => "NOT_SELLABLE"
+            },
+            position.Reason switch
+            {
+                SellabilityReason.Archived => "ARCHIVED",
+                SellabilityReason.DlcExpired => "DLC_EXPIRED",
+                SellabilityReason.UnsellablePackaging => "UNSELLABLE_PACKAGING",
+                _ => null
+            });
+
+    private static bool TryCreatePosition(
+        SalePositionSnapshotPayload data,
+        out StockPositionView? position)
+    {
+        position = null;
+        if (string.IsNullOrWhiteSpace(data.Ean13)
+            || !Ean13.TryCreate(data.Ean13, out var ean13)
+            || string.IsNullOrWhiteSpace(data.Name)
+            || data.ConsumptionModes is null
+            || data.PhysicalQuantity < 0
+            || data.SellableQuantity < 0
+            || data.SellableQuantity > data.PhysicalQuantity)
+        {
+            return false;
+        }
+
+        var type = data.Type switch
+        {
+            "food" => ArticleType.Food,
+            "nonFood" => ArticleType.NonFood,
+            _ => (ArticleType?)null
+        };
+        if (type is null)
+        {
+            return false;
+        }
+
+        DateOnly? dlc = null;
+        if (data.Dlc is not null)
+        {
+            if (!DateOnly.TryParseExact(
+                    data.Dlc,
+                    "yyyy-MM-dd",
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.None,
+                    out var parsedDlc))
+            {
+                return false;
+            }
+
+            dlc = parsedDlc;
+        }
+
+        var modes = new List<ConsumptionMode>(data.ConsumptionModes.Count);
+        foreach (var mode in data.ConsumptionModes)
+        {
+            if (mode == "takeaway")
+            {
+                modes.Add(ConsumptionMode.Takeaway);
+            }
+            else if (mode == "onsite")
+            {
+                modes.Add(ConsumptionMode.OnSite);
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        var packaging = data.Packaging switch
+        {
+            null => (PackagingCondition?)null,
+            "new" => PackagingCondition.New,
+            "refurbished" => PackagingCondition.Refurbished,
+            "unsellable" => PackagingCondition.Unsellable,
+            _ => (PackagingCondition?)null
+        };
+        if (type == ArticleType.NonFood
+            && data.Packaging is not ("new" or "refurbished" or "unsellable"))
+        {
+            return false;
+        }
+
+        var availability = data.Availability switch
+        {
+            "AVAILABLE" => StockAvailability.Available,
+            "OUT_OF_STOCK" => StockAvailability.OutOfStock,
+            "NOT_SELLABLE" => StockAvailability.NotSellable,
+            _ => (StockAvailability?)null
+        };
+        var reason = data.Reason switch
+        {
+            null => (SellabilityReason?)null,
+            "ARCHIVED" => SellabilityReason.Archived,
+            "DLC_EXPIRED" => SellabilityReason.DlcExpired,
+            "UNSELLABLE_PACKAGING" => SellabilityReason.UnsellablePackaging,
+            _ => (SellabilityReason?)null
+        };
+        if (availability is null
+            || (data.Reason is not null && reason is null))
+        {
+            return false;
+        }
+
+        position = new StockPositionView(
+            ean13,
+            data.Name,
+            type.Value,
+            data.IsActive,
+            dlc,
+            modes,
+            packaging,
+            data.PhysicalQuantity,
+            data.SellableQuantity,
+            availability.Value,
+            reason);
+        return true;
     }
 }

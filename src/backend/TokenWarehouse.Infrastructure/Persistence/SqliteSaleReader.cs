@@ -28,30 +28,16 @@ public sealed class SqliteSaleReader(
         if (!SaleFinancialSnapshotSerializer.TryDeserialize(
                 operationEntity.SaleCommitDataType,
                 operationEntity.SaleCommitDataPayload,
-                out var financial))
+                out var financial,
+                out var position)
+            || position is null)
         {
-            throw new InvalidOperationException("Stored Sale financial data is invalid.");
-        }
-
-        var articleEntity = await context.Articles
-            .AsNoTracking()
-            .SingleOrDefaultAsync(article => article.Ean13 == operation.Ean13.Value, cancellationToken)
-            ?? throw new InvalidOperationException("Stored Sale Article is missing.");
-        var positionEntity = await context.StockPositions
-            .AsNoTracking()
-            .SingleOrDefaultAsync(position => position.Ean13 == operation.Ean13.Value, cancellationToken);
-        var position = positionEntity is null
-            ? null
-            : SqliteStockPositionReader.ToDomain(positionEntity);
-        if (positionEntity is not null && position is null)
-        {
-            throw new InvalidOperationException("Stored Sale position is invalid.");
+            throw new InvalidOperationException("Stored Sale snapshot is invalid.");
         }
 
         return new(
             operation,
             financial,
-            SqliteArticleSellabilityReader.ToSnapshot(articleEntity),
             position);
     }
 }

@@ -108,6 +108,17 @@ public sealed class PricingTests
     }
 
     [Fact]
+    public void Converts_quote_overflow_into_a_pricing_validation_error()
+    {
+        var result = PricingPolicy.CalculateSale(CreateNonFood(int.MaxValue), new Quantity(1));
+
+        Assert.False(result.IsSuccess);
+        var error = Assert.Single(result.Errors);
+        Assert.Equal("pricing.amount.overflow", error.Code);
+        Assert.Equal("quantity", error.Field);
+    }
+
+    [Fact]
     public void Rejects_a_context_for_non_food_without_producing_a_quote()
     {
         var result = PricingPolicy.Resolve(CreateNonFood(1000), SaleContext.Takeaway);

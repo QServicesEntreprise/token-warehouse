@@ -297,7 +297,11 @@ public sealed class StockSaleApplicationTests
             Calls++;
             Plan = plan;
             Participant = participant;
-            await participant.PrepareAsync(new FakeTransaction(), plan.Operation, cancellationToken);
+            await participant.PrepareAsync(
+                new FakeTransaction(),
+                plan.Operation,
+                StockPositionView.From(plan.ArticleSnapshot, plan.Position, plan.WarehouseDate),
+                cancellationToken);
             return StockMutationCommitResult.Committed(plan.Position);
         }
     }
@@ -319,6 +323,7 @@ public sealed class StockSaleApplicationTests
         public async ValueTask PrepareAsync(
             IStockSaleTransaction transaction,
             StockOperation operation,
+            StockPositionView resultingPosition,
             CancellationToken cancellationToken = default)
         {
             OperationId = operation.Id;

@@ -322,21 +322,23 @@ public sealed class SqliteStockMutationCommitter(
             context.StockOperationLines.AddRange(
                 plan.Operation.Lines.Select(line => ToEntity(plan.Operation, line)));
             await context.SaveChangesAsync(cancellationToken);
+            var committedPosition = new StockPosition(
+                plan.Position.Ean13,
+                currentPosition.PhysicalQuantity,
+                currentPosition.Version);
             if (participant is not null)
             {
                 await participant.PrepareAsync(
                     new SqliteStockSaleTransaction(context, operationEntity),
                     plan.Operation,
+                    StockPositionView.From(currentArticle, committedPosition, plan.WarehouseDate),
                     cancellationToken);
             }
 
             await transaction.CommitAsync(cancellationToken);
 
             return StockMutationCommitResult.Committed(
-                new StockPosition(
-                    plan.Position.Ean13,
-                    currentPosition.PhysicalQuantity,
-                    currentPosition.Version));
+                committedPosition);
         }
         catch (DbUpdateConcurrencyException)
         {
