@@ -18,12 +18,18 @@ type BrowserHistoryEntry = {
   countedQuantity?: number;
   difference?: number;
   resultingPhysicalStock?: number;
+  previousStatus?: string;
+  nextStatus?: string;
+  changes?: Array<{ field: string; before?: string; after?: string }>;
   lines: Array<{
     lineNumber: number;
     ean13: string;
     quantity?: number;
     previousPhysicalStock?: number;
     stockEffect?: number;
+    inverseEffect?: number;
+    countedQuantity?: number;
+    difference?: number;
     resultingPhysicalStock?: number;
   }>;
 };
@@ -188,6 +194,30 @@ test('consults global and Article history after real Stock operations', async ({
   expect(bulkHistory?.quantity).toBeUndefined();
   expect(bulkHistory?.previousPhysicalStock).toBeUndefined();
   expect(bulkHistory?.resultingPhysicalStock).toBeUndefined();
+  expect(globalEntries.find((entry) => entry.id === inventory.operation.id)).toMatchObject({
+    id: inventory.operation.id,
+    type: 'INVENTORY',
+    countedQuantity: 12,
+    difference: 2,
+    resultingPhysicalStock: 12,
+    lines: [{ lineNumber: 1, ean13, countedQuantity: 12, difference: 2, resultingPhysicalStock: 12 }],
+  });
+  expect(globalEntries.find((entry) => entry.id === otherInventory.operation.id)).toMatchObject({
+    id: otherInventory.operation.id,
+    type: 'INVENTORY',
+    countedQuantity: 7,
+    difference: -1,
+    resultingPhysicalStock: 7,
+    lines: [{ lineNumber: 1, ean13: otherEan13, countedQuantity: 7, difference: -1, resultingPhysicalStock: 7 }],
+  });
+  expect(globalEntries.find((entry) => entry.id === zeroInventory.operation.id)).toMatchObject({
+    id: zeroInventory.operation.id,
+    type: 'INVENTORY',
+    countedQuantity: 8,
+    difference: 0,
+    resultingPhysicalStock: 8,
+    lines: [{ lineNumber: 1, ean13: inventoryEan13, countedQuantity: 8, difference: 0, resultingPhysicalStock: 8 }],
+  });
   const bulkHistoryCard = page.locator(`[aria-labelledby="history-entry-${bulkSupply.operation.id}"]`);
   await expect(bulkHistoryCard).toContainText(bulkFirstEan13);
   await expect(bulkHistoryCard).toContainText('2 unités');
@@ -199,6 +229,21 @@ test('consults global and Article history after real Stock operations', async ({
   await expect(bulkHistoryCard).toContainText('résultat 11');
   await expect(bulkHistoryCard).not.toContainText('Quantité utile');
   await expect(bulkHistoryCard).not.toContainText('Stock physique résultant');
+  const positiveInventoryCard = page.locator(`[aria-labelledby="history-entry-${inventory.operation.id}"]`);
+  await expect(positiveInventoryCard).toContainText('Quantité comptée');
+  await expect(positiveInventoryCard).toContainText('12 unités');
+  await expect(positiveInventoryCard).toContainText('+2');
+  await expect(positiveInventoryCard).toContainText('Stock physique résultant');
+  const negativeInventoryCard = page.locator(`[aria-labelledby="history-entry-${otherInventory.operation.id}"]`);
+  await expect(negativeInventoryCard).toContainText('Quantité comptée');
+  await expect(negativeInventoryCard).toContainText('7 unités');
+  await expect(negativeInventoryCard).toContainText('-1');
+  await expect(negativeInventoryCard).toContainText('Stock physique résultant');
+  const zeroInventoryCard = page.locator(`[aria-labelledby="history-entry-${zeroInventory.operation.id}"]`);
+  await expect(zeroInventoryCard).toContainText('Quantité comptée');
+  await expect(zeroInventoryCard).toContainText('8 unités');
+  await expect(zeroInventoryCard).toContainText('Écart');
+  await expect(zeroInventoryCard).toContainText('Stock physique résultant');
   await expect(page.locator('#history-list')).toContainText('Contrôle Historique');
   await expect(page.locator('#history-list')).toContainText(ean13);
 
@@ -332,14 +377,37 @@ test('consults global and Article history after real Stock operations', async ({
       && url.searchParams.get('ean13') === ean13;
   });
   await page.getByRole('button', { name: 'Consulter l’Historique de cet Article', exact: true }).click();
-  expect((await articleHistoryPromise).status()).toBe(200);
+  const articleHistoryResponse = await articleHistoryPromise;
+  expect(articleHistoryResponse.status()).toBe(200);
+  const articleHistoryEntries = await articleHistoryResponse.json() as BrowserHistoryEntry[];
+  expect(articleHistoryEntries.find((entry) => entry.id === inventory.operation.id)).toMatchObject({
+    id: inventory.operation.id,
+    countedQuantity: 12,
+    difference: 2,
+    resultingPhysicalStock: 12,
+    lines: [{ ean13, countedQuantity: 12, difference: 2, resultingPhysicalStock: 12 }],
+  });
+  expect(articleHistoryEntries.find((entry) => entry.type === 'CATALOG_ARCHIVE')).toMatchObject({
+    previousStatus: 'active',
+    nextStatus: 'archived',
+  });
+  expect(articleHistoryEntries.find((entry) => entry.type === 'CATALOG_REACTIVATE')).toMatchObject({
+    previousStatus: 'archived',
+    nextStatus: 'active',
+  });
   await expect(page.locator('#article-history-list')).toContainText('Inventaire');
-  await expect(page.locator('#article-history-list')).toContainText('10');
+  const articlePositiveInventoryCard = page.locator(`[aria-labelledby="article-history-entry-${inventory.operation.id}"]`);
+  await expect(articlePositiveInventoryCard).toContainText('Quantité comptée');
+  await expect(articlePositiveInventoryCard).toContainText('12 unités');
+  await expect(articlePositiveInventoryCard).toContainText('+2');
+  await expect(articlePositiveInventoryCard).toContainText('résultat : 12 unités');
   await expect(page.locator('#article-history-list')).toContainText('effet inverse -2');
   await expect(page.locator('#article-history-list')).toContainText(`Source : ${inventory.operation.id}`);
   await expect(page.locator('#article-history-list')).toContainText(`Correction : ${counter.counterMovement.id}`);
   await expect(page.locator('#article-history-list')).toContainText('Contrôle Historique');
   await expect(page.locator('#article-history-list')).toContainText(`Corrigé par : ${counter.counterMovement.id}`);
+  await expect(page.locator('#article-history-list')).toContainText('active');
+  await expect(page.locator('#article-history-list')).toContainText('archived');
   await expect(page.locator('#article-history-panel')).toBeFocused();
   await expect(page.locator('#article-history-list')).toContainText('Archivage Catalogue');
   await expect(page.locator('#article-history-list')).toContainText('Réactivation Catalogue');
@@ -361,7 +429,21 @@ test('consults global and Article history after real Stock operations', async ({
       && url.searchParams.get('ean13') === otherEan13;
   });
   await page.getByRole('button', { name: 'Consulter l’Historique de cet Article', exact: true }).click();
-  expect((await otherArticleHistoryPromise).status()).toBe(200);
+  const otherArticleHistoryResponse = await otherArticleHistoryPromise;
+  expect(otherArticleHistoryResponse.status()).toBe(200);
+  const otherArticleHistoryEntries = await otherArticleHistoryResponse.json() as BrowserHistoryEntry[];
+  expect(otherArticleHistoryEntries.find((entry) => entry.id === otherInventory.operation.id)).toMatchObject({
+    id: otherInventory.operation.id,
+    countedQuantity: 7,
+    difference: -1,
+    resultingPhysicalStock: 7,
+    lines: [{ ean13: otherEan13, countedQuantity: 7, difference: -1, resultingPhysicalStock: 7 }],
+  });
+  const otherArticleInventoryCard = page.locator(`[aria-labelledby="article-history-entry-${otherInventory.operation.id}"]`);
+  await expect(otherArticleInventoryCard).toContainText('Quantité comptée');
+  await expect(otherArticleInventoryCard).toContainText('7 unités');
+  await expect(otherArticleInventoryCard).toContainText('-1');
+  await expect(otherArticleInventoryCard).toContainText('résultat : 7 unités');
   await expect(page.locator('#article-history-list')).toContainText('effet inverse +1');
   const otherArticleCounterCard = page.locator(`[aria-labelledby="article-history-entry-${otherCounter.counterMovement.id}"]`);
   await expect(otherArticleCounterCard).toContainText('effet inverse +1');
@@ -381,7 +463,21 @@ test('consults global and Article history after real Stock operations', async ({
       && url.searchParams.get('ean13') === inventoryEan13;
   });
   await page.getByRole('button', { name: 'Consulter l’Historique de cet Article', exact: true }).click();
-  expect((await inventoryArticleHistoryPromise).status()).toBe(200);
+  const inventoryArticleHistoryResponse = await inventoryArticleHistoryPromise;
+  expect(inventoryArticleHistoryResponse.status()).toBe(200);
+  const inventoryArticleHistoryEntries = await inventoryArticleHistoryResponse.json() as BrowserHistoryEntry[];
+  expect(inventoryArticleHistoryEntries.find((entry) => entry.id === zeroInventory.operation.id)).toMatchObject({
+    id: zeroInventory.operation.id,
+    countedQuantity: 8,
+    difference: 0,
+    resultingPhysicalStock: 8,
+    lines: [{ ean13: inventoryEan13, countedQuantity: 8, difference: 0, resultingPhysicalStock: 8 }],
+  });
+  const zeroArticleInventoryCard = page.locator(`[aria-labelledby="article-history-entry-${zeroInventory.operation.id}"]`);
+  await expect(zeroArticleInventoryCard).toContainText('Quantité comptée');
+  await expect(zeroArticleInventoryCard).toContainText('8 unités');
+  await expect(zeroArticleInventoryCard).toContainText('Écart');
+  await expect(zeroArticleInventoryCard).toContainText('résultat : 8 unités');
   await expect(page.locator('#article-history-list')).toContainText('effet inverse 0');
   const zeroArticleCounterCard = page.locator(`[aria-labelledby="article-history-entry-${zeroCounter.counterMovement.id}"]`);
   await expect(zeroArticleCounterCard).toContainText('effet inverse 0');

@@ -160,7 +160,7 @@ public sealed class HistoryApiTests
     }
 
     [Fact]
-    public async Task Reads_sale_and_catalogue_attribute_facts_for_active_and_archived_articles()
+    public async Task Reads_sale_inventory_and_catalogue_facts_for_active_and_archived_articles()
     {
         using var factory = new HistoryHostFactory();
         using var client = factory.CreateClient();
@@ -174,8 +174,52 @@ public sealed class HistoryApiTests
         Assert.Equal(3, sale.GetProperty("quantity").GetInt32());
         Assert.Equal(-3, sale.GetProperty("stockEffect").GetInt32());
         Assert.Equal(7, sale.GetProperty("resultingPhysicalStock").GetInt32());
-        Assert.Contains(entries, entry => entry.GetProperty("type").GetString() == "CATALOG_DLC_CHANGE");
-        Assert.Contains(entries, entry => entry.GetProperty("type").GetString() == "CATALOG_PACKAGING_CHANGE");
+
+        var positiveInventory = Assert.Single(entries, entry => entry.GetProperty("id").GetString() == "inventory-positive-0006");
+        Assert.Equal("INVENTORY", positiveInventory.GetProperty("type").GetString());
+        Assert.Equal(11, positiveInventory.GetProperty("countedQuantity").GetInt32());
+        Assert.Equal(3, positiveInventory.GetProperty("difference").GetInt32());
+        Assert.Equal(11, positiveInventory.GetProperty("resultingPhysicalStock").GetInt32());
+        var positiveInventoryLine = Assert.Single(positiveInventory.GetProperty("lines").EnumerateArray());
+        Assert.Equal(11, positiveInventoryLine.GetProperty("countedQuantity").GetInt32());
+        Assert.Equal(3, positiveInventoryLine.GetProperty("difference").GetInt32());
+        Assert.Equal(11, positiveInventoryLine.GetProperty("resultingPhysicalStock").GetInt32());
+
+        var negativeInventory = Assert.Single(entries, entry => entry.GetProperty("id").GetString() == "inventory-negative-0007");
+        Assert.Equal("INVENTORY", negativeInventory.GetProperty("type").GetString());
+        Assert.Equal(7, negativeInventory.GetProperty("countedQuantity").GetInt32());
+        Assert.Equal(-3, negativeInventory.GetProperty("difference").GetInt32());
+        Assert.Equal(7, negativeInventory.GetProperty("resultingPhysicalStock").GetInt32());
+        var negativeInventoryLine = Assert.Single(negativeInventory.GetProperty("lines").EnumerateArray());
+        Assert.Equal(7, negativeInventoryLine.GetProperty("countedQuantity").GetInt32());
+        Assert.Equal(-3, negativeInventoryLine.GetProperty("difference").GetInt32());
+        Assert.Equal(7, negativeInventoryLine.GetProperty("resultingPhysicalStock").GetInt32());
+
+        var zeroInventory = Assert.Single(entries, entry => entry.GetProperty("id").GetString() == "inventory-zero-0008");
+        Assert.Equal("INVENTORY", zeroInventory.GetProperty("type").GetString());
+        Assert.Equal(4, zeroInventory.GetProperty("countedQuantity").GetInt32());
+        Assert.Equal(0, zeroInventory.GetProperty("difference").GetInt32());
+        Assert.Equal(4, zeroInventory.GetProperty("resultingPhysicalStock").GetInt32());
+        var zeroInventoryLine = Assert.Single(zeroInventory.GetProperty("lines").EnumerateArray());
+        Assert.Equal(4, zeroInventoryLine.GetProperty("countedQuantity").GetInt32());
+        Assert.Equal(0, zeroInventoryLine.GetProperty("difference").GetInt32());
+        Assert.Equal(4, zeroInventoryLine.GetProperty("resultingPhysicalStock").GetInt32());
+
+        var dlcChange = Assert.Single(entries, entry => entry.GetProperty("type").GetString() == "CATALOG_DLC_CHANGE");
+        var dlcChangeValues = Assert.Single(dlcChange.GetProperty("changes").EnumerateArray());
+        Assert.Equal("dlc", dlcChangeValues.GetProperty("field").GetString());
+        Assert.Equal("2030-01-15", dlcChangeValues.GetProperty("before").GetString());
+        Assert.Equal("2030-01-20", dlcChangeValues.GetProperty("after").GetString());
+
+        var packagingChange = Assert.Single(entries, entry => entry.GetProperty("type").GetString() == "CATALOG_PACKAGING_CHANGE");
+        var packagingChangeValues = Assert.Single(packagingChange.GetProperty("changes").EnumerateArray());
+        Assert.Equal("packaging", packagingChangeValues.GetProperty("field").GetString());
+        Assert.Equal("new", packagingChangeValues.GetProperty("before").GetString());
+        Assert.Equal("unsellable", packagingChangeValues.GetProperty("after").GetString());
+
+        var archivedLifecycle = Assert.Single(entries, entry => entry.GetProperty("type").GetString() == "CATALOG_ARCHIVE");
+        Assert.Equal("active", archivedLifecycle.GetProperty("previousStatus").GetString());
+        Assert.Equal("archived", archivedLifecycle.GetProperty("nextStatus").GetString());
 
         using var archived = await client.GetAsync("/api/history?ean13=5901234123457");
         using var archivedBody = JsonDocument.Parse(await archived.Content.ReadAsStringAsync());
@@ -355,14 +399,72 @@ public sealed class HistoryApiTests
                 Position("0123456789012", 7),
                 Position("7351353713578", 4),
                 Position("5901234123457", 4));
-            context.StockOperations.Add(Operation(
-                "sale-0005",
-                "SALE",
+            context.StockOperations.AddRange(
+                Operation(
+                    "inventory-positive-0006",
+                    "INVENTORY",
+                    "0123456789012",
+                    "2030-01-15T08:00:00Z",
+                    previousPhysicalStock: 8,
+                    countedQuantity: 11,
+                    inventoryDifference: 3,
+                    resultingPhysicalStock: 11),
+                Operation(
+                    "inventory-negative-0007",
+                    "INVENTORY",
+                    "7351353713578",
+                    "2030-01-15T08:01:00Z",
+                    previousPhysicalStock: 10,
+                    countedQuantity: 7,
+                    inventoryDifference: -3,
+                    resultingPhysicalStock: 7),
+                Operation(
+                    "inventory-zero-0008",
+                    "INVENTORY",
+                    "5901234123457",
+                    "2030-01-15T08:02:00Z",
+                    previousPhysicalStock: 4,
+                    countedQuantity: 4,
+                    inventoryDifference: 0,
+                    resultingPhysicalStock: 4),
+                Operation(
+                    "sale-0005",
+                    "SALE",
+                    "0123456789012",
+                    "2030-01-15T10:00:00Z",
+                    previousPhysicalStock: 10,
+                    resultingPhysicalStock: 7,
+                    quantity: 3));
+            context.StockOperationLines.Add(Line(
+                "inventory-positive-0006",
+                1,
                 "0123456789012",
-                "2030-01-15T10:00:00Z",
+                "INVENTORY",
+                0,
+                previousPhysicalStock: 8,
+                countedQuantity: 11,
+                resultingPhysicalStock: 11,
+                sourceEffect: 3));
+            context.StockOperationLines.Add(Line(
+                "inventory-negative-0007",
+                1,
+                "7351353713578",
+                "INVENTORY",
+                0,
                 previousPhysicalStock: 10,
+                countedQuantity: 7,
                 resultingPhysicalStock: 7,
-                quantity: 3));
+                sourceEffect: -3));
+            context.StockOperationLines.Add(Line(
+                "inventory-zero-0008",
+                1,
+                "5901234123457",
+                "INVENTORY",
+                0,
+                previousPhysicalStock: 4,
+                countedQuantity: 4,
+                resultingPhysicalStock: 4,
+                sourceEffect: 0));
             context.StockOperationLines.Add(Line(
                 "sale-0005",
                 1,

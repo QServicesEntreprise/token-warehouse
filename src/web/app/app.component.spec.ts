@@ -1315,7 +1315,7 @@ describe('AppComponent', () => {
     http.verify();
   });
 
-  it('loads filtered history through the server contract and renders a zero difference', async () => {
+  it('renders literal positive, negative and zero Inventory fields and lifecycle changes', async () => {
     const fixture = TestBed.configureTestingModule({
       imports: [AppComponent],
       providers: [provideHttpClient(), provideHttpClientTesting()],
@@ -1331,46 +1331,140 @@ describe('AppComponent', () => {
     const historyPromise = component.loadHistory();
     const request = http.expectOne((candidate) =>
       candidate.method === 'GET' && candidate.urlWithParams === '/api/history?ean13=0123456789012');
-    request.flush([{
-      id: 'inventory-01',
-      type: 'INVENTORY',
-      timestampUtc: '2030-01-15T10:00:00Z',
-      ean13: '0123456789012',
-      articles: [{ ean13: '0123456789012' }],
-      countedQuantity: 5,
-      difference: 0,
-      resultingPhysicalStock: 5,
-      lines: [{ lineNumber: 1, ean13: '0123456789012', countedQuantity: 5, difference: 0, resultingPhysicalStock: 5 }],
-    }]);
+    request.flush([
+      {
+        id: 'inventory-positive-01',
+        type: 'INVENTORY',
+        timestampUtc: '2030-01-15T10:00:00Z',
+        ean13: '0123456789012',
+        articles: [{ ean13: '0123456789012' }],
+        countedQuantity: 12,
+        difference: 2,
+        resultingPhysicalStock: 12,
+        lines: [{ lineNumber: 1, ean13: '0123456789012', countedQuantity: 12, difference: 2, resultingPhysicalStock: 12 }],
+      },
+      {
+        id: 'inventory-negative-01',
+        type: 'INVENTORY',
+        timestampUtc: '2030-01-15T10:01:00Z',
+        ean13: '0123456789012',
+        articles: [{ ean13: '0123456789012' }],
+        countedQuantity: 7,
+        difference: -3,
+        resultingPhysicalStock: 7,
+        lines: [{ lineNumber: 1, ean13: '0123456789012', countedQuantity: 7, difference: -3, resultingPhysicalStock: 7 }],
+      },
+      {
+        id: 'inventory-zero-01',
+        type: 'INVENTORY',
+        timestampUtc: '2030-01-15T10:02:00Z',
+        ean13: '0123456789012',
+        articles: [{ ean13: '0123456789012' }],
+        countedQuantity: 5,
+        difference: 0,
+        resultingPhysicalStock: 5,
+        lines: [{ lineNumber: 1, ean13: '0123456789012', countedQuantity: 5, difference: 0, resultingPhysicalStock: 5 }],
+      },
+      {
+        id: 'dlc-change-01',
+        type: 'CATALOG_DLC_CHANGE',
+        timestampUtc: '2030-01-15T11:00:00Z',
+        ean13: '0123456789012',
+        articles: [{ ean13: '0123456789012' }],
+        changes: [{ field: 'dlc', before: '2030-01-15', after: '2030-01-20' }],
+        lines: [],
+      },
+    ]);
     await historyPromise;
     fixture.detectChanges();
 
     expect(component.historyState()).toBe('ready');
-    expect(fixture.nativeElement.querySelector('#history-state').textContent).toContain('1 fait trouvé');
-    expect(fixture.nativeElement.querySelector('#history-list').textContent).toContain('Écart0');
-    expect(fixture.nativeElement.querySelector('#history-list').textContent).toContain('0123456789012');
+    expect(fixture.nativeElement.querySelector('#history-state').textContent).toContain('4 faits trouvés');
+    const historyText = fixture.nativeElement.querySelector('#history-list').textContent as string;
+    expect(historyText).toContain('0123456789012');
+    expect(historyText).toContain('12 unités');
+    expect(historyText).toContain('Écart+2');
+    expect(historyText).toContain('7 unités');
+    expect(historyText).toContain('Écart-3');
+    expect(historyText).toContain('Écart0');
+    expect(historyText).toContain('2030-01-15');
+    expect(historyText).toContain('2030-01-20');
 
     const article = foodArticle(1000, 55, 1055, 100, 1100);
     component.detail.set(article);
     fixture.detectChanges();
     const articleHistoryPromise = component.loadArticleHistory(article.ean13);
     const articleHistoryRequest = http.expectOne('/api/history?ean13=0123456789012');
-    articleHistoryRequest.flush([{
-      id: 'archive-01',
-      type: 'CATALOG_ARCHIVE',
-      timestampUtc: '2030-01-15T11:00:00Z',
-      ean13: article.ean13,
-      articles: [{ ean13: article.ean13 }],
-      lines: [],
-      previousStatus: 'active',
-      nextStatus: 'archived',
-    }]);
+    articleHistoryRequest.flush([
+      {
+        id: 'inventory-positive-01',
+        type: 'INVENTORY',
+        timestampUtc: '2030-01-15T10:00:00Z',
+        ean13: article.ean13,
+        articles: [{ ean13: article.ean13 }],
+        countedQuantity: 12,
+        difference: 2,
+        resultingPhysicalStock: 12,
+        lines: [{ lineNumber: 1, ean13: article.ean13, countedQuantity: 12, difference: 2, resultingPhysicalStock: 12 }],
+      },
+      {
+        id: 'inventory-negative-01',
+        type: 'INVENTORY',
+        timestampUtc: '2030-01-15T10:01:00Z',
+        ean13: article.ean13,
+        articles: [{ ean13: article.ean13 }],
+        countedQuantity: 7,
+        difference: -3,
+        resultingPhysicalStock: 7,
+        lines: [{ lineNumber: 1, ean13: article.ean13, countedQuantity: 7, difference: -3, resultingPhysicalStock: 7 }],
+      },
+      {
+        id: 'inventory-zero-01',
+        type: 'INVENTORY',
+        timestampUtc: '2030-01-15T10:02:00Z',
+        ean13: article.ean13,
+        articles: [{ ean13: article.ean13 }],
+        countedQuantity: 5,
+        difference: 0,
+        resultingPhysicalStock: 5,
+        lines: [{ lineNumber: 1, ean13: article.ean13, countedQuantity: 5, difference: 0, resultingPhysicalStock: 5 }],
+      },
+      {
+        id: 'dlc-change-01',
+        type: 'CATALOG_DLC_CHANGE',
+        timestampUtc: '2030-01-15T11:00:00Z',
+        ean13: article.ean13,
+        articles: [{ ean13: article.ean13 }],
+        changes: [{ field: 'dlc', before: '2030-01-15', after: '2030-01-20' }],
+        lines: [],
+      },
+      {
+        id: 'archive-01',
+        type: 'CATALOG_ARCHIVE',
+        timestampUtc: '2030-01-15T12:00:00Z',
+        ean13: article.ean13,
+        articles: [{ ean13: article.ean13 }],
+        lines: [],
+        previousStatus: 'active',
+        nextStatus: 'archived',
+      },
+    ]);
     await articleHistoryPromise;
     fixture.detectChanges();
 
     expect(component.articleHistoryState()).toBe('ready');
-    expect(fixture.nativeElement.querySelector('#article-history-list').textContent).toContain('Archivage Catalogue');
-    expect(fixture.nativeElement.querySelector('#article-history-list').textContent).toContain('active');
+    const articleHistoryText = fixture.nativeElement.querySelector('#article-history-list').textContent as string;
+    expect(articleHistoryText).toContain('Quantité comptée');
+    expect(articleHistoryText).toContain('12');
+    expect(articleHistoryText).toContain('+2');
+    expect(articleHistoryText).toContain('7');
+    expect(articleHistoryText).toContain('-3');
+    expect(articleHistoryText).toContain('Écart : 0');
+    expect(articleHistoryText).toContain('2030-01-15');
+    expect(articleHistoryText).toContain('2030-01-20');
+    expect(articleHistoryText).toContain('Archivage Catalogue');
+    expect(articleHistoryText).toContain('active');
+    expect(articleHistoryText).toContain('archived');
     http.verify();
   });
 
