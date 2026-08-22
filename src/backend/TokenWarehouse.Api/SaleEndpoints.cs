@@ -19,7 +19,7 @@ public static class SaleEndpoints
                 ? Problem(
                     StatusCodes.Status500InternalServerError,
                     "La recherche des Articles est indisponible.",
-                    "PERSISTENCE_FAILURE",
+                    "INTERNAL_ERROR",
                     [])
                 : Results.Ok(result.Articles.Select(SaleArticleResponse.From).ToArray());
         });
@@ -122,7 +122,7 @@ public static class SaleEndpoints
                 SaleStatus.PersistenceFailed => Problem(
                     StatusCodes.Status500InternalServerError,
                     "La Vente n’a pas pu être enregistrée.",
-                    "PERSISTENCE_FAILURE",
+                    "INTERNAL_ERROR",
                     []),
                 _ => Problem(
                     StatusCodes.Status400BadRequest,
@@ -150,7 +150,7 @@ public static class SaleEndpoints
                 _ => Problem(
                     StatusCodes.Status500InternalServerError,
                     "La Vente n’a pas pu être relue.",
-                    "PERSISTENCE_FAILURE",
+                    "INTERNAL_ERROR",
                     [])
             };
         });

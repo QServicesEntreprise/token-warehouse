@@ -269,6 +269,44 @@ public sealed class StockSaleContractTests
     }
 
     [Fact]
+    public async Task Maps_unexpected_sale_failures_to_sanitized_internal_errors()
+    {
+        using var factory = new HostFactory(Now);
+        using var client = factory.CreateClient();
+        await factory.SeedArticleAsync(
+            "7351353713578",
+            "Batterie industrielle",
+            type: "nonFood",
+            packaging: "new",
+            physicalQuantity: 8,
+            priceHtCents: 101);
+        await factory.FailSaleOperationInsertsAsync();
+
+        using var response = await client.PostAsJsonAsync(
+            "/api/sales",
+            new { ean13 = "7351353713578", quantity = 1 });
+
+        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        var body = await response.Content.ReadAsStringAsync();
+        using var problem = JsonDocument.Parse(body);
+        Assert.Equal("INTERNAL_ERROR", problem.RootElement.GetProperty("code").GetString());
+        Assert.DoesNotContain("SQLite", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("EntityFramework", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(nameof(InvalidOperationException), body);
+        Assert.DoesNotContain("stack trace", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(
+            0,
+            await factory.ReadFreshAsync(context => context.StockOperations.CountAsync(operation => operation.Type == "SALE")));
+        Assert.Equal(
+            8,
+            await factory.ReadFreshAsync(context => context.StockPositions
+                .Where(position => position.Ean13 == "7351353713578")
+                .Select(position => position.PhysicalQuantity)
+                .SingleAsync()));
+    }
+
+    [Fact]
     public async Task Searches_articles_with_price_and_both_stock_quantities()
     {
         using var factory = new HostFactory(Now);
@@ -743,6 +781,22 @@ public sealed class StockSaleContractTests
             position.PhysicalQuantity = physicalQuantity;
             position.Version = version;
             await context.SaveChangesAsync();
+        }
+
+        public async Task FailSaleOperationInsertsAsync()
+        {
+            using var scope = Services.CreateScope();
+            var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>();
+            await using var context = await contextFactory.CreateDbContextAsync();
+            await context.Database.ExecuteSqlRawAsync(
+                """
+                CREATE TRIGGER FailSaleOperationInsert
+                BEFORE INSERT ON StockOperations
+                WHEN NEW.Type = 'SALE'
+                BEGIN
+                    SELECT RAISE(ABORT, 'controlled sale failure');
+                END;
+                """);
         }
 
         public async Task ArchiveArticleAsync()

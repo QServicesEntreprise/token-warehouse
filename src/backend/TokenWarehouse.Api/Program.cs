@@ -75,7 +75,7 @@ app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
                 type = "https://httpstatuses.com/500",
                 title = "Une erreur interne est survenue.",
                 status = StatusCodes.Status500InternalServerError,
-                code = "internal_error"
+                code = "INTERNAL_ERROR"
             }),
         context.RequestAborted);
 }));
