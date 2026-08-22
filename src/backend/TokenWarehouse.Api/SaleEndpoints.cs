@@ -89,10 +89,20 @@ public static class SaleEndpoints
                     "Article introuvable.",
                     "ARTICLE_NOT_FOUND",
                     result.Errors),
-                SaleStatus.ContextUnsupported => Problem(
+                SaleStatus.ContextRequired => Problem(
                     StatusCodes.Status409Conflict,
-                    "Le Contexte de Vente n’est pas pris en charge.",
-                    "CONTEXT_UNSUPPORTED",
+                    "Le Contexte de Vente est requis.",
+                    "CONTEXT_REQUIRED",
+                    result.Errors),
+                SaleStatus.ContextIncompatible => Problem(
+                    StatusCodes.Status409Conflict,
+                    "Le Contexte de Vente est incompatible.",
+                    "CONTEXT_INCOMPATIBLE",
+                    result.Errors),
+                SaleStatus.ContextNotAllowed => Problem(
+                    StatusCodes.Status409Conflict,
+                    "Le Contexte de Vente n’est pas autorisé.",
+                    "CONTEXT_NOT_ALLOWED",
                     result.Errors),
                 SaleStatus.NotSellable => Problem(
                     StatusCodes.Status409Conflict,
@@ -162,9 +172,19 @@ public static class SaleEndpoints
         var contextProvided = false;
         var unsupportedFields = new List<string>();
         var errors = new List<ArticleValidationError>();
+        var seenFields = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var property in document.RootElement.EnumerateObject())
         {
+            if (!seenFields.Add(property.Name))
+            {
+                errors.Add(new(
+                    "INVALID_INPUT",
+                    property.Name,
+                    "Un champ ne peut pas être répété dans la commande."));
+                continue;
+            }
+
             switch (property.Name)
             {
                 case "ean13":
@@ -192,10 +212,10 @@ public static class SaleEndpoints
 
                     break;
                 case "context":
-                    contextProvided = true;
                     if (property.Value.ValueKind == JsonValueKind.String)
                     {
                         context = property.Value.GetString();
+                        contextProvided = context is not null;
                     }
                     else if (property.Value.ValueKind is not JsonValueKind.Null)
                     {
@@ -336,6 +356,8 @@ public sealed class SaleArticleResponse
 
     public string Availability { get; init; } = string.Empty;
 
+    public IReadOnlyList<PriceQuoteResponse> PriceQuotes { get; init; } = [];
+
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Reason { get; init; }
 
@@ -358,6 +380,7 @@ public sealed class SaleArticleResponse
         PriceHtCents = article.PriceHt.Cents,
         PhysicalQuantity = article.PhysicalQuantity,
         SellableQuantity = article.SellableQuantity,
+        PriceQuotes = article.PriceQuotes.Select(PriceQuoteResponse.From).ToArray(),
         Availability = article.Availability switch
         {
             StockAvailability.Available => "AVAILABLE",

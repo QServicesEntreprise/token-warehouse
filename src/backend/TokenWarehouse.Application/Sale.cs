@@ -121,7 +121,10 @@ public sealed record SaleArticleView(
     int PhysicalQuantity,
     int SellableQuantity,
     StockAvailability Availability,
-    SellabilityReason? Reason);
+    SellabilityReason? Reason)
+{
+    public IReadOnlyList<PricingQuote> PriceQuotes { get; init; } = [];
+}
 
 public enum SaleArticleSearchStatus
 {
@@ -139,7 +142,9 @@ public enum SaleStatus
     Committed,
     ValidationFailed,
     ArticleNotFound,
-    ContextUnsupported,
+    ContextRequired,
+    ContextIncompatible,
+    ContextNotAllowed,
     NotSellable,
     OutOfStock,
     Conflict,
@@ -225,7 +230,10 @@ public sealed class SaleApplication(
                         stock.PhysicalQuantity,
                         stock.SellableQuantity,
                         stock.Availability,
-                        stock.Reason);
+                        stock.Reason)
+                    {
+                        PriceQuotes = PricingPolicy.Calculate(article.ToPricingArticle()).Quotes
+                    };
                 }).ToArray(),
                 []);
         }
@@ -243,18 +251,9 @@ public sealed class SaleApplication(
         SaleCommand command,
         CancellationToken cancellationToken = default)
     {
-        if (!TryParse(command, out var ean13, out var quantity, out var errors))
+        if (!TryParse(command, out var ean13, out var quantity, out var saleContext, out var errors))
         {
             return new(SaleStatus.ValidationFailed, null, errors);
-        }
-
-        if (command.ContextProvided)
-        {
-            return Failure(
-                SaleStatus.ContextUnsupported,
-                "CONTEXT_UNSUPPORTED",
-                "Le Contexte de Vente n’est pas pris en charge par cette tranche.",
-                "context");
         }
 
         try
@@ -269,24 +268,10 @@ public sealed class SaleApplication(
                     "ean13");
             }
 
-            if (article.Type != ArticleType.NonFood)
-            {
-                return Failure(
-                    SaleStatus.ContextUnsupported,
-                    "CONTEXT_UNSUPPORTED",
-                    "Un Article alimentaire nécessite un Contexte de Vente hors de cette tranche.",
-                    "context");
-            }
-
-            var pricing = PricingPolicy.CalculateSale(article.ToPricingArticle(), quantity);
+            var pricing = PricingPolicy.CalculateSale(article.ToPricingArticle(), quantity, saleContext);
             if (!pricing.IsSuccess)
             {
-                return new(
-                    SaleStatus.ValidationFailed,
-                    null,
-                    pricing.Errors
-                        .Select(error => new ArticleValidationError(error.Code, error.Field, error.Message))
-                        .ToArray());
+                return PricingFailure(pricing);
             }
 
             var financial = pricing.Snapshot!;
@@ -401,8 +386,10 @@ public sealed class SaleApplication(
         SaleCommand? command,
         out Ean13 ean13,
         out Quantity quantity,
+        out SaleContext? saleContext,
         out IReadOnlyList<ArticleValidationError> errors)
     {
+        saleContext = null;
         var validationErrors = command?.UnsupportedFields
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Select(field => new ArticleValidationError(
@@ -427,8 +414,56 @@ public sealed class SaleApplication(
                 "La quantité doit être un entier strictement positif."));
         }
 
+        var context = command?.Context;
+        var contextProvided = command?.ContextProvided == true || context is not null;
+        if (contextProvided && context is not null)
+        {
+            saleContext = context switch
+            {
+                "takeaway" => SaleContext.Takeaway,
+                "onsite" => SaleContext.OnSite,
+                _ => null
+            };
+            if (saleContext is null)
+            {
+                validationErrors.Add(new(
+                    "INVALID_INPUT",
+                    "context",
+                    "Le Contexte de Vente doit être « takeaway » ou « onsite »."));
+            }
+        }
+
         errors = validationErrors;
         return errors.Count == 0;
+    }
+
+    private static SaleResult PricingFailure(SalePricingResult pricing)
+    {
+        var error = pricing.Errors.FirstOrDefault();
+        return error?.Code switch
+        {
+            "pricing.saleContext.required" => Failure(
+                SaleStatus.ContextRequired,
+                "CONTEXT_REQUIRED",
+                "Un Contexte de Vente est requis pour cet Article.",
+                "context"),
+            "pricing.saleContext.incompatible" => Failure(
+                SaleStatus.ContextIncompatible,
+                "CONTEXT_INCOMPATIBLE",
+                "Le Contexte de Vente ne correspond pas à cet Article.",
+                "context"),
+            "pricing.saleContext.not_allowed" or "pricing.saleContext.not_applicable" => Failure(
+                SaleStatus.ContextNotAllowed,
+                "CONTEXT_NOT_ALLOWED",
+                "Un Article non alimentaire ne peut pas recevoir de Contexte de Vente.",
+                "context"),
+            _ => new(
+                SaleStatus.ValidationFailed,
+                null,
+                pricing.Errors
+                    .Select(value => new ArticleValidationError(value.Code, value.Field, value.Message))
+                    .ToArray())
+        };
     }
 
     private static SaleResult Failure(
