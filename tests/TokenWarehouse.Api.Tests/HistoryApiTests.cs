@@ -41,7 +41,16 @@ public sealed class HistoryApiTests
         Assert.Equal("INVENTORY", body.RootElement[2].GetProperty("type").GetString());
         Assert.Equal(5, body.RootElement[2].GetProperty("countedQuantity").GetInt32());
         Assert.Equal(0, body.RootElement[2].GetProperty("difference").GetInt32());
-        Assert.Equal("bulk-0002", body.RootElement[3].GetProperty("id").GetString());
+        var bulkRoot = body.RootElement[3];
+        Assert.Equal("bulk-0002", bulkRoot.GetProperty("id").GetString());
+        Assert.Equal(2, bulkRoot.GetProperty("lines").GetArrayLength());
+        Assert.False(bulkRoot.TryGetProperty("quantity", out _));
+        Assert.False(bulkRoot.TryGetProperty("previousPhysicalStock", out _));
+        Assert.False(bulkRoot.TryGetProperty("resultingPhysicalStock", out _));
+        Assert.Equal(2, bulkRoot.GetProperty("lines")[0].GetProperty("quantity").GetInt32());
+        Assert.Equal(2, bulkRoot.GetProperty("lines")[0].GetProperty("stockEffect").GetInt32());
+        Assert.Equal(3, bulkRoot.GetProperty("lines")[1].GetProperty("quantity").GetInt32());
+        Assert.Equal(3, bulkRoot.GetProperty("lines")[1].GetProperty("stockEffect").GetInt32());
 
         using var filtered = await client.GetAsync("/api/history?ean13=0123456789012");
         using var filteredBody = JsonDocument.Parse(await filtered.Content.ReadAsStringAsync());
@@ -49,6 +58,9 @@ public sealed class HistoryApiTests
             .Single(entry => entry.GetProperty("id").GetString() == "bulk-0002");
         Assert.Equal(1, bulk.GetProperty("lines").GetArrayLength());
         Assert.Equal("0123456789012", bulk.GetProperty("lines")[0].GetProperty("ean13").GetString());
+        Assert.False(bulk.TryGetProperty("quantity", out _));
+        Assert.False(bulk.TryGetProperty("previousPhysicalStock", out _));
+        Assert.False(bulk.TryGetProperty("resultingPhysicalStock", out _));
         Assert.DoesNotContain(
             filteredBody.RootElement.EnumerateArray(),
             entry => entry.GetProperty("articles").EnumerateArray().Any(article => article.GetProperty("ean13").GetString() == "7351353713578"));

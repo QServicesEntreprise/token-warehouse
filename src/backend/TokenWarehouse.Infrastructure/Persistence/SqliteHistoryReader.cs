@@ -86,9 +86,8 @@ public sealed class SqliteHistoryReader(
         var sourceOperationType = type == HistoryEntryType.CounterMovement
             ? ToWireOperationType(entity.SourceOperationType)
             : null;
-        var isSingleLine = selectedLines.Length == 1;
         var firstLine = selectedLines[0];
-        var rootLine = isSingleLine ? firstLine : null;
+        var rootLine = storedLines.Length > 1 ? null : firstLine;
         var isSource = correctionsBySource.TryGetValue(entity.Id, out var correction);
 
         return new HistoryEntryView
@@ -101,24 +100,22 @@ public sealed class SqliteHistoryReader(
                 .DistinctBy(article => article.Ean13)
                 .ToArray(),
             Quantity = type is HistoryEntryType.Supply or HistoryEntryType.SaleStock
-                ? rootLine?.Quantity ?? entity.Quantity
+                ? rootLine?.Quantity
                 : null,
             StockEffect = type is HistoryEntryType.Supply or HistoryEntryType.SaleStock or HistoryEntryType.Inventory
                 ? rootLine?.StockEffect
                 : null,
-            PreviousPhysicalStock = type == HistoryEntryType.Inventory
-                ? rootLine?.PreviousPhysicalStock ?? entity.PreviousPhysicalStock
-                : rootLine?.PreviousPhysicalStock,
+            PreviousPhysicalStock = rootLine?.PreviousPhysicalStock,
             CountedQuantity = type == HistoryEntryType.Inventory
-                ? rootLine?.CountedQuantity ?? entity.CountedQuantity
+                ? rootLine?.CountedQuantity
                 : null,
             Difference = type == HistoryEntryType.Inventory
-                ? rootLine?.Difference ?? entity.InventoryDifference
+                ? rootLine?.Difference
                 : null,
             ResultingPhysicalStock = type is HistoryEntryType.Inventory
                 or HistoryEntryType.Supply
                 or HistoryEntryType.SaleStock
-                ? rootLine?.ResultingPhysicalStock ?? entity.ResultingPhysicalStock
+                ? rootLine?.ResultingPhysicalStock
                 : null,
             Lines = selectedLines,
             SourceOperationId = sourceOperationId,

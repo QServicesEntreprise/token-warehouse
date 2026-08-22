@@ -1417,6 +1417,16 @@ describe('AppComponent', () => {
     await globalRequestPromise;
     const request = http.expectOne('/api/history');
     request.flush([{
+      id: 'bulk-01',
+      type: 'SUPPLY',
+      timestampUtc: '2030-01-15T08:00:00Z',
+      ean13: '',
+      articles: [{ ean13: '0123456789012' }, { ean13: '7351353713578' }],
+      lines: [
+        { lineNumber: 1, ean13: '0123456789012', quantity: 2, stockEffect: 2, resultingPhysicalStock: 5 },
+        { lineNumber: 2, ean13: '7351353713578', quantity: 3, stockEffect: 3, resultingPhysicalStock: 4 },
+      ],
+    }, {
       id: 'supply-02',
       type: 'SUPPLY',
       timestampUtc: '2030-01-15T09:00:00Z',
@@ -1447,6 +1457,17 @@ describe('AppComponent', () => {
 
     expect(component.historyFilterEan()).toBe('');
     const globalText = fixture.nativeElement.querySelector('#history-list').textContent as string;
+    const bulkText = fixture.nativeElement.querySelector('[aria-labelledby="history-entry-bulk-01"]').textContent as string;
+    expect(bulkText).toContain('0123456789012');
+    expect(bulkText).toContain('2 unités');
+    expect(bulkText).toContain('effet +2');
+    expect(bulkText).toContain('résultat 5');
+    expect(bulkText).toContain('7351353713578');
+    expect(bulkText).toContain('3 unités');
+    expect(bulkText).toContain('effet +3');
+    expect(bulkText).toContain('résultat 4');
+    expect(bulkText).not.toContain('Quantité utile');
+    expect(bulkText).not.toContain('Stock physique résultant');
     expect(globalText).toContain('7351353713578');
     expect(globalText).toContain('effet inverse -3');
     expect(globalText).toContain('effet inverse +4');
@@ -1456,6 +1477,17 @@ describe('AppComponent', () => {
     component.detail.set(article);
     const articleHistory = component.loadArticleHistory(article.ean13);
     http.expectOne('/api/history?ean13=0123456789012').flush([{
+      id: 'source-01',
+      type: 'SUPPLY',
+      timestampUtc: '2030-01-15T09:00:00Z',
+      ean13: article.ean13,
+      articles: [{ ean13: article.ean13 }],
+      quantity: 3,
+      stockEffect: 3,
+      resultingPhysicalStock: 3,
+      correctedByOperationId: 'counter-01',
+      lines: [],
+    }, {
       id: 'counter-01',
       type: 'COUNTER_MOVEMENT',
       timestampUtc: '2030-01-15T10:00:00Z',
@@ -1466,14 +1498,52 @@ describe('AppComponent', () => {
         { lineNumber: 2, ean13: article.ean13, inverseEffect: 4 },
         { lineNumber: 3, ean13: article.ean13, inverseEffect: 0 },
       ],
+      sourceOperationId: 'source-01',
+      sourceOperationType: 'SUPPLY',
+      justification: 'Correction',
+      correctionOperationId: 'counter-01',
     }]);
     await articleHistory;
     fixture.detectChanges();
 
     const articleText = fixture.nativeElement.querySelector('#article-history-list').textContent as string;
+    expect(articleText).toContain('Correction : counter-01');
+    expect(articleText).toContain('Corrigé par : counter-01');
     expect(articleText).toContain('effet inverse -3');
     expect(articleText).toContain('effet inverse +4');
     expect(articleText).toContain('effet inverse 0');
+    http.verify();
+  });
+
+  it('announces loading, empty and error states for global history', async () => {
+    const fixture = TestBed.configureTestingModule({
+      imports: [AppComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    }).createComponent(AppComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
+    http.expectOne('/api/stock').flush([]);
+    await fixture.whenStable();
+
+    const component = fixture.componentInstance;
+    const loading = component.loadHistory();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('#history-state').textContent).toContain('Chargement');
+
+    http.expectOne('/api/history').flush([]);
+    await loading;
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('#history-state').textContent).toContain('Aucun fait');
+
+    const error = component.loadHistory();
+    http.expectOne('/api/history').flush(
+      { title: 'Historique indisponible', code: 'HISTORY_READ_FAILURE' },
+      { status: 500, statusText: 'Server Error' },
+    );
+    await error;
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('#history-state').textContent).toContain('Historique indisponible');
     http.verify();
   });
 });

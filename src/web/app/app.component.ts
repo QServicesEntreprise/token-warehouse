@@ -993,6 +993,8 @@ const lastInventoryIdStorageKey = 'token-warehouse.last-inventory-id';
                       @if (entry.stockEffect !== undefined) { <p>Effet Stock : {{ formatHistoryEffect(entry.stockEffect) }} ; résultat : {{ entry.resultingPhysicalStock }} unités</p> }
                       @if (entry.previousStatus || entry.nextStatus) { <p>Cycle de vie : {{ entry.previousStatus }} → {{ entry.nextStatus }}</p> }
                       @if (entry.sourceOperationId) { <p>Source : <code>{{ entry.sourceOperationId }}</code> ; justification : {{ entry.justification }}</p> }
+                      @if (entry.correctionOperationId) { <p>Correction : <code>{{ entry.correctionOperationId }}</code></p> }
+                      @if (entry.correctedByOperationId) { <p>Corrigé par : <code>{{ entry.correctedByOperationId }}</code></p> }
                       @if (entry.lines.length > 0) {
                         <ul aria-label="Lignes de l’opération">
                           @for (line of entry.lines; track line.lineNumber) {
