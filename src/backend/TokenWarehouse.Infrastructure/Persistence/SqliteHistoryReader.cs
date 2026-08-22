@@ -37,9 +37,14 @@ public sealed class SqliteHistoryReader(
             .Where(operation => string.Equals(operation.Type, "COUNTER_MOVEMENT", StringComparison.Ordinal)
                 && !string.IsNullOrWhiteSpace(operation.SourceOperationId))
             .ToDictionary(operation => operation.SourceOperationId!, StringComparer.Ordinal);
+        var operationsById = operations.ToDictionary(operation => operation.Id, StringComparer.Ordinal);
 
         var entries = operations
-            .Select(operation => ToOperationEntry(operation, query.Ean13, correctionsBySource))
+            .Select(operation => ToOperationEntry(
+                operation,
+                query.Ean13,
+                correctionsBySource,
+                operationsById))
             .Where(entry => entry is not null)
             .Cast<HistoryEntryView>()
             .Concat(lifecycleFacts
@@ -57,7 +62,8 @@ public sealed class SqliteHistoryReader(
     private static HistoryEntryView? ToOperationEntry(
         StockOperationEntity entity,
         Ean13? filteredEan13,
-        IReadOnlyDictionary<string, StockOperationEntity> correctionsBySource)
+        IReadOnlyDictionary<string, StockOperationEntity> correctionsBySource,
+        IReadOnlyDictionary<string, StockOperationEntity> operationsById)
     {
         if (!TryParseTimestamp(entity.TimestampUtc, out var timestampUtc)
             || !Ean13.TryCreate(entity.Ean13, out var operationEan13))
@@ -90,14 +96,16 @@ public sealed class SqliteHistoryReader(
         if (type == HistoryEntryType.CounterMovement
             && string.Equals(entity.SourceOperationType, "SALE", StringComparison.OrdinalIgnoreCase))
         {
-            if (!SaleFinancialReversalSerializer.TryDeserialize(
-                    entity.SaleCommitDataType,
-                    entity.SaleCommitDataPayload,
-                    out financialReversal)
-                || financialReversal.SourceOperationId != entity.SourceOperationId)
+            if (entity.SourceOperationId is null
+                || !operationsById.TryGetValue(entity.SourceOperationId, out var sourceSale))
             {
                 throw new InvalidOperationException("Stored Sale financial reversal data is invalid.");
             }
+
+            financialReversal = SqliteSaleFinancialSnapshotReader.ReadReversal(
+                entity,
+                entity.Lines.OrderBy(line => line.LineNumber).ToArray(),
+                sourceSale);
         }
         SaleFinancialSnapshot? financial = null;
         if (type == HistoryEntryType.SaleStock)

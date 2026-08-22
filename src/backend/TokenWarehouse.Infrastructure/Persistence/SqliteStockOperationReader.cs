@@ -27,7 +27,8 @@ public sealed class SqliteStockOperationReader(
             .Where(line => line.OperationId == id)
             .OrderBy(line => line.LineNumber)
             .ToListAsync(cancellationToken);
-        return ReadOperation(entity, lines).Operation;
+        var saleSources = await LoadSaleSourcesAsync(context, [entity], cancellationToken);
+        return ReadOperation(entity, lines, saleSources).Operation;
     }
 
     public async ValueTask<StockOperation?> FindCounterMovementBySourceIdAsync(
@@ -52,7 +53,8 @@ public sealed class SqliteStockOperationReader(
             .Where(line => line.OperationId == entity.Id)
             .OrderBy(line => line.LineNumber)
             .ToListAsync(cancellationToken);
-        return ReadOperation(entity, lines).Operation;
+        var saleSources = await LoadSaleSourcesAsync(context, [entity], cancellationToken);
+        return ReadOperation(entity, lines, saleSources).Operation;
     }
 
     public async ValueTask<IReadOnlyList<StockOperation>> ListAsync(
@@ -63,11 +65,13 @@ public sealed class SqliteStockOperationReader(
             .AsNoTracking()
             .Include(operation => operation.Lines)
             .ToListAsync(cancellationToken);
+        var saleSources = await LoadSaleSourcesAsync(context, entities, cancellationToken);
 
         return entities
             .Select(entity => ReadOperation(
                 entity,
-                entity.Lines.OrderBy(line => line.LineNumber).ToArray()).Operation)
+                entity.Lines.OrderBy(line => line.LineNumber).ToArray(),
+                saleSources).Operation)
             .OrderBy(operation => operation.TimestampUtc)
             .ThenBy(operation => operation.Id, StringComparer.Ordinal)
             .ToArray();
@@ -90,9 +94,10 @@ public sealed class SqliteStockOperationReader(
             .Where(operation => operation.Type == "SALE"
                 || operation.Type == "COUNTER_MOVEMENT")
             .ToListAsync(cancellationToken);
+        var saleSources = await LoadSaleSourcesAsync(context, entities, cancellationToken);
 
         return entities
-            .Select(ToFinancialReadFact)
+            .Select(entity => ToFinancialReadFact(entity, saleSources))
             .OrderBy(fact => fact.Operation.TimestampUtc)
             .ThenBy(fact => fact.Operation.Id, StringComparer.Ordinal)
             .ToArray();
@@ -111,11 +116,15 @@ public sealed class SqliteStockOperationReader(
                 || operation.Type == "SALE"
                 || operation.Type == "COUNTER_MOVEMENT")
             .ToListAsync(cancellationToken);
+        var saleSources = await LoadSaleSourcesAsync(context, entities, cancellationToken);
 
         return entities
             .Select(entity =>
             {
-                var read = ReadOperation(entity, entity.Lines.OrderBy(line => line.LineNumber).ToArray());
+                var read = ReadOperation(
+                    entity,
+                    entity.Lines.OrderBy(line => line.LineNumber).ToArray(),
+                    saleSources);
                 return new StockOperationReadFact(read.Operation, read.Financial?.SaleContext);
             })
             .OrderBy(fact => fact.Operation.TimestampUtc)
@@ -123,11 +132,14 @@ public sealed class SqliteStockOperationReader(
             .ToArray();
     }
 
-    private static StockOperationReadFact ToFinancialReadFact(StockOperationEntity entity)
+    private static StockOperationReadFact ToFinancialReadFact(
+        StockOperationEntity entity,
+        IReadOnlyDictionary<string, StockOperationEntity> saleSources)
     {
         var read = ReadOperation(
             entity,
             entity.Lines.OrderBy(line => line.LineNumber).ToArray(),
+            saleSources,
             requireFinancial: true);
         return new(
             read.Operation,
@@ -163,13 +175,44 @@ public sealed class SqliteStockOperationReader(
     private static (StockOperation Operation, SaleFinancialSnapshot? Financial) ReadOperation(
         StockOperationEntity entity,
         IReadOnlyList<StockOperationLineEntity> lineEntities,
+        IReadOnlyDictionary<string, StockOperationEntity>? saleSources = null,
         bool requireFinancial = false)
     {
-        var operation = ToDomain(entity, lineEntities);
+        var operation = ToDomain(entity, lineEntities, saleSources);
         var financial = operation.Type == StockOperationType.Sale
             ? ReadSaleFinancialSnapshot(entity, requireFinancial)
             : null;
         return (operation, financial);
+    }
+
+    private static async Task<IReadOnlyDictionary<string, StockOperationEntity>> LoadSaleSourcesAsync(
+        WarehouseDbContext context,
+        IReadOnlyList<StockOperationEntity> operations,
+        CancellationToken cancellationToken)
+    {
+        var sourceIds = operations
+            .Where(operation => string.Equals(
+                operation.Type,
+                "COUNTER_MOVEMENT",
+                StringComparison.Ordinal)
+                && string.Equals(
+                    operation.SourceOperationType,
+                    "SALE",
+                    StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(operation.SourceOperationId))
+            .Select(operation => operation.SourceOperationId!)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (sourceIds.Length == 0)
+        {
+            return new Dictionary<string, StockOperationEntity>(StringComparer.Ordinal);
+        }
+
+        return await context.StockOperations
+            .AsNoTracking()
+            .Include(operation => operation.Lines)
+            .Where(operation => sourceIds.Contains(operation.Id))
+            .ToDictionaryAsync(operation => operation.Id, StringComparer.Ordinal, cancellationToken);
     }
 
     private static SaleFinancialSnapshot? ReadSaleFinancialSnapshot(
@@ -199,7 +242,8 @@ public sealed class SqliteStockOperationReader(
 
     private static StockOperation ToDomain(
         StockOperationEntity entity,
-        IReadOnlyList<StockOperationLineEntity> lineEntities)
+        IReadOnlyList<StockOperationLineEntity> lineEntities,
+        IReadOnlyDictionary<string, StockOperationEntity>? saleSources = null)
     {
         if (!Ean13.TryCreate(entity.Ean13, out var operationEan13)
             || !DateTimeOffset.TryParse(
@@ -294,14 +338,17 @@ public sealed class SqliteStockOperationReader(
             SaleFinancialReversal? financialReversal = null;
             if (sourceType == StockOperationType.Sale)
             {
-                if (!SaleFinancialReversalSerializer.TryDeserialize(
-                        entity.SaleCommitDataType,
-                        entity.SaleCommitDataPayload,
-                        out financialReversal)
-                    || financialReversal.SourceOperationId != entity.SourceOperationId)
+                if (entity.SourceOperationId is null
+                    || saleSources is null
+                    || !saleSources.TryGetValue(entity.SourceOperationId, out var sourceSale))
                 {
                     throw new InvalidOperationException("Stored Sale financial reversal data is invalid.");
                 }
+
+                financialReversal = SqliteSaleFinancialSnapshotReader.ReadReversal(
+                    entity,
+                    lineEntities,
+                    sourceSale);
             }
             else if (entity.SaleCommitDataType is not null || entity.SaleCommitDataPayload is not null)
             {

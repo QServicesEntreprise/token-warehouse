@@ -17,6 +17,33 @@ internal static class SqliteSaleFinancialSnapshotReader
         return snapshot;
     }
 
+    public static SaleFinancialReversal ReadReversal(
+        StockOperationEntity counterMovement,
+        IReadOnlyList<StockOperationLineEntity> counterMovementLines,
+        StockOperationEntity sourceSale)
+    {
+        ArgumentNullException.ThrowIfNull(counterMovement);
+        ArgumentNullException.ThrowIfNull(counterMovementLines);
+        ArgumentNullException.ThrowIfNull(sourceSale);
+
+        var sourceSnapshot = Read(sourceSale, out _);
+        if (!MatchesSource(
+                counterMovement,
+                counterMovementLines,
+                sourceSale)
+            || !SaleFinancialReversalSerializer.TryDeserialize(
+                counterMovement.SaleCommitDataType,
+                counterMovement.SaleCommitDataPayload,
+                out var reversal)
+            || reversal.SourceOperationId != sourceSale.Id
+            || reversal != SaleFinancialReversalPolicy.Create(sourceSale.Id, sourceSnapshot))
+        {
+            throw new InvalidOperationException("Stored Sale financial reversal data is invalid.");
+        }
+
+        return reversal;
+    }
+
     private static bool TryRead(
         StockOperationEntity entity,
         out SaleFinancialSnapshot snapshot,
@@ -112,5 +139,47 @@ internal static class SqliteSaleFinancialSnapshotReader
         {
             return false;
         }
+    }
+
+    private static bool MatchesSource(
+        StockOperationEntity counterMovement,
+        IReadOnlyList<StockOperationLineEntity> counterMovementLines,
+        StockOperationEntity sourceSale)
+    {
+        if (!string.Equals(sourceSale.Type, "SALE", StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(counterMovement.Type, "COUNTER_MOVEMENT", StringComparison.Ordinal)
+            || !string.Equals(counterMovement.SourceOperationType, "SALE", StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(counterMovement.SourceOperationId, sourceSale.Id, StringComparison.Ordinal)
+            || !Ean13.TryCreate(sourceSale.Ean13, out var sourceEan13)
+            || !Ean13.TryCreate(counterMovement.Ean13, out var counterEan13)
+            || sourceEan13 != counterEan13
+            || sourceSale.Quantity <= 0
+            || !MatchesSourceLines(sourceSale, sourceEan13)
+            || counterMovementLines.Count != 1)
+        {
+            return false;
+        }
+
+        var counterLine = counterMovementLines[0];
+        return counterLine.LineNumber == 1
+            && counterLine.Ean13 == sourceEan13.Value
+            && counterLine.Quantity == 0
+            && counterLine.SourceEffect == -sourceSale.Quantity
+            && counterLine.InverseEffect == sourceSale.Quantity;
+    }
+
+    private static bool MatchesSourceLines(
+        StockOperationEntity sourceSale,
+        Ean13 sourceEan13)
+    {
+        var sourceLines = sourceSale.Lines
+            .OrderBy(line => line.LineNumber)
+            .ToArray();
+        return sourceLines.Length == 0
+            || (sourceLines.Length == 1
+                && sourceLines[0].LineNumber == 1
+                && sourceLines[0].Ean13 == sourceEan13.Value
+                && sourceLines[0].Quantity == sourceSale.Quantity
+                && sourceLines[0].SourceEffect == -sourceSale.Quantity);
     }
 }

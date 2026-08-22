@@ -491,6 +491,40 @@ public sealed class HistoryApiTests
     }
 
     [Fact]
+    public async Task Returns_read_failures_for_a_source_mismatched_financial_reversal()
+    {
+        using var factory = new HistoryHostFactory();
+        using var client = factory.CreateClient();
+        await factory.SeedSaleWithSourceMismatchedFinancialReversalAsync();
+
+        using var history = await client.GetAsync("/api/history");
+
+        Assert.Equal(HttpStatusCode.InternalServerError, history.StatusCode);
+        Assert.Equal("application/problem+json", history.Content.Headers.ContentType?.MediaType);
+        using var historyBody = JsonDocument.Parse(await history.Content.ReadAsStringAsync());
+        Assert.Equal("HISTORY_READ_FAILURE", historyBody.RootElement.GetProperty("code").GetString());
+
+        using var scope = factory.Services.CreateScope();
+        var summary = await scope.ServiceProvider
+            .GetRequiredService<IReadFinancialSummaryUseCase>()
+            .ReadAsync(new FinancialPeriod(DateTimeOffset.MinValue, DateTimeOffset.MaxValue));
+        var operationReader = scope.ServiceProvider.GetRequiredService<IStockOperationReader>();
+
+        Assert.Equal(FinancialSummaryReadStatus.PersistenceFailed, summary.Status);
+        Assert.Equal("FINANCIAL_READ_FAILURE", Assert.Single(summary.Errors).Code);
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => operationReader.FindByIdAsync("counter-reversal-mismatch-0001").AsTask());
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => operationReader.FindCounterMovementBySourceIdAsync("sale-reversal-source-0001").AsTask());
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => operationReader.ListAsync().AsTask());
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => operationReader.ListForDashboardAsync().AsTask());
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => operationReader.ListForFinancialAsync().AsTask());
+    }
+
+    [Fact]
     public async Task Reads_history_from_one_sqlite_snapshot_when_catalogue_changes_between_queries()
     {
         var databasePath = Path.Combine(Path.GetTempPath(), $"token-warehouse-history-snapshot-{Guid.NewGuid():N}.db");
@@ -805,6 +839,59 @@ public sealed class HistoryApiTests
                 "sale-incoherent-financial-0001",
                 "0123456789012",
                 quantity: 2));
+            await context.SaveChangesAsync();
+        }
+
+        public async Task SeedSaleWithSourceMismatchedFinancialReversalAsync()
+        {
+            await SeedFinancialArticlesAsync();
+
+            using var scope = Services.CreateScope();
+            var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>();
+            await using var context = await contextFactory.CreateDbContextAsync();
+            const string ean13 = "0123456789012";
+            const string sourceOperationId = "sale-reversal-source-0001";
+            const string counterMovementId = "counter-reversal-mismatch-0001";
+            var snapshot = new SaleFinancialSnapshot(
+                SaleContext.Takeaway,
+                Money.FromCents(100),
+                TaxRate.Takeaway,
+                Money.FromCents(200),
+                Money.FromCents(11),
+                Money.FromCents(211));
+            var mismatchedReversal = new SaleFinancialReversal(
+                sourceOperationId,
+                Money.FromCents(100),
+                SaleContext.Takeaway,
+                TaxRate.Takeaway,
+                Money.FromCents(-199),
+                Money.FromCents(-11),
+                Money.FromCents(-210));
+
+            context.StockOperations.AddRange(
+                FinancialSale(
+                    sourceOperationId,
+                    ean13,
+                    "2030-01-15T10:00:00Z",
+                    snapshot,
+                    quantity: 2),
+                FinancialCounterMovement(
+                    counterMovementId,
+                    ean13,
+                    "2030-01-15T11:00:00Z",
+                    sourceOperationId,
+                    mismatchedReversal));
+            context.StockOperationLines.AddRange(
+                FinancialSaleLine(sourceOperationId, ean13, quantity: 2),
+                new StockOperationLineEntity
+                {
+                    OperationId = counterMovementId,
+                    LineNumber = 1,
+                    Ean13 = ean13,
+                    OperationType = "COUNTER_MOVEMENT",
+                    SourceEffect = -2,
+                    InverseEffect = 2
+                });
             await context.SaveChangesAsync();
         }
 
