@@ -13,7 +13,8 @@ public sealed record ArticleSaleSnapshot(
     DateOnly? Dlc,
     IReadOnlyList<ConsumptionMode> ConsumptionModes,
     PackagingCondition? Packaging,
-    Money PriceHt)
+    Money PriceHt,
+    int Version = 0)
 {
     internal static ArticleSaleSnapshot From(Article article)
     {
@@ -26,7 +27,8 @@ public sealed record ArticleSaleSnapshot(
             article.Dlc,
             article.ConsumptionModes,
             article.Packaging,
-            article.PriceHt);
+            article.PriceHt,
+            article.Version);
     }
 
     internal Article ToPricingArticle()
@@ -52,7 +54,7 @@ public sealed record ArticleSaleSnapshot(
                 _ => null
             },
             PackagingProvided = Type == ArticleType.NonFood
-        }, IsActive).Value
+        }, IsActive, Version).Value
         ?? throw new InvalidOperationException("The stored Article sale snapshot is invalid.");
 
     internal ArticleSellabilitySnapshot ToSellabilitySnapshot()
@@ -293,7 +295,8 @@ public sealed class SaleApplication(
                 new StockSaleCommand
                 {
                     Ean13 = ean13.Value,
-                    Quantity = quantity.Value
+                    Quantity = quantity.Value,
+                    ExpectedArticleVersion = article.Version
                 },
                 participant,
                 cancellationToken);

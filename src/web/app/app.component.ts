@@ -1152,9 +1152,7 @@ export class AppComponent implements OnInit {
   private supplyRequestId = 0;
   private inventoryRestoreRequestId = 0;
   private counterMovementRequestId = 0;
-  private saleSearchRequestId = 0;
   private saleRequestId = 0;
-  private saleRestoreRequestId = 0;
 
   ngOnInit(): void {
     void this.loadCatalog();
@@ -1264,15 +1262,14 @@ export class AppComponent implements OnInit {
   }
 
   async searchSaleArticles(): Promise<void> {
-    this.invalidateSaleRestore();
-    const requestId = ++this.saleSearchRequestId;
+    const requestId = this.nextSaleRequestId();
     this.saleSearchState.set('loading');
     this.saleSearchError.set('');
     this.saleArticles.set([]);
     this.selectedSaleArticle.set(null);
     try {
       const articles = await firstValueFrom(this.salesApi.searchArticles(this.saleSearch()));
-      if (requestId !== this.saleSearchRequestId) {
+      if (requestId !== this.saleRequestId) {
         return;
       }
 
@@ -1287,7 +1284,7 @@ export class AppComponent implements OnInit {
       }
       this.saleSearchState.set(articles.length > 0 ? 'ready' : 'empty');
     } catch (error) {
-      if (requestId !== this.saleSearchRequestId) {
+      if (requestId !== this.saleRequestId) {
         return;
       }
 
@@ -1299,7 +1296,7 @@ export class AppComponent implements OnInit {
   }
 
   selectSaleArticle(article: SaleArticleResponse): void {
-    this.invalidateSaleRestore();
+    this.nextSaleRequestId();
     this.selectedSaleArticle.set(article);
     this.saleFieldErrors.set({});
     this.saleStatusMessage.set('');
@@ -1321,8 +1318,7 @@ export class AppComponent implements OnInit {
 
   async onSaleSubmit(event: Event): Promise<void> {
     event.preventDefault();
-    this.invalidateSaleRestore();
-    const requestId = ++this.saleRequestId;
+    const requestId = this.nextSaleRequestId();
     const article = this.selectedSaleArticle();
     const rawQuantity = this.saleQuantity().trim();
     const quantity = Number(rawQuantity);
@@ -1389,7 +1385,7 @@ export class AppComponent implements OnInit {
   }
 
   private async loadLastSale(): Promise<void> {
-    const requestId = ++this.saleRestoreRequestId;
+    const requestId = this.nextSaleRequestId();
     const operationId = sessionStorage.getItem(lastSaleIdStorageKey);
     if (!operationId) {
       return;
@@ -1399,7 +1395,7 @@ export class AppComponent implements OnInit {
     this.saleStatusMessage.set('Rechargement de la dernière Vente…');
     try {
       const receipt = await firstValueFrom(this.salesApi.getById(operationId));
-      if (requestId !== this.saleRestoreRequestId) {
+      if (requestId !== this.saleRequestId) {
         return;
       }
 
@@ -1410,15 +1406,16 @@ export class AppComponent implements OnInit {
       this.saleStatusMessage.set(`Vente ${receipt.operation.id} rechargée.`);
       this.replaceStockPosition(receipt.position);
     } catch (error) {
-      if (requestId === this.saleRestoreRequestId) {
+      if (requestId === this.saleRequestId) {
         this.saleState.set('error');
         this.saleStatusMessage.set(this.problemMessage(error, 'La Vente enregistrée ne peut pas être relue.'));
       }
     }
   }
 
-  private invalidateSaleRestore(): void {
-    this.saleRestoreRequestId++;
+  private nextSaleRequestId(): number {
+    this.saleSubmitting.set(false);
+    return ++this.saleRequestId;
   }
 
   private saleArticleFromReceipt(receipt: SaleResponse): SaleArticleResponse {

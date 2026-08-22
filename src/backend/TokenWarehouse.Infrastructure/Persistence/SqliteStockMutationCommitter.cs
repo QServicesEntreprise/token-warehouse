@@ -287,6 +287,8 @@ public sealed class SqliteStockMutationCommitter(
             if (article is null
                 || !article.IsActive
                 || article.Version != plan.ArticleSnapshot.Version
+                || (plan.ExpectedArticleVersion is { } expectedArticleVersion
+                    && article.Version != expectedArticleVersion)
                 || currentPosition is null
                 || plan.CurrentPosition is null
                 || currentPosition.PhysicalQuantity != plan.CurrentPosition.PhysicalQuantity

@@ -165,6 +165,106 @@ describe('AppComponent', () => {
     http.verify();
   });
 
+  it('ignores an in-flight sale after a newer Article selection', async () => {
+    const fixture = TestBed.configureTestingModule({
+      imports: [AppComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    }).createComponent(AppComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
+    http.expectOne('/api/stock').flush([
+      {
+        ean13: '0123456789012',
+        name: 'Article A',
+        type: 'nonFood',
+        isActive: true,
+        status: 'active',
+        physicalQuantity: 8,
+        sellableQuantity: 8,
+        availability: 'AVAILABLE',
+        reason: null,
+        packaging: 'new',
+      },
+      {
+        ean13: '7351353713578',
+        name: 'Article B',
+        type: 'nonFood',
+        isActive: true,
+        status: 'active',
+        physicalQuantity: 4,
+        sellableQuantity: 4,
+        availability: 'AVAILABLE',
+        reason: null,
+        packaging: 'new',
+      },
+    ]);
+    await fixture.whenStable();
+
+    const component = fixture.componentInstance;
+    const articleA = {
+      ean13: '0123456789012',
+      name: 'Article A',
+      type: 'nonFood' as const,
+      isActive: true,
+      status: 'active' as const,
+      priceHtCents: 101,
+      physicalQuantity: 8,
+      sellableQuantity: 8,
+      availability: 'AVAILABLE' as const,
+      reason: null,
+      packaging: 'new' as const,
+    };
+    const articleB = {
+      ...articleA,
+      ean13: '7351353713578',
+      name: 'Article B',
+      physicalQuantity: 4,
+      sellableQuantity: 4,
+    };
+    component.saleArticles.set([articleA, articleB]);
+    component.selectSaleArticle(articleA);
+    component.saleQuantity.set('2');
+
+    const submission = component.onSaleSubmit(new Event('submit'));
+    const saleRequest = http.expectOne('/api/sales');
+    component.selectSaleArticle(articleB);
+    component.saleQuantity.set('1');
+    saleRequest.flush({
+      operation: {
+        id: 'sale-a',
+        type: 'SALE',
+        ean13: articleA.ean13,
+        quantity: 2,
+        occurredAt: '2030-01-15T10:00:00+00:00',
+      },
+      financial: {
+        context: null,
+        unitPriceHtCents: 101,
+        taxRate: { code: 'nonFood', ratio: '1/5', numerator: 1, denominator: 5 },
+        amountHtCents: 202,
+        vatCents: 40,
+        amountTtcCents: 242,
+      },
+      position: {
+        ...articleA,
+        physicalQuantity: 6,
+        sellableQuantity: 6,
+      },
+    });
+    await submission;
+    fixture.detectChanges();
+
+    expect(component.saleReceipt()).toBeNull();
+    expect(component.selectedSaleArticle()?.ean13).toBe(articleB.ean13);
+    expect(component.selectedSaleArticle()?.name).toBe('Article B');
+    expect(component.saleState()).toBe('ready');
+    expect(component.saleSubmitting()).toBe(false);
+    expect(component.stockPositions().find((position) => position.ean13 === articleA.ean13)?.physicalQuantity).toBe(8);
+    expect(component.stockPositions().find((position) => position.ean13 === articleB.ean13)?.physicalQuantity).toBe(4);
+    http.verify();
+  });
+
   it('keeps the sale draft and exposes a conflict after a server rejection', async () => {
     const fixture = TestBed.configureTestingModule({
       imports: [AppComponent],

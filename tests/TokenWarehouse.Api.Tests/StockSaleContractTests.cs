@@ -194,6 +194,47 @@ public sealed class StockSaleContractTests
     }
 
     [Fact]
+    public async Task Rejects_a_sale_when_the_catalogue_price_version_changes_after_the_quote()
+    {
+        var quoteGate = new SaleQuoteGate();
+        using var factory = new HostFactory(Now, quoteGate);
+        using var client = factory.CreateClient();
+        await factory.SeedArticleAsync(
+            "7351353713578",
+            "Batterie industrielle",
+            type: "nonFood",
+            packaging: "new",
+            physicalQuantity: 8,
+            priceHtCents: 101);
+
+        var saleTask = client.PostAsJsonAsync(
+            "/api/sales",
+            new { ean13 = "7351353713578", quantity = 1 });
+        var quotedArticle = await quoteGate.Quoted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(0, quotedArticle.Version);
+
+        using var priceUpdate = await client.PatchAsJsonAsync(
+            "/api/articles/7351353713578",
+            new { priceHtCents = 202 });
+        Assert.Equal(HttpStatusCode.OK, priceUpdate.StatusCode);
+        quoteGate.Release.TrySetResult();
+
+        using var response = await saleTask;
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("POSITION_CONFLICT", problem.GetProperty("code").GetString());
+
+        var state = await factory.ReadFreshAsync(async context => new
+        {
+            Position = await context.StockPositions.SingleAsync(),
+            Sales = await context.StockOperations.CountAsync(operation => operation.Type == "SALE")
+        });
+        Assert.Equal(8, state.Position.PhysicalQuantity);
+        Assert.Equal(0, state.Sales);
+    }
+
+    [Fact]
     public async Task Maps_financial_overflow_to_invalid_input_without_writing()
     {
         using var factory = new HostFactory(Now);
@@ -474,7 +515,44 @@ public sealed class StockSaleContractTests
         return ean13;
     }
 
-    private sealed class HostFactory(DateTimeOffset now) : WebApplicationFactory<Program>
+    private sealed class SaleQuoteGate
+    {
+        public TaskCompletionSource<ArticleSaleSnapshot> Quoted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Release { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    private sealed class BlockingArticleSaleReader(
+        IArticleStore store,
+        SaleQuoteGate gate) : IArticleSaleReader
+    {
+        public async ValueTask<ArticleSaleSnapshot?> FindByEanAsync(
+            Ean13 ean13,
+            CancellationToken cancellationToken = default)
+        {
+            var snapshot = await new ArticleSaleReader(store)
+                .FindByEanAsync(ean13, cancellationToken);
+            if (snapshot is null)
+            {
+                return null;
+            }
+
+            gate.Quoted.TrySetResult(snapshot);
+            await gate.Release.Task.WaitAsync(cancellationToken);
+            return snapshot;
+        }
+
+        public ValueTask<IReadOnlyList<ArticleSaleSnapshot>> SearchAsync(
+            string? search,
+            CancellationToken cancellationToken = default)
+            => new ArticleSaleReader(store).SearchAsync(search, cancellationToken);
+    }
+
+    private sealed class HostFactory(
+        DateTimeOffset now,
+        SaleQuoteGate? saleQuoteGate = null) : WebApplicationFactory<Program>
     {
         private readonly string databasePath = Path.Combine(
             Path.GetTempPath(),
@@ -488,6 +566,14 @@ public sealed class StockSaleContractTests
             {
                 services.RemoveAll<IClock>();
                 services.AddSingleton<IClock>(new FixedClock(now));
+                if (saleQuoteGate is not null)
+                {
+                    services.RemoveAll<IArticleSaleReader>();
+                    services.AddScoped<IArticleSaleReader>(provider =>
+                        new BlockingArticleSaleReader(
+                            provider.GetRequiredService<IArticleStore>(),
+                            saleQuoteGate));
+                }
             });
         }
 
