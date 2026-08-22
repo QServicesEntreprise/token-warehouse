@@ -98,7 +98,7 @@ describe('AppComponent', () => {
     http.expectOne('/api/stock').flush([]);
     const delayedRestore = http.expectOne('/api/sales/old-sale');
 
-    const response = (id: string, name: string, quantity: number, physicalQuantity: number) => ({
+    const makeSaleResponse = (id: string, name: string, quantity: number, physicalQuantity: number) => ({
       operation: {
         id,
         type: 'SALE',
@@ -110,7 +110,7 @@ describe('AppComponent', () => {
         context: null,
         unitPriceHtCents: 101,
         taxRate: { code: 'nonFood', ratio: '1/5', numerator: 1, denominator: 5 },
-        amountHtCents: quantity * 101,
+        amountHtCents: quantity === 2 ? 202 : 101,
         vatCents: quantity === 2 ? 40 : 20,
         amountTtcCents: quantity === 2 ? 242 : 121,
       },
@@ -148,10 +148,10 @@ describe('AppComponent', () => {
 
     const submission = component.onSaleSubmit(new Event('submit'));
     const saleRequest = http.expectOne('/api/sales');
-    saleRequest.flush(response('new-sale', 'Article courant', 2, 6));
+    saleRequest.flush(makeSaleResponse('new-sale', 'Article courant', 2, 6));
     await submission;
 
-    delayedRestore.flush(response('old-sale', 'Ancienne Vente', 1, 7));
+    delayedRestore.flush(makeSaleResponse('old-sale', 'Ancienne Vente', 1, 7));
     await fixture.whenStable();
     fixture.detectChanges();
 
@@ -159,6 +159,8 @@ describe('AppComponent', () => {
     expect(component.selectedSaleArticle()?.name).toBe('Article courant');
     expect(component.saleQuantity()).toBe('2');
     expect(component.saleState()).toBe('success');
+    expect(component.stockPositions()[0].physicalQuantity).toBe(6);
+    expect(component.stockPositions()[0].sellableQuantity).toBe(6);
     expect(fixture.nativeElement.querySelector('#sale-result').textContent).toContain('new-sale');
     http.verify();
   });
