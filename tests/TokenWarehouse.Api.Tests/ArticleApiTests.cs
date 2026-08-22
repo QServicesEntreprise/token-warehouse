@@ -681,6 +681,55 @@ public sealed class ArticleApiTests
                 ("2030-03-13", 0, 0)
             ],
             ReadFlowDays(takeawayBody.RootElement));
+
+        async Task AssertFlowsAsync(
+            string filters,
+            params (string Date, int Supplies, int Sales)[] expected)
+        {
+            using var filteredResponse = await client.GetAsync(
+                $"/api/dashboard?from=2030-03-10&to=2030-03-13&{filters}");
+            Assert.Equal(HttpStatusCode.OK, filteredResponse.StatusCode);
+            Assert.Equal("application/json", filteredResponse.Content.Headers.ContentType?.MediaType);
+            using var filteredBody = JsonDocument.Parse(await filteredResponse.Content.ReadAsStringAsync());
+            Assert.Equal(expected, ReadFlowDays(filteredBody.RootElement));
+        }
+
+        await AssertFlowsAsync(
+            "type=nonFood",
+            ("2030-03-10", 0, 0),
+            ("2030-03-11", 11, 0),
+            ("2030-03-12", 0, 0),
+            ("2030-03-13", 0, 0));
+        await AssertFlowsAsync(
+            "packaging=new",
+            ("2030-03-10", 0, 0),
+            ("2030-03-11", 7, 0),
+            ("2030-03-12", 0, 0),
+            ("2030-03-13", 0, 0));
+        await AssertFlowsAsync(
+            "packaging=refurbished",
+            ("2030-03-10", 0, 0),
+            ("2030-03-11", 4, 0),
+            ("2030-03-12", 0, 0),
+            ("2030-03-13", 0, 0));
+        await AssertFlowsAsync(
+            "packaging=unsellable",
+            ("2030-03-10", 0, 0),
+            ("2030-03-11", 0, 0),
+            ("2030-03-12", 0, 0),
+            ("2030-03-13", 0, 0));
+        await AssertFlowsAsync(
+            "type=food&packaging=new",
+            ("2030-03-10", 0, 0),
+            ("2030-03-11", 0, 0),
+            ("2030-03-12", 0, 0),
+            ("2030-03-13", 0, 0));
+        await AssertFlowsAsync(
+            "type=nonFood&mode=takeaway",
+            ("2030-03-10", 0, 0),
+            ("2030-03-11", 0, 0),
+            ("2030-03-12", 0, 0),
+            ("2030-03-13", 0, 0));
         Assert.Equal(operationsBeforeReads, await CountStockOperationsAsync(factory.Services));
     }
 

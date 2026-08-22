@@ -249,7 +249,8 @@ public sealed class DashboardApplicationTests
             View("2345678901234", "C", ArticleType.NonFood, true, 7, 7,
                 StockAvailability.Available, null),
             View("3456789012340", "D", ArticleType.NonFood, false, 4, 0,
-                StockAvailability.NotSellable, SellabilityReason.Archived)
+                StockAvailability.NotSellable, SellabilityReason.Archived,
+                packaging: PackagingCondition.Refurbished)
         };
         var operations = new[]
         {
@@ -303,6 +304,60 @@ public sealed class DashboardApplicationTests
             ],
             filtered.View!.FlowsByDay);
 
+        async Task AssertFlowsAsync(
+            string? type,
+            string? mode,
+            string? packaging,
+            params DashboardFlowDayView[] expected)
+        {
+            var read = await application.ReadAsync(
+                new DashboardQueryRequest("2030-03-10", "2030-03-13", type, mode, packaging));
+
+            Assert.Equal(DashboardReadStatus.Success, read.Status);
+            Assert.Equal(expected, read.View!.FlowsByDay);
+        }
+
+        await AssertFlowsAsync(
+            "nonFood",
+            null,
+            null,
+            new DashboardFlowDayView(new DateOnly(2030, 3, 10), 0, 0),
+            new DashboardFlowDayView(new DateOnly(2030, 3, 11), 11, 0),
+            new DashboardFlowDayView(new DateOnly(2030, 3, 12), 0, 0),
+            new DashboardFlowDayView(new DateOnly(2030, 3, 13), 0, 0));
+        await AssertFlowsAsync(
+            null,
+            null,
+            "new",
+            new DashboardFlowDayView(new DateOnly(2030, 3, 10), 0, 0),
+            new DashboardFlowDayView(new DateOnly(2030, 3, 11), 7, 0),
+            new DashboardFlowDayView(new DateOnly(2030, 3, 12), 0, 0),
+            new DashboardFlowDayView(new DateOnly(2030, 3, 13), 0, 0));
+        await AssertFlowsAsync(
+            null,
+            null,
+            "refurbished",
+            new DashboardFlowDayView(new DateOnly(2030, 3, 10), 0, 0),
+            new DashboardFlowDayView(new DateOnly(2030, 3, 11), 4, 0),
+            new DashboardFlowDayView(new DateOnly(2030, 3, 12), 0, 0),
+            new DashboardFlowDayView(new DateOnly(2030, 3, 13), 0, 0));
+        await AssertFlowsAsync(
+            "food",
+            null,
+            "new",
+            new DashboardFlowDayView(new DateOnly(2030, 3, 10), 0, 0),
+            new DashboardFlowDayView(new DateOnly(2030, 3, 11), 0, 0),
+            new DashboardFlowDayView(new DateOnly(2030, 3, 12), 0, 0),
+            new DashboardFlowDayView(new DateOnly(2030, 3, 13), 0, 0));
+        await AssertFlowsAsync(
+            "nonFood",
+            "takeaway",
+            null,
+            new DashboardFlowDayView(new DateOnly(2030, 3, 10), 0, 0),
+            new DashboardFlowDayView(new DateOnly(2030, 3, 11), 0, 0),
+            new DashboardFlowDayView(new DateOnly(2030, 3, 12), 0, 0),
+            new DashboardFlowDayView(new DateOnly(2030, 3, 13), 0, 0));
+
         var currentCatalogueRows = rows
             .Select(row => row.Ean13.Value == "0123456789012"
                 ? row with { ConsumptionModes = [ConsumptionMode.Takeaway] }
@@ -334,7 +389,8 @@ public sealed class DashboardApplicationTests
         int sellableStock,
         StockAvailability availability,
         SellabilityReason? reason,
-        IReadOnlyList<ConsumptionMode>? consumptionModes = null)
+        IReadOnlyList<ConsumptionMode>? consumptionModes = null,
+        PackagingCondition? packaging = null)
     {
         Assert.True(Ean13.TryCreate(ean13, out var parsed));
         return new(
@@ -344,7 +400,7 @@ public sealed class DashboardApplicationTests
             isActive,
             type == ArticleType.Food ? new DateOnly(2030, 1, 15) : null,
             type == ArticleType.Food ? consumptionModes ?? [ConsumptionMode.Takeaway] : [],
-            type == ArticleType.NonFood ? PackagingCondition.New : null,
+            type == ArticleType.NonFood ? packaging ?? PackagingCondition.New : null,
             physicalStock,
             sellableStock,
             availability,

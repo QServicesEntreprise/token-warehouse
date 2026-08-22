@@ -605,6 +605,71 @@ test.describe('Dashboard daily flows', () => {
       { date: '2030-01-12', supplies: 2, sales: 1 },
       { date: '2030-01-13', supplies: 0, sales: 0 },
     ]);
+
+    const assertNonFoodFlows = async (
+      packaging: 'all' | 'new' | 'refurbished' | 'unsellable',
+      expected: Array<{ date: string; supplies: number; sales: number }>,
+      renderedSupplies: string,
+    ) => {
+      const responsePromise = page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return response.request().method() === 'GET'
+          && url.pathname === '/api/dashboard'
+          && url.searchParams.get('type') === 'nonFood'
+          && url.searchParams.get('mode') === null
+          && url.searchParams.get('packaging') === (packaging === 'all' ? null : packaging);
+      });
+      await page.locator('#dashboard-type').selectOption('nonFood');
+      await page.locator('#dashboard-packaging').selectOption(packaging);
+      await page.getByRole('button', { name: 'Lire le Dashboard' }).click();
+      const response = await responsePromise;
+      expect(response.status()).toBe(200);
+      const view = await response.json();
+      expect(view.flowsByDay.slice(9, 13)).toEqual(expected);
+      await expect(flowTable.getByRole('row', { name: /2030-01-11/ }))
+        .toContainText(renderedSupplies);
+    };
+
+    await assertNonFoodFlows('all', [
+      { date: '2030-01-10', supplies: 0, sales: 0 },
+      { date: '2030-01-11', supplies: 11, sales: 0 },
+      { date: '2030-01-12', supplies: 0, sales: 0 },
+      { date: '2030-01-13', supplies: 0, sales: 0 },
+    ], '11 unités');
+    await assertNonFoodFlows('new', [
+      { date: '2030-01-10', supplies: 0, sales: 0 },
+      { date: '2030-01-11', supplies: 0, sales: 0 },
+      { date: '2030-01-12', supplies: 0, sales: 0 },
+      { date: '2030-01-13', supplies: 0, sales: 0 },
+    ], '0 unité');
+    await assertNonFoodFlows('refurbished', [
+      { date: '2030-01-10', supplies: 0, sales: 0 },
+      { date: '2030-01-11', supplies: 7, sales: 0 },
+      { date: '2030-01-12', supplies: 0, sales: 0 },
+      { date: '2030-01-13', supplies: 0, sales: 0 },
+    ], '7 unités');
+    await assertNonFoodFlows('unsellable', [
+      { date: '2030-01-10', supplies: 0, sales: 0 },
+      { date: '2030-01-11', supplies: 4, sales: 0 },
+      { date: '2030-01-12', supplies: 0, sales: 0 },
+      { date: '2030-01-13', supplies: 0, sales: 0 },
+    ], '4 unités');
+
+    const readIncompatibleFlows = async (filters: string) => page.evaluate(async (path) => {
+      const response = await fetch(path);
+      return { status: response.status, body: await response.json() };
+    }, `/api/dashboard?from=2030-01-01&to=2030-01-31&${filters}`);
+
+    for (const filters of ['type=food&packaging=new', 'type=nonFood&mode=takeaway']) {
+      const incompatible = await readIncompatibleFlows(filters);
+      expect(incompatible.status).toBe(200);
+      expect(incompatible.body.flowsByDay.slice(9, 13)).toEqual([
+        { date: '2030-01-10', supplies: 0, sales: 0 },
+        { date: '2030-01-11', supplies: 0, sales: 0 },
+        { date: '2030-01-12', supplies: 0, sales: 0 },
+        { date: '2030-01-13', supplies: 0, sales: 0 },
+      ]);
+    }
   });
 });
 
