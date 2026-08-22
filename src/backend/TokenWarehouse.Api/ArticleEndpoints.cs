@@ -118,21 +118,6 @@ public static class ArticleEndpoints
             };
         });
 
-        app.MapGet("/api/history", async (
-            string? ean13,
-            IGetArticleHistoryUseCase useCase,
-            CancellationToken cancellationToken) =>
-        {
-            var result = await useCase.GetHistoryAsync(ean13, cancellationToken);
-            return result.Status switch
-            {
-                ArticleHistoryReadStatus.Success
-                    => Results.Ok(result.Facts.Select(ArticleHistoryResponse.From).ToArray()),
-                ArticleHistoryReadStatus.NotFound => NotFoundProblem(),
-                _ => ValidationProblem(result.Errors)
-            };
-        });
-
         app.MapPatch("/api/articles/{ean13}", async (
             string ean13,
             HttpRequest request,

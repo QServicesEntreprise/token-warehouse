@@ -61,12 +61,14 @@ const stopApi = async (server: ChildProcess): Promise<void> => {
 
 type Fixtures = {
   isolatedApi: void;
+  historyReadFailure: boolean;
   e2eSeed: 'true' | 'empty';
 };
 
 export const test = base.extend<Fixtures>({
+  historyReadFailure: [false, { option: true }],
   e2eSeed: ['true', { option: true }],
-  isolatedApi: [async ({ e2eSeed }, use) => {
+  isolatedApi: [async ({ historyReadFailure, e2eSeed }, use) => {
     fs.mkdirSync(playwrightArtifactsPath, { recursive: true });
     const databaseDirectory = fs.mkdtempSync(path.join(playwrightArtifactsPath, 'e2e-'));
     const databasePath = path.join(databaseDirectory, 'token-warehouse.db');
@@ -87,6 +89,7 @@ export const test = base.extend<Fixtures>({
           ...process.env,
           ASPNETCORE_ENVIRONMENT: 'Testing',
           TOKEN_WAREHOUSE_E2E_SEED: e2eSeed,
+          TOKEN_WAREHOUSE_HISTORY_FAILURE: historyReadFailure ? 'true' : 'false',
           TOKEN_WAREHOUSE_WAREHOUSE_DATE: '2030-01-15',
           TOKEN_WAREHOUSE_UTC_NOW: '2030-01-15T10:00:00Z',
           ConnectionStrings__Warehouse: `Data Source=${databasePath}`,
