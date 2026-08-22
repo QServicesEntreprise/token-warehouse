@@ -1145,9 +1145,73 @@ describe('AppComponent', () => {
     expect((fixture.nativeElement.querySelector('#dashboard-to') as HTMLInputElement).value).toBe('2030-03-10');
     expect((fixture.nativeElement.querySelector('#dashboard-type') as HTMLSelectElement).value).toBe('food');
     expect((fixture.nativeElement.querySelector('#dashboard-mode') as HTMLSelectElement).value).toBe('onsite');
-    expect((fixture.nativeElement.querySelector('#dashboard-packaging') as HTMLSelectElement).disabled).toBe(true);
+    expect((fixture.nativeElement.querySelector('#dashboard-packaging') as HTMLSelectElement).disabled).toBe(false);
     expect(fixture.nativeElement.querySelector('#dashboard-from-error').textContent)
       .toContain('date de début est invalide');
+    http.verify();
+  });
+
+  it('keeps non-applicable dimensions as an AND filter instead of silently neutralizing them', async () => {
+    const fixture = TestBed.configureTestingModule({
+      imports: [AppComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    }).createComponent(AppComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
+    http.expectOne('/api/stock').flush([]);
+    http.expectOne('/health').flush({
+      status: 'ok',
+      provider: 'test',
+      warehouseDate: '2030-03-15',
+      currentMonth: { from: '2030-03-01', to: '2030-03-31' },
+    });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const initial = http.expectOne((request) =>
+      request.url === '/api/dashboard'
+        && request.params.get('from') === '2030-03-01'
+        && request.params.get('to') === '2030-03-31');
+    initial.flush({
+      kpis: { physicalStock: 0, sellableStock: 0, nonSellableStock: 0 },
+      alerts: { outOfStock: [], notSellable: [] },
+      stockByArticle: [],
+      flowsByDay: [],
+      financial: null,
+    });
+    await fixture.whenStable();
+
+    const setValue = (selector: string, value: string) => {
+      const control = fixture.nativeElement.querySelector(selector) as HTMLSelectElement;
+      control.value = value;
+      control.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    setValue('#dashboard-packaging', 'new');
+    setValue('#dashboard-type', 'food');
+    setValue('#dashboard-mode', 'onsite');
+    fixture.detectChanges();
+
+    const packaging = fixture.nativeElement.querySelector('#dashboard-packaging') as HTMLSelectElement;
+    expect(packaging.value).toBe('new');
+    expect(packaging.disabled).toBe(false);
+
+    (fixture.nativeElement.querySelector('#dashboard-submit') as HTMLButtonElement).click();
+    const filtered = http.expectOne((request) =>
+      request.url === '/api/dashboard'
+        && request.params.get('type') === 'food'
+        && request.params.get('mode') === 'onsite'
+        && request.params.get('packaging') === 'new');
+    filtered.flush({
+      kpis: { physicalStock: 0, sellableStock: 0, nonSellableStock: 0 },
+      alerts: { outOfStock: [], notSellable: [] },
+      stockByArticle: [],
+      flowsByDay: [],
+      financial: null,
+    });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('#dashboard-state').textContent).toContain('Aucun Article');
     http.verify();
   });
 

@@ -503,6 +503,7 @@ test('filters the Dashboard by explicit period and Article dimensions', async ({
       && url.searchParams.get('packaging') === 'refurbished';
   });
   await page.locator('#dashboard-type').selectOption('nonFood');
+  await page.locator('#dashboard-mode').selectOption('all');
   await page.locator('#dashboard-packaging').selectOption('refurbished');
   await page.getByRole('button', { name: 'Lire le Dashboard' }).click();
   const packaging = await packagingResponse;
@@ -524,6 +525,7 @@ test('filters the Dashboard by explicit period and Article dimensions', async ({
       && url.searchParams.get('mode') === 'takeaway';
   });
   await page.locator('#dashboard-type').selectOption('food');
+  await page.locator('#dashboard-packaging').selectOption('all');
   await page.locator('#dashboard-mode').selectOption('takeaway');
   await page.getByRole('button', { name: 'Lire le Dashboard' }).click();
   const takeaway = await takeawayResponse;
@@ -532,6 +534,22 @@ test('filters the Dashboard by explicit period and Article dimensions', async ({
   expect(takeawayBody.stockByArticle.map((row: { ean13: string }) => row.ean13))
     .toEqual(['0123456789012', '1234567890128']);
   expect(takeawayBody.kpis).toEqual({ physicalStock: 12, sellableStock: 5, nonSellableStock: 7 });
+
+  const incompatibleResponse = page.waitForResponse((candidate) => {
+    const url = new URL(candidate.url());
+    return candidate.request().method() === 'GET'
+      && url.pathname === '/api/dashboard'
+      && url.searchParams.get('type') === 'food'
+      && url.searchParams.get('packaging') === 'new';
+  });
+  await page.locator('#dashboard-packaging').selectOption('new');
+  await page.getByRole('button', { name: 'Lire le Dashboard' }).click();
+  const incompatible = await incompatibleResponse;
+  expect(incompatible.status()).toBe(200);
+  const incompatibleBody = await incompatible.json();
+  expect(incompatibleBody.stockByArticle).toEqual([]);
+  expect(incompatibleBody.kpis).toEqual({ physicalStock: 0, sellableStock: 0, nonSellableStock: 0 });
+  await expect(dashboard.locator('#dashboard-state')).toContainText('Aucun Article');
 });
 
 test.describe('Dashboard daily flows', () => {
@@ -619,6 +637,7 @@ test.describe('Dashboard daily flows', () => {
           && url.searchParams.get('mode') === null
           && url.searchParams.get('packaging') === (packaging === 'all' ? null : packaging);
       });
+      await page.locator('#dashboard-mode').selectOption('all');
       await page.locator('#dashboard-type').selectOption('nonFood');
       await page.locator('#dashboard-packaging').selectOption(packaging);
       await page.getByRole('button', { name: 'Lire le Dashboard' }).click();
@@ -873,7 +892,7 @@ test('keeps Dashboard controls and focus after a period error, then retries the 
   await expect(to).toHaveValue('2030-01-15');
   await expect(page.locator('#dashboard-type')).toHaveValue('food');
   await expect(page.locator('#dashboard-mode')).toHaveValue('onsite');
-  await expect(page.locator('#dashboard-packaging')).toBeDisabled();
+  await expect(page.locator('#dashboard-packaging')).toBeEnabled();
   await expect(from).toHaveAttribute('aria-invalid', 'true');
   await expect(from).toHaveAttribute('aria-describedby', 'dashboard-from-error');
   await expect(from).toBeFocused();

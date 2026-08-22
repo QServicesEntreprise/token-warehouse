@@ -99,7 +99,6 @@ const initialFilters: DashboardFilters = {
             <select
               id="dashboard-mode"
               [value]="filters().mode"
-              [disabled]="filters().type === 'nonFood'"
               [attr.aria-invalid]="dashboardFieldError('mode') ? 'true' : null"
               [attr.aria-describedby]="dashboardFieldErrorId('mode')"
               (change)="changeMode($event)">
@@ -116,7 +115,6 @@ const initialFilters: DashboardFilters = {
             <select
               id="dashboard-packaging"
               [value]="filters().packaging"
-              [disabled]="filters().type === 'food'"
               [attr.aria-invalid]="dashboardFieldError('packaging') ? 'true' : null"
               [attr.aria-describedby]="dashboardFieldErrorId('packaging')"
               (change)="changePackaging($event)">
@@ -374,8 +372,6 @@ export class DashboardComponent implements OnInit {
     this.filters.update(current => ({
       ...current,
       type,
-      mode: type === 'nonFood' ? 'all' : current.mode,
-      packaging: type === 'food' ? 'all' : current.packaging,
     }));
   }
 
