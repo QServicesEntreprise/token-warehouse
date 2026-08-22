@@ -65,6 +65,8 @@ public sealed class WarehouseDbContext(DbContextOptions<WarehouseDbContext> opti
         operation.Property(entity => entity.SourceOperationId);
         operation.Property(entity => entity.SourceOperationType);
         operation.Property(entity => entity.Justification);
+        operation.Property(entity => entity.SaleCommitDataType);
+        operation.Property(entity => entity.SaleCommitDataPayload);
         operation.HasIndex(entity => entity.Ean13);
         operation.HasIndex(entity => entity.SourceOperationId).IsUnique();
         operation.ToTable("StockOperations", table =>

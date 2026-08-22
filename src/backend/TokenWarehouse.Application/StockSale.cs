@@ -42,15 +42,33 @@ public sealed record StockSaleResult(
     StockSaleReceipt? Receipt,
     IReadOnlyList<ArticleValidationError> Errors);
 
+public sealed record StockSaleCommitData
+{
+    public StockSaleCommitData(string type, string payload)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(type);
+        ArgumentNullException.ThrowIfNull(payload);
+        Type = type;
+        Payload = payload;
+    }
+
+    public string Type { get; }
+
+    public string Payload { get; }
+}
+
 public interface IStockSaleTransaction
 {
-    // Intentionally opaque: the Stock committer owns the transaction lifecycle.
+    ValueTask StageAsync(
+        StockSaleCommitData data,
+        CancellationToken cancellationToken = default);
 }
 
 public interface IStockSaleCommitParticipant
 {
     ValueTask PrepareAsync(
         IStockSaleTransaction transaction,
+        StockOperation operation,
         CancellationToken cancellationToken = default);
 }
 

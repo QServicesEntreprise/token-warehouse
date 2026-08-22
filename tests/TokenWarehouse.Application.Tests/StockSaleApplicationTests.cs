@@ -79,7 +79,9 @@ public sealed class StockSaleApplicationTests
 
         Assert.Equal(StockSaleStatus.Committed, result.Status);
         Assert.Same(participant, committer.Participant);
-        Assert.NotNull(participant.Transaction);
+        Assert.Equal(committer.Plan?.Operation.Id, participant.OperationId);
+        Assert.Equal("sentinel", participant.Data?.Type);
+        Assert.Equal("payload", participant.Data?.Payload);
     }
 
     [Fact]
@@ -290,25 +292,33 @@ public sealed class StockSaleApplicationTests
             Calls++;
             Plan = plan;
             Participant = participant;
-            await participant.PrepareAsync(new FakeTransaction(), cancellationToken);
+            await participant.PrepareAsync(new FakeTransaction(), plan.Operation, cancellationToken);
             return StockMutationCommitResult.Committed(plan.Position);
         }
     }
 
     private sealed class FakeTransaction : IStockSaleTransaction
     {
+        public ValueTask StageAsync(
+            StockSaleCommitData data,
+            CancellationToken cancellationToken = default)
+            => ValueTask.CompletedTask;
     }
 
     private sealed class RecordingParticipant : IStockSaleCommitParticipant
     {
-        public IStockSaleTransaction? Transaction { get; private set; }
+        public string? OperationId { get; private set; }
 
-        public ValueTask PrepareAsync(
+        public StockSaleCommitData? Data { get; private set; }
+
+        public async ValueTask PrepareAsync(
             IStockSaleTransaction transaction,
+            StockOperation operation,
             CancellationToken cancellationToken = default)
         {
-            Transaction = transaction;
-            return ValueTask.CompletedTask;
+            OperationId = operation.Id;
+            Data = new StockSaleCommitData("sentinel", "payload");
+            await transaction.StageAsync(Data, cancellationToken);
         }
     }
 }

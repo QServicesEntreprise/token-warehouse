@@ -317,16 +317,17 @@ public sealed class SqliteStockMutationCommitter(
             context.Entry(article).Property(candidate => candidate.Version).IsModified = true;
             currentPosition.PhysicalQuantity = (int)resultingPhysicalStock;
             currentPosition.Version++;
-            context.StockOperations.Add(ToEntity(plan.Operation));
+            var operationEntity = ToEntity(plan.Operation);
+            context.StockOperations.Add(operationEntity);
             context.StockOperationLines.AddRange(
                 plan.Operation.Lines.Select(line => ToEntity(plan.Operation, line)));
             await context.SaveChangesAsync(cancellationToken);
             if (participant is not null)
             {
                 await participant.PrepareAsync(
-                    new SqliteStockSaleTransaction(context),
+                    new SqliteStockSaleTransaction(context, operationEntity),
+                    plan.Operation,
                     cancellationToken);
-                await context.SaveChangesAsync(cancellationToken);
             }
 
             await transaction.CommitAsync(cancellationToken);
@@ -430,12 +431,24 @@ public sealed class SqliteStockMutationCommitter(
             || message.Contains("StockOperationLines", StringComparison.OrdinalIgnoreCase));
 }
 
-internal interface ISqliteStockSaleTransaction : IStockSaleTransaction
+internal sealed class SqliteStockSaleTransaction(
+    WarehouseDbContext context,
+    StockOperationEntity operation) : IStockSaleTransaction
 {
-    WarehouseDbContext Context { get; }
-}
+    public async ValueTask StageAsync(
+        StockSaleCommitData data,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ArgumentNullException.ThrowIfNull(data);
+        if (operation.SaleCommitDataType is not null
+            || operation.SaleCommitDataPayload is not null)
+        {
+            throw new InvalidOperationException("Sale commit data was already staged.");
+        }
 
-internal sealed class SqliteStockSaleTransaction(WarehouseDbContext context) : ISqliteStockSaleTransaction
-{
-    public WarehouseDbContext Context { get; } = context;
+        operation.SaleCommitDataType = data.Type;
+        operation.SaleCommitDataPayload = data.Payload;
+        await context.SaveChangesAsync(cancellationToken);
+    }
 }

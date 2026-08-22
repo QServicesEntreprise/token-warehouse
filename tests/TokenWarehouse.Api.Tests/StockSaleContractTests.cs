@@ -27,7 +27,9 @@ public sealed class StockSaleContractTests
 
         using var scope = factory.Services.CreateScope();
         var contract = scope.ServiceProvider.GetRequiredService<IStockSaleContract>();
-        var participant = new RecordingCommitParticipant();
+        var participant = new SentinelParticipantPersistenceAdapter(
+            "financial-sentinel",
+            "{\"saleId\":\"sentinel-1\",\"amountHtCents\":303}");
         var result = await contract.RecordAsync(new StockSaleCommand
         {
             Ean13 = "0123456789012",
@@ -35,8 +37,8 @@ public sealed class StockSaleContractTests
         }, participant);
 
         Assert.Equal(StockSaleStatus.Committed, result.Status);
-        Assert.True(participant.Prepared);
-        Assert.NotNull(participant.Transaction);
+        Assert.True(participant.Staged);
+        Assert.Equal(result.Receipt?.Operation.Id, participant.OperationId);
         Assert.Equal(-3, result.Receipt?.Operation.Lines.Single().StockEffect);
         Assert.Equal(5, result.Receipt?.Position.PhysicalQuantity);
 
@@ -53,6 +55,10 @@ public sealed class StockSaleContractTests
         Assert.Equal(3, state.Operation.Quantity);
         Assert.Equal("0123456789012", state.Operation.Ean13);
         Assert.Equal(-3, state.Operation.Lines.Single().SourceEffect);
+        Assert.Equal("financial-sentinel", state.Operation.SaleCommitDataType);
+        Assert.Equal(
+            "{\"saleId\":\"sentinel-1\",\"amountHtCents\":303}",
+            state.Operation.SaleCommitDataPayload);
         Assert.Equal(5, state.Position.PhysicalQuantity);
 
         var beforeReads = await factory.ReadFreshAsync(async context => new
@@ -99,7 +105,10 @@ public sealed class StockSaleContractTests
 
         using var scope = factory.Services.CreateScope();
         var contract = scope.ServiceProvider.GetRequiredService<IStockSaleContract>();
-        var participant = new FailingCommitParticipant();
+        var participant = new SentinelParticipantPersistenceAdapter(
+            "financial-sentinel",
+            "{\"saleId\":\"sentinel-rollback\"}",
+            failAfterPrepare: true);
         var result = await contract.RecordAsync(
             new StockSaleCommand
             {
@@ -110,14 +119,18 @@ public sealed class StockSaleContractTests
 
         Assert.Equal(StockSaleStatus.PersistenceFailed, result.Status);
         Assert.Null(result.Receipt);
-        Assert.NotNull(participant.Transaction);
+        Assert.True(participant.Staged);
 
         var state = await factory.ReadFreshAsync(async context => new
         {
             Operations = await context.StockOperations.CountAsync(),
+            ParticipantPayload = await context.StockOperations
+                .Select(operation => operation.SaleCommitDataPayload)
+                .SingleOrDefaultAsync(),
             Position = await context.StockPositions.SingleAsync()
         });
         Assert.Equal(0, state.Operations);
+        Assert.Null(state.ParticipantPayload);
         Assert.Equal(8, state.Position.PhysicalQuantity);
         Assert.Equal(2, state.Position.Version);
     }
@@ -373,32 +386,29 @@ public sealed class StockSaleContractTests
         public DateTimeOffset UtcNow => now;
     }
 
-    private sealed class FailingCommitParticipant : IStockSaleCommitParticipant
+    private sealed class SentinelParticipantPersistenceAdapter(
+        string dataType,
+        string payload,
+        bool failAfterPrepare = false) : IStockSaleCommitParticipant
     {
-        public IStockSaleTransaction? Transaction { get; private set; }
+        public bool Staged { get; private set; }
 
-        public ValueTask PrepareAsync(
+        public string? OperationId { get; private set; }
+
+        public async ValueTask PrepareAsync(
             IStockSaleTransaction transaction,
+            StockOperation operation,
             CancellationToken cancellationToken = default)
         {
-            Transaction = transaction;
-            return ValueTask.FromException(new InvalidOperationException("financial write failed"));
-        }
-    }
-
-    private sealed class RecordingCommitParticipant : IStockSaleCommitParticipant
-    {
-        public bool Prepared { get; private set; }
-
-        public IStockSaleTransaction? Transaction { get; private set; }
-
-        public ValueTask PrepareAsync(
-            IStockSaleTransaction transaction,
-            CancellationToken cancellationToken = default)
-        {
-            Transaction = transaction;
-            Prepared = true;
-            return ValueTask.CompletedTask;
+            OperationId = operation.Id;
+            await transaction.StageAsync(
+                new StockSaleCommitData(dataType, payload),
+                cancellationToken);
+            Staged = true;
+            if (failAfterPrepare)
+            {
+                throw new InvalidOperationException("financial write failed after staging");
+            }
         }
     }
 
