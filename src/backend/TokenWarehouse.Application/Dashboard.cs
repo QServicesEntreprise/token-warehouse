@@ -22,6 +22,14 @@ public sealed record DashboardArticleSelection(
             && (Mode is null
                 || (position.Type == ArticleType.Food && position.ConsumptionModes.Contains(Mode.Value)));
 
+    public bool MatchesFinancial(StockPositionView article, SaleContext? saleContext)
+        => MatchesArticle(article)
+            && (Mode is null
+                || (article.Type == ArticleType.Food
+                    && saleContext == (Mode == ConsumptionMode.Takeaway
+                        ? SaleContext.Takeaway
+                        : SaleContext.OnSite)));
+
     public bool MatchesFlow(
         StockPositionView position,
         StockOperationType operationType,
@@ -75,6 +83,8 @@ public interface IWarehouseCalendar
     WarehouseDateRangeValidationResult ValidatePeriod(string? from, string? to);
 
     DateOnly ToWarehouseDate(DateTimeOffset instant);
+
+    FinancialPeriod ToUtcPeriod(WarehouseDateRange range);
 }
 
 public sealed class WarehouseCalendar(
@@ -119,6 +129,17 @@ public sealed class WarehouseCalendar(
 
     public DateOnly ToWarehouseDate(DateTimeOffset instant)
         => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(instant, warehouseTimeZone).DateTime);
+
+    public FinancialPeriod ToUtcPeriod(WarehouseDateRange range)
+    {
+        var fromUtc = TimeZoneInfo.ConvertTimeToUtc(
+            range.From.ToDateTime(TimeOnly.MinValue),
+            warehouseTimeZone);
+        var toUtc = TimeZoneInfo.ConvertTimeToUtc(
+            range.To.AddDays(1).ToDateTime(TimeOnly.MinValue),
+            warehouseTimeZone);
+        return new(new DateTimeOffset(fromUtc), new DateTimeOffset(toUtc));
+    }
 
     private static DateOnly? ParseDate(
         string? value,
@@ -178,7 +199,10 @@ public sealed record CurrentDashboardView(
     DashboardKpiView Kpis,
     DashboardAlertsView Alerts,
     IReadOnlyList<DashboardStockLineView> StockByArticle,
-    IReadOnlyList<DashboardFlowDayView> FlowsByDay);
+    IReadOnlyList<DashboardFlowDayView> FlowsByDay)
+{
+    public FinancialSummary? Financial { get; init; }
+}
 
 public sealed record DashboardFlowDayView(
     DateOnly Date,
@@ -187,7 +211,10 @@ public sealed record DashboardFlowDayView(
 
 public sealed record DashboardReadSnapshot(
     IReadOnlyList<StockPositionView> Positions,
-    IReadOnlyList<StockOperationReadView> Operations);
+    IReadOnlyList<StockOperationReadView> Operations)
+{
+    public IReadOnlyList<SaleFinancialFact> FinancialFacts { get; init; } = [];
+}
 
 public enum DashboardReadStatus
 {
@@ -253,6 +280,18 @@ public sealed class DashboardApplication(
                 return Failure();
             }
 
+            var articles = snapshot.Positions
+                .GroupBy(position => position.Ean13.Value, StringComparer.Ordinal)
+                .ToDictionary(group => group.Key, group => group.Single(), StringComparer.Ordinal);
+            var financialPeriod = warehouseCalendar.ToUtcPeriod(query.Period);
+            var financialFacts = snapshot.FinancialFacts.Where(fact =>
+                financialPeriod.Contains(fact.TimestampUtc)
+                && articles.TryGetValue(fact.Ean13.Value, out var article)
+                && query.Selection.MatchesFinancial(article, fact.SaleContext)).ToArray();
+            FinancialSummary? financial = rows.Length == 0 && financialFacts.Length == 0
+                ? null
+                : FinancialSummary.Calculate(financialFacts);
+
             var physicalStock = rows.Sum(row => row.PhysicalStock);
             var sellableStock = rows.Sum(row => row.SellableStock);
             var view = new CurrentDashboardView(
@@ -273,7 +312,10 @@ public sealed class DashboardApplication(
                             && row.SellableStock == 0)
                         .ToArray()),
                 rows,
-                AggregateFlowsByDay(query, snapshot.Positions, snapshot.Operations));
+                AggregateFlowsByDay(query, snapshot.Positions, snapshot.Operations))
+            {
+                Financial = financial
+            };
 
             return new(DashboardReadStatus.Success, view, []);
         }

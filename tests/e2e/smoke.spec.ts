@@ -695,6 +695,147 @@ test.describe('Dashboard daily flow calendar boundary', () => {
   });
 });
 
+test.describe('Dashboard financial indicators', () => {
+  test.use({ e2eSeed: 'financial', timezoneId: 'America/Los_Angeles' });
+
+  test('keeps historical mode facts when current food modes change', async ({ page }) => {
+    const dashboard = page.locator('#dashboard-panel');
+    const patchModes = async (ean13: string, modes: string[]) => {
+      const response = await page.request.patch(
+        `http://127.0.0.1:5100/api/articles/${ean13}`,
+        { data: { consumptionModes: modes } });
+      expect(response.status()).toBe(200);
+    };
+
+    await page.goto('/');
+    await expect(page.locator('#dashboard-from')).toHaveValue('2030-01-01');
+    await patchModes('1234567890128', ['onsite']);
+    await patchModes('1234567890128', ['takeaway']);
+    await patchModes('0123456789012', ['takeaway']);
+    await patchModes('5678901234562', ['takeaway']);
+
+    await page.locator('#dashboard-from').fill('2030-01-10');
+    await page.locator('#dashboard-to').fill('2030-01-10');
+    await page.locator('#dashboard-type').selectOption('food');
+    await page.locator('#dashboard-mode').selectOption('onsite');
+    const aloneResponsePromise = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return response.request().method() === 'GET'
+        && url.pathname === '/api/dashboard'
+        && url.searchParams.get('from') === '2030-01-10'
+        && url.searchParams.get('to') === '2030-01-10'
+        && url.searchParams.get('type') === 'food'
+        && url.searchParams.get('mode') === 'onsite';
+    });
+    await page.getByRole('button', { name: 'Lire le Dashboard' }).click();
+    const aloneResponse = await aloneResponsePromise;
+    expect(aloneResponse.status()).toBe(200);
+    const aloneView = await aloneResponse.json();
+    expect(aloneView.stockByArticle).toEqual([]);
+    expect(aloneView.financial).toMatchObject({
+      revenueHtCents: 1000,
+      revenueTtcCents: 1100,
+      vatCollectedCents: 100,
+    });
+    await expect(dashboard.locator('#dashboard-state'))
+      .toContainText('Indicateurs financiers disponibles');
+    await expect(dashboard.locator('#dashboard-financial')).toBeVisible();
+    await expect(dashboard.locator('#dashboard-financial-revenue-ht')).toContainText('10,00');
+
+    await patchModes('0123456789012', ['onsite']);
+    const alongsideResponsePromise = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return response.request().method() === 'GET'
+        && url.pathname === '/api/dashboard'
+        && url.searchParams.get('from') === '2030-01-10'
+        && url.searchParams.get('to') === '2030-01-10'
+        && url.searchParams.get('type') === 'food'
+        && url.searchParams.get('mode') === 'onsite';
+    });
+    await page.getByRole('button', { name: 'Lire le Dashboard' }).click();
+    const alongsideResponse = await alongsideResponsePromise;
+    expect(alongsideResponse.status()).toBe(200);
+    const alongsideView = await alongsideResponse.json();
+    expect(alongsideView.stockByArticle.map((row: { ean13: string }) => row.ean13))
+      .toEqual(['0123456789012']);
+    expect(alongsideView.financial).toMatchObject({
+      revenueHtCents: 1000,
+      revenueTtcCents: 1100,
+      vatCollectedCents: 100,
+    });
+    await expect(dashboard.locator('#dashboard-financial')).toBeVisible();
+  });
+
+  test('renders historical amounts by VAT rate and applies correction dates', async ({ page }) => {
+    const dashboard = page.locator('#dashboard-panel');
+    const initialResponsePromise = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return response.request().method() === 'GET' && url.pathname === '/api/dashboard';
+    });
+
+    await page.goto('/');
+    const initialResponse = await initialResponsePromise;
+    expect(initialResponse.status()).toBe(200);
+    const initialView = await initialResponse.json();
+    expect(initialView.financial.revenueHtCents).toBe(2000);
+    expect(initialView.financial.revenueTtcCents).toBe(2255);
+    expect(initialView.financial.vatCollectedCents).toBe(255);
+    expect(initialView.financial.byTaxRate.map((line: {
+      taxRate: { code: string };
+      amountHtCents: number;
+      vatCents: number;
+      amountTtcCents: number;
+    }) => [line.taxRate.code, line.amountHtCents, line.vatCents, line.amountTtcCents])).toEqual([
+      ['takeaway', 1000, 55, 1055],
+      ['onsite', 0, 0, 0],
+      ['nonFood', 1000, 200, 1200],
+    ]);
+
+    await expect(dashboard.getByRole('heading', { name: 'Indicateurs financiers' })).toBeVisible();
+    await expect(dashboard.locator('#dashboard-financial-revenue-ht')).toContainText('20,00');
+    await expect(dashboard.locator('#dashboard-financial-revenue-ttc')).toContainText('22,55');
+    await expect(dashboard.locator('#dashboard-financial-vat')).toContainText('2,55');
+    const financialTable = dashboard.locator('#dashboard-financial-table');
+    await expect(financialTable.getByRole('columnheader', { name: 'Taux de TVA' })).toBeVisible();
+    await expect(financialTable.locator('tbody tr')).toHaveCount(3);
+    await expect(financialTable.getByRole('row', { name: /5,5 %/ })).toContainText('10,55');
+    await expect(financialTable.getByRole('row', { name: /10 %/ })).toContainText('0,00');
+    await expect(financialTable.getByRole('row', { name: /20 %/ })).toContainText('12,00');
+
+    await page.locator('#dashboard-from').fill('2030-01-20');
+    await page.locator('#dashboard-to').fill('2030-01-20');
+    const correctionResponsePromise = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return response.request().method() === 'GET'
+        && url.pathname === '/api/dashboard'
+        && url.searchParams.get('from') === '2030-01-20'
+        && url.searchParams.get('to') === '2030-01-20';
+    });
+    await page.getByRole('button', { name: 'Lire le Dashboard' }).click();
+    const correctionResponse = await correctionResponsePromise;
+    expect(correctionResponse.status()).toBe(200);
+    const correctionView = await correctionResponse.json();
+    expect(correctionView.financial).toMatchObject({
+      revenueHtCents: -1000,
+      revenueTtcCents: -1100,
+      vatCollectedCents: -100,
+    });
+    expect(correctionView.financial.byTaxRate.map((line: {
+      taxRate: { code: string };
+      amountHtCents: number;
+      vatCents: number;
+      amountTtcCents: number;
+    }) => [line.taxRate.code, line.amountHtCents, line.vatCents, line.amountTtcCents])).toEqual([
+      ['takeaway', 0, 0, 0],
+      ['onsite', -1000, -100, -1100],
+      ['nonFood', 0, 0, 0],
+    ]);
+    await expect(dashboard.locator('#dashboard-financial-revenue-ht')).toContainText('-10,00');
+    await expect(financialTable.getByRole('row', { name: /10 %/ })).toContainText('-10,00');
+    await expect(financialTable.getByRole('row', { name: /10 %/ })).toContainText('-1,00');
+  });
+});
+
 test('keeps Dashboard controls and focus after a period error, then retries the same selection', async ({ page }) => {
   const dashboard = page.locator('#dashboard-panel');
 
@@ -778,6 +919,7 @@ test.describe('Dashboard states', () => {
     releaseLoading();
     await navigation;
     await expect(dashboardState).toContainText('Aucun Article');
+    await expect(page.locator('#dashboard-financial')).toHaveCount(0);
     await page.unroute(dashboardRoute, delayedDashboardRoute);
 
     const stateRoute = async (route: Route) => {

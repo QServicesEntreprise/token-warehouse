@@ -966,6 +966,16 @@ describe('AppComponent', () => {
         { date: '2030-01-01', supplies: 3, sales: 1 },
         { date: '2030-01-02', supplies: 0, sales: 0 },
       ],
+      financial: {
+        revenueHtCents: 2000,
+        revenueTtcCents: 2255,
+        vatCollectedCents: 255,
+        byTaxRate: [
+          { taxRate: { code: 'takeaway', ratio: '11/200', numerator: 11, denominator: 200 }, amountHtCents: 1000, vatCents: 55, amountTtcCents: 1055 },
+          { taxRate: { code: 'onsite', ratio: '1/10', numerator: 1, denominator: 10 }, amountHtCents: 0, vatCents: 0, amountTtcCents: 0 },
+          { taxRate: { code: 'nonFood', ratio: '1/5', numerator: 1, denominator: 5 }, amountHtCents: 1000, vatCents: 200, amountTtcCents: 1200 },
+        ],
+      },
     });
     await fixture.whenStable();
     fixture.detectChanges();
@@ -989,6 +999,16 @@ describe('AppComponent', () => {
       .toContain('3 unités');
     expect(fixture.nativeElement.querySelector('#dashboard-flows-table').textContent)
       .toContain('1 unité');
+    expect(fixture.nativeElement.querySelector('#dashboard-financial-revenue-ht').textContent)
+      .toContain('20,00');
+    expect(fixture.nativeElement.querySelector('#dashboard-financial-revenue-ttc').textContent)
+      .toContain('22,55');
+    expect(fixture.nativeElement.querySelector('#dashboard-financial-table tbody').children)
+      .toHaveLength(3);
+    expect(fixture.nativeElement.querySelector('#dashboard-financial-table').textContent)
+      .toContain('5,5 %');
+    expect(fixture.nativeElement.querySelector('#dashboard-financial-table').textContent)
+      .toContain('20 %');
     http.verify();
   });
 

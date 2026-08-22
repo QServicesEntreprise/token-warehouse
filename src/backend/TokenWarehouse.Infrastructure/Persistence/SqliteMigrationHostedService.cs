@@ -28,8 +28,10 @@ public sealed class SqliteMigrationHostedService(
             var seed = Environment.GetEnvironmentVariable("TOKEN_WAREHOUSE_E2E_SEED");
             var flowSeed = string.Equals(seed, "flows", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(seed, "flows-boundary", StringComparison.OrdinalIgnoreCase);
+            var financialSeed = string.Equals(seed, "financial", StringComparison.OrdinalIgnoreCase);
             if (string.Equals(seed, "true", StringComparison.OrdinalIgnoreCase)
-                || flowSeed)
+                || flowSeed
+                || financialSeed)
             {
                 await SeedE2eStockArticlesAsync(context, clock.WarehouseDate, cancellationToken);
             }
@@ -40,6 +42,11 @@ public sealed class SqliteMigrationHostedService(
                     context,
                     cancellationToken,
                     string.Equals(seed, "flows-boundary", StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (financialSeed)
+            {
+                await SeedE2eFinancialFactsAsync(context, cancellationToken);
             }
         }
     }
@@ -340,6 +347,143 @@ public sealed class SqliteMigrationHostedService(
                 Line("e2e-flow-boundary-before", 1, "0123456789012", "supply", 1, 1),
                 Line("e2e-flow-boundary-at", 1, "0123456789012", "supply", 1, 1));
         }
+        await context.SaveChangesAsync(cancellationToken);
+    }
+
+    private static async Task SeedE2eFinancialFactsAsync(
+        WarehouseDbContext context,
+        CancellationToken cancellationToken)
+    {
+        if (await context.StockOperations.AnyAsync(
+                operation => operation.Id == "e2e-financial-counter-onsite",
+                cancellationToken))
+        {
+            return;
+        }
+
+        static StockOperationEntity Sale(
+            string id,
+            string ean13,
+            string timestamp,
+            SaleFinancialSnapshot snapshot)
+        {
+            var payload = SaleFinancialSnapshotSerializer.Serialize(snapshot);
+            var operation = new StockOperationEntity
+            {
+                Id = id,
+                Type = "SALE",
+                Ean13 = ean13,
+                Quantity = 1,
+                OccurredAt = timestamp,
+                TimestampUtc = timestamp,
+                SaleCommitDataType = SaleFinancialSnapshotSerializer.Type,
+                SaleCommitDataPayload = payload,
+                SaleFinancialContext = snapshot.SaleContext switch
+                {
+                    SaleContext.Takeaway => "takeaway",
+                    SaleContext.OnSite => "onsite",
+                    _ => null
+                },
+                SaleFinancialUnitPriceHtCents = snapshot.UnitPriceHt.Cents,
+                SaleFinancialTaxRateCode = snapshot.TaxRate.Code,
+                SaleFinancialTaxRateNumerator = snapshot.TaxRate.Numerator,
+                SaleFinancialTaxRateDenominator = snapshot.TaxRate.Denominator,
+                SaleFinancialAmountHtCents = snapshot.AmountHt.Cents,
+                SaleFinancialVatCents = snapshot.Vat.Cents,
+                SaleFinancialAmountTtcCents = snapshot.AmountTtc.Cents
+            };
+            operation.Lines.Add(new StockOperationLineEntity
+            {
+                OperationId = id,
+                LineNumber = 1,
+                Ean13 = ean13,
+                OperationType = "SALE",
+                Quantity = 1,
+                SourceEffect = -1
+            });
+            return operation;
+        }
+
+        static StockOperationEntity CounterMovement(
+            string id,
+            string ean13,
+            string timestamp,
+            string sourceOperationId,
+            SaleFinancialSnapshot sourceSnapshot)
+        {
+            var reversal = SaleFinancialReversalPolicy.Create(sourceOperationId, sourceSnapshot);
+            var operation = new StockOperationEntity
+            {
+                Id = id,
+                Type = "COUNTER_MOVEMENT",
+                Ean13 = ean13,
+                Quantity = 0,
+                OccurredAt = timestamp,
+                TimestampUtc = timestamp,
+                SourceOperationId = sourceOperationId,
+                SourceOperationType = "SALE",
+                Justification = "Correction financière E2E",
+                SaleCommitDataType = SaleFinancialReversalSerializer.Type,
+                SaleCommitDataPayload = SaleFinancialReversalSerializer.Serialize(reversal)
+            };
+            operation.Lines.Add(new StockOperationLineEntity
+            {
+                OperationId = id,
+                LineNumber = 1,
+                Ean13 = ean13,
+                OperationType = "COUNTER_MOVEMENT",
+                Quantity = 0,
+                SourceEffect = -1,
+                InverseEffect = 1
+            });
+            return operation;
+        }
+
+        var takeaway = new SaleFinancialSnapshot(
+            SaleContext.Takeaway,
+            Money.FromCents(1000),
+            TaxRate.Takeaway,
+            Money.FromCents(1000),
+            Money.FromCents(55),
+            Money.FromCents(1055));
+        var onsite = new SaleFinancialSnapshot(
+            SaleContext.OnSite,
+            Money.FromCents(1000),
+            TaxRate.OnSite,
+            Money.FromCents(1000),
+            Money.FromCents(100),
+            Money.FromCents(1100));
+        var nonFood = new SaleFinancialSnapshot(
+            null,
+            Money.FromCents(1000),
+            TaxRate.NonFood,
+            Money.FromCents(1000),
+            Money.FromCents(200),
+            Money.FromCents(1200));
+
+        context.StockOperations.AddRange(
+            Sale(
+                "e2e-financial-sale-takeaway",
+                "0123456789012",
+                "2030-01-10T10:00:00+00:00",
+                takeaway),
+            Sale(
+                "e2e-financial-sale-onsite",
+                "1234567890128",
+                "2030-01-10T11:00:00+00:00",
+                onsite),
+            Sale(
+                "e2e-financial-sale-non-food",
+                "2345678901234",
+                "2030-01-10T12:00:00+00:00",
+                nonFood),
+            CounterMovement(
+                "e2e-financial-counter-onsite",
+                "1234567890128",
+                "2030-01-20T10:00:00+00:00",
+                "e2e-financial-sale-onsite",
+                onsite));
+
         await context.SaveChangesAsync(cancellationToken);
     }
 }
