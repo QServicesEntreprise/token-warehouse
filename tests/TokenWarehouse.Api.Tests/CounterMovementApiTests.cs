@@ -203,16 +203,263 @@ public sealed class CounterMovementApiTests
         Assert.Equal(10, state.Position.PhysicalQuantity);
     }
 
+    [Fact]
+    public async Task Allows_only_one_concurrent_correction_of_the_same_source()
+    {
+        using var commitBarrier = new Barrier(2);
+        using var factory = new CounterMovementHostFactory(Now, counterCommitBarrier: commitBarrier);
+        using var firstClient = factory.CreateClient();
+        using var secondClient = factory.CreateClient();
+        await factory.SeedOperationAsync("concurrent-source", "0123456789012", "supply", 8, 10);
+
+        var responses = await Task.WhenAll(
+            firstClient.PostAsJsonAsync(
+                "/api/stock/counter-movements",
+                new { sourceOperationId = "concurrent-source", justification = "Correction 1" }),
+            secondClient.PostAsJsonAsync(
+                "/api/stock/counter-movements",
+                new { sourceOperationId = "concurrent-source", justification = "Correction 2" }));
+
+        try
+        {
+            Assert.Single(responses, response => response.StatusCode == HttpStatusCode.Created);
+            Assert.Single(responses, response => response.StatusCode == HttpStatusCode.Conflict);
+
+            using var conflictBody = JsonDocument.Parse(
+                await responses.Single(response => response.StatusCode == HttpStatusCode.Conflict)
+                    .Content.ReadAsStringAsync());
+            Assert.Equal("POSITION_CONFLICT", conflictBody.RootElement.GetProperty("code").GetString());
+
+            var state = await factory.ReadFreshAsync(async context => new
+            {
+                OperationCount = await context.StockOperations.AsNoTracking().CountAsync(),
+                OperationLineCount = await context.StockOperationLines.AsNoTracking().CountAsync(),
+                CounterCount = await context.StockOperations.AsNoTracking()
+                    .CountAsync(operation => operation.Type == "COUNTER_MOVEMENT"),
+                SourceLinkCount = await context.StockOperations.AsNoTracking()
+                    .CountAsync(operation => operation.SourceOperationId == "concurrent-source"),
+                Source = await context.StockOperations.AsNoTracking()
+                    .Where(operation => operation.Id == "concurrent-source")
+                    .Select(operation => new
+                    {
+                        operation.Type,
+                        operation.Ean13,
+                        operation.Quantity,
+                        operation.OccurredAt,
+                        operation.TimestampUtc,
+                        operation.SourceOperationId,
+                        operation.SourceOperationType,
+                        operation.Justification
+                    })
+                    .SingleAsync(),
+                SourceLine = await context.StockOperationLines.AsNoTracking()
+                    .Where(line => line.OperationId == "concurrent-source")
+                    .Select(line => new { line.OperationType, line.Quantity, line.SourceEffect, line.InverseEffect })
+                    .SingleAsync(),
+                CounterLine = await context.StockOperationLines.AsNoTracking()
+                    .Where(line => line.OperationType == "COUNTER_MOVEMENT")
+                    .Select(line => new { line.SourceEffect, line.InverseEffect })
+                    .SingleAsync(),
+                Position = await context.StockPositions.AsNoTracking()
+                    .Where(position => position.Ean13 == "0123456789012")
+                    .Select(position => new { position.PhysicalQuantity, position.Version })
+                    .SingleAsync()
+            });
+
+            Assert.Equal(2, state.OperationCount);
+            Assert.Equal(2, state.OperationLineCount);
+            Assert.Equal(1, state.CounterCount);
+            Assert.Equal(1, state.SourceLinkCount);
+            Assert.Equal("supply", state.Source.Type);
+            Assert.Equal("0123456789012", state.Source.Ean13);
+            Assert.Equal(8, state.Source.Quantity);
+            Assert.Equal(Now.ToString("O"), state.Source.OccurredAt);
+            Assert.Equal(Now.ToString("O"), state.Source.TimestampUtc);
+            Assert.Null(state.Source.SourceOperationId);
+            Assert.Null(state.Source.SourceOperationType);
+            Assert.Null(state.Source.Justification);
+            Assert.Equal("supply", state.SourceLine.OperationType);
+            Assert.Equal(8, state.SourceLine.Quantity);
+            Assert.Equal(8, state.SourceLine.SourceEffect);
+            Assert.Equal(0, state.SourceLine.InverseEffect);
+            Assert.Equal(8, state.CounterLine.SourceEffect);
+            Assert.Equal(-8, state.CounterLine.InverseEffect);
+            Assert.Equal(2, state.Position.PhysicalQuantity);
+            Assert.Equal(1, state.Position.Version);
+        }
+        finally
+        {
+            foreach (var response in responses)
+            {
+                response.Dispose();
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Rejects_a_stale_counter_or_supply_commit_without_partial_state()
+    {
+        using var commitBarrier = new Barrier(2);
+        using var factory = new CounterMovementHostFactory(
+            Now,
+            counterCommitBarrier: commitBarrier,
+            supplyCommitBarrier: commitBarrier);
+        using var counterClient = factory.CreateClient();
+        using var supplyClient = factory.CreateClient();
+        await factory.SeedOperationAsync("overlap-source", "0123456789012", "supply", 8, 10);
+
+        var responses = await Task.WhenAll(
+            counterClient.PostAsJsonAsync(
+                "/api/stock/counter-movements",
+                new { sourceOperationId = "overlap-source", justification = "Correction concurrente" }),
+            supplyClient.PostAsJsonAsync(
+                "/api/supplies",
+                new { ean13 = "0123456789012", quantity = 3 }));
+
+        try
+        {
+            Assert.Single(responses, response => response.StatusCode == HttpStatusCode.Created);
+            Assert.Single(responses, response => response.StatusCode == HttpStatusCode.Conflict);
+
+            using var counterConflictBody = responses[0].StatusCode == HttpStatusCode.Conflict
+                ? JsonDocument.Parse(await responses[0].Content.ReadAsStringAsync())
+                : null;
+            using var supplyConflictBody = responses[1].StatusCode == HttpStatusCode.Conflict
+                ? JsonDocument.Parse(await responses[1].Content.ReadAsStringAsync())
+                : null;
+            if (counterConflictBody is not null)
+            {
+                Assert.Equal("POSITION_CONFLICT", counterConflictBody.RootElement.GetProperty("code").GetString());
+            }
+
+            if (supplyConflictBody is not null)
+            {
+                Assert.Equal("supply.commit.conflict", supplyConflictBody.RootElement.GetProperty("code").GetString());
+            }
+
+            var state = await factory.ReadFreshAsync(async context => new
+            {
+                OperationCount = await context.StockOperations.AsNoTracking().CountAsync(),
+                OperationLineCount = await context.StockOperationLines.AsNoTracking().CountAsync(),
+                CounterCount = await context.StockOperations.AsNoTracking()
+                    .CountAsync(operation => operation.Type == "COUNTER_MOVEMENT"),
+                SupplyCount = await context.StockOperations.AsNoTracking()
+                    .CountAsync(operation => operation.Type == "supply" && operation.Id != "overlap-source"),
+                SourceLinkCount = await context.StockOperations.AsNoTracking()
+                    .CountAsync(operation => operation.SourceOperationId == "overlap-source"),
+                Source = await context.StockOperations.AsNoTracking()
+                    .Where(operation => operation.Id == "overlap-source")
+                    .Select(operation => new
+                    {
+                        operation.Type,
+                        operation.Ean13,
+                        operation.Quantity,
+                        operation.SourceOperationId,
+                        operation.SourceOperationType,
+                        operation.Justification
+                    })
+                    .SingleAsync(),
+                Counter = await context.StockOperations.AsNoTracking()
+                    .Where(operation => operation.Type == "COUNTER_MOVEMENT")
+                    .Select(operation => new
+                    {
+                        operation.Id,
+                        operation.Type,
+                        operation.Ean13,
+                        operation.SourceOperationId,
+                        operation.SourceOperationType,
+                        operation.Justification
+                    })
+                    .SingleOrDefaultAsync(),
+                Position = await context.StockPositions.AsNoTracking()
+                    .Where(position => position.Ean13 == "0123456789012")
+                    .Select(position => new { position.PhysicalQuantity, position.Version })
+                    .SingleAsync(),
+                CounterLine = await context.StockOperationLines.AsNoTracking()
+                    .Where(line => line.OperationType == "COUNTER_MOVEMENT")
+                    .Select(line => new { line.OperationId, line.Ean13, line.SourceEffect, line.InverseEffect })
+                    .SingleOrDefaultAsync(),
+                SupplyLine = await context.StockOperationLines.AsNoTracking()
+                    .Where(line => line.OperationType == "supply" && line.OperationId != "overlap-source")
+                    .Select(line => new { line.OperationId, line.Ean13, line.Quantity, line.SourceEffect, line.InverseEffect })
+                    .SingleOrDefaultAsync(),
+                Supply = await context.StockOperations.AsNoTracking()
+                    .Where(operation => operation.Type == "supply" && operation.Id != "overlap-source")
+                    .Select(operation => new { operation.Id, operation.Type, operation.Ean13, operation.Quantity })
+                    .SingleOrDefaultAsync()
+            });
+
+            Assert.Equal(2, state.OperationCount);
+            Assert.Equal(2, state.OperationLineCount);
+            Assert.Equal(1, state.CounterCount + state.SupplyCount);
+            Assert.Equal("supply", state.Source.Type);
+            Assert.Equal("0123456789012", state.Source.Ean13);
+            Assert.Equal(8, state.Source.Quantity);
+            Assert.Null(state.Source.SourceOperationId);
+            Assert.Null(state.Source.SourceOperationType);
+            Assert.Null(state.Source.Justification);
+            Assert.Equal(state.CounterCount, state.SourceLinkCount);
+
+            if (state.CounterCount == 1)
+            {
+                Assert.Equal(0, state.SupplyCount);
+                Assert.Equal(1, state.SourceLinkCount);
+                Assert.Equal(2, state.Position.PhysicalQuantity);
+                Assert.Equal("COUNTER_MOVEMENT", state.Counter?.Type);
+                Assert.Equal("0123456789012", state.Counter?.Ean13);
+                Assert.Equal("overlap-source", state.Counter?.SourceOperationId);
+                Assert.Equal("SUPPLY", state.Counter?.SourceOperationType);
+                Assert.Equal("Correction concurrente", state.Counter?.Justification);
+                Assert.Equal(state.Counter?.Id, state.CounterLine?.OperationId);
+                Assert.Equal("0123456789012", state.CounterLine?.Ean13);
+                Assert.Equal(8, state.CounterLine?.SourceEffect);
+                Assert.Equal(-8, state.CounterLine?.InverseEffect);
+                Assert.Null(state.SupplyLine);
+            }
+            else
+            {
+                Assert.Equal(0, state.CounterCount);
+                Assert.Equal(0, state.SourceLinkCount);
+                Assert.Equal(13, state.Position.PhysicalQuantity);
+                Assert.Equal("supply", state.Supply?.Type);
+                Assert.Equal("0123456789012", state.Supply?.Ean13);
+                Assert.Equal(3, state.Supply?.Quantity);
+                Assert.Null(state.CounterLine);
+                Assert.Equal(state.Supply?.Id, state.SupplyLine?.OperationId);
+                Assert.Equal("0123456789012", state.SupplyLine?.Ean13);
+                Assert.Equal(3, state.SupplyLine?.Quantity);
+                Assert.Equal(3, state.SupplyLine?.SourceEffect);
+                Assert.Equal(0, state.SupplyLine?.InverseEffect);
+            }
+
+            Assert.Equal(1, state.Position.Version);
+        }
+        finally
+        {
+            foreach (var response in responses)
+            {
+                response.Dispose();
+            }
+        }
+    }
+
     private sealed class CounterMovementHostFactory : WebApplicationFactory<Program>
     {
         private readonly string connectionString =
             $"Data Source=file:counter-movement-{Guid.NewGuid():N};Mode=Memory;Cache=Shared";
         private readonly SqliteConnection keeperConnection;
         private readonly DateTimeOffset now;
+        private readonly Barrier? counterCommitBarrier;
+        private readonly Barrier? supplyCommitBarrier;
 
-        public CounterMovementHostFactory(DateTimeOffset now)
+        public CounterMovementHostFactory(
+            DateTimeOffset now,
+            Barrier? counterCommitBarrier = null,
+            Barrier? supplyCommitBarrier = null)
         {
             this.now = now;
+            this.counterCommitBarrier = counterCommitBarrier;
+            this.supplyCommitBarrier = supplyCommitBarrier;
             keeperConnection = new SqliteConnection(connectionString);
             keeperConnection.Open();
         }
@@ -316,6 +563,17 @@ public sealed class CounterMovementApiTests
             return await read(context);
         }
 
+        public async Task<T> ReadFreshAsync<T>(Func<WarehouseDbContext, Task<T>> read)
+        {
+            await using var connection = new SqliteConnection(connectionString);
+            await connection.OpenAsync();
+            var options = new DbContextOptionsBuilder<WarehouseDbContext>()
+                .UseSqlite(connection)
+                .Options;
+            await using var context = new WarehouseDbContext(options);
+            return await read(context);
+        }
+
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment("Testing");
@@ -326,6 +584,23 @@ public sealed class CounterMovementApiTests
                 services.AddDbContextFactory<WarehouseDbContext>(options => options.UseSqlite(connectionString));
                 services.RemoveAll<IClock>();
                 services.AddSingleton<IClock>(new FixedClock(now));
+                if (counterCommitBarrier is not null)
+                {
+                    services.RemoveAll<IStockMutationCommitter>();
+                    services.AddScoped<IStockMutationCommitter>(serviceProvider => new GatedCounterMovementCommitter(
+                        new SqliteStockMutationCommitter(
+                            serviceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>()),
+                        counterCommitBarrier));
+                }
+
+                if (supplyCommitBarrier is not null)
+                {
+                    services.RemoveAll<ISupplyCommitter>();
+                    services.AddScoped<ISupplyCommitter>(serviceProvider => new GatedSupplyCommitter(
+                        new SqliteSupplyCommitter(
+                            serviceProvider.GetRequiredService<IDbContextFactory<WarehouseDbContext>>()),
+                        supplyCommitBarrier));
+                }
             });
         }
 
@@ -395,6 +670,42 @@ public sealed class CounterMovementApiTests
                 SourceEffect = sourceEffect,
                 InverseEffect = 0
             };
+    }
+
+    private sealed class GatedCounterMovementCommitter(
+        IStockMutationCommitter inner,
+        Barrier barrier) : IStockMutationCommitter
+    {
+        public ValueTask<StockMutationCommitResult> CommitAsync(
+            InventoryCommitPlan plan,
+            CancellationToken cancellationToken = default)
+            => inner.CommitAsync(plan, cancellationToken);
+
+        public async ValueTask<StockMutationCommitResult> CommitAsync(
+            CounterMovementCommitPlan plan,
+            CancellationToken cancellationToken = default)
+        {
+            barrier.SignalAndWait(TimeSpan.FromSeconds(10), cancellationToken);
+            return await inner.CommitAsync(plan, cancellationToken);
+        }
+    }
+
+    private sealed class GatedSupplyCommitter(
+        ISupplyCommitter inner,
+        Barrier barrier) : ISupplyCommitter
+    {
+        public async ValueTask<SupplyCommitResult> CommitAsync(
+            SupplyCommitRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            barrier.SignalAndWait(TimeSpan.FromSeconds(10), cancellationToken);
+            return await inner.CommitAsync(request, cancellationToken);
+        }
+
+        public ValueTask<BulkSupplyCommitResult> CommitAsync(
+            BulkSupplyCommitRequest request,
+            CancellationToken cancellationToken = default)
+            => inner.CommitAsync(request, cancellationToken);
     }
 
     private sealed class FixedClock(DateTimeOffset now) : IClock
