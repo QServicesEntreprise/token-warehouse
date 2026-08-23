@@ -188,6 +188,7 @@ Ressources principales :
 | `POST` | `/api/articles/{ean13}/archive` | archiver |
 | `POST` | `/api/articles/{ean13}/reactivate` | réactiver |
 | `POST` | `/api/supplies` et `/api/supplies/bulk` | enregistrer un Approvisionnement |
+| `GET` | `/api/supplies/{id}` | relire une Opération d’Approvisionnement immuable |
 | `POST` | `/api/inventories` et `/api/inventories/bulk` | enregistrer un Inventaire |
 | `POST` | `/api/sales` | enregistrer une Vente |
 | `POST` | `/api/stock/counter-movements` | corriger une opération |

@@ -1888,6 +1888,7 @@ export class AppComponent implements OnInit {
         return;
       }
 
+      this.counterMovementSources.set([]);
       this.counterMovementSourcesState.set('error');
       this.counterMovementError.set(
         this.problemMessage(error, 'Les Opérations corrigeables ne peuvent pas être chargées.'),

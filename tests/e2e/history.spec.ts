@@ -1,7 +1,16 @@
 import { expect } from '@playwright/test';
-import { test } from './fixtures';
-import { leadingZeroEan13 } from './helpers/ean13';
+import { apiUrl as apiBaseUrl, test } from './fixtures';
+import { ean13ForAttempt, leadingZeroEan13 } from './helpers/ean13';
 import { expectProblemDetails, waitForRequest } from './helpers/http';
+import {
+  archive,
+  createFoodArticle,
+  createNonFoodArticle,
+  inventory,
+  reactivate,
+  sell,
+  supplyBulk,
+} from './helpers/state';
 
 const ean13 = leadingZeroEan13;
 const otherEan13 = '1234567890128';
@@ -10,7 +19,6 @@ const bulkFirstEan13 = '5678901234562';
 const bulkSecondEan13 = '4567890123456';
 const emptyHistoryEan13 = '2345678901234';
 const invalidHistoryEan13 = '4006381333932';
-const apiBaseUrl = 'http://127.0.0.1:5100';
 
 type BrowserHistoryEntry = {
   id: string;
@@ -602,5 +610,190 @@ test.describe('history read failure runtime seam', () => {
     await expect(page.locator('#history-state')).toContainText('L’Historique ne peut pas être lu pour le moment.');
     await expect(page.locator('#history-state')).toHaveAttribute('role', 'status');
     await expect(page.locator('#history-state')).toHaveAttribute('aria-live', 'polite');
+  });
+});
+
+test.describe('complete History behavior', () => {
+  test.use({ e2eSeed: 'flows' });
+
+  test('renders all nine History facts and keeps Article History read-only and filtered', async ({ page }) => {
+    const foodEan13 = ean13ForAttempt('710000001', 0);
+    const nonFoodEan13 = ean13ForAttempt('710000002', 0);
+    const foodName = 'Article alimentaire Historique';
+    const renamedFood = `${foodName} renommé`;
+
+    await createFoodArticle(page, {
+      ean13: foodEan13,
+      name: foodName,
+      modes: ['takeaway'],
+      dlc: '2030-02-01',
+      priceHtCents: 250,
+    });
+    await createNonFoodArticle(page, {
+      ean13: nonFoodEan13,
+      name: 'Article non alimentaire Historique',
+      packaging: 'new',
+      priceHtCents: 400,
+    });
+    const bulkSupply = await supplyBulk(page, [
+      { ean13: foodEan13, quantity: 8 },
+      { ean13: nonFoodEan13, quantity: 5 },
+    ]);
+    const sale = await sell(page, foodEan13, 2, 'takeaway');
+    const inventoryResult = await inventory(page, foodEan13, 7);
+    const counterResponse = await page.request.post(`${apiBaseUrl}/api/stock/counter-movements`, {
+      data: {
+        sourceOperationId: inventoryResult.operation.id,
+        justification: 'Correction de comptage Historique',
+      },
+    });
+    expect(counterResponse.status()).toBe(201);
+    const counterMovementResult = await counterResponse.json() as { counterMovement: { id: string } };
+
+    const dlcChange = await page.request.patch(`${apiBaseUrl}/api/articles/${foodEan13}`, {
+      data: { dlc: '2030-02-02' },
+    });
+    expect(dlcChange.status()).toBe(200);
+    const catalogChange = await page.request.patch(`${apiBaseUrl}/api/articles/${foodEan13}`, {
+      data: { name: renamedFood },
+    });
+    expect(catalogChange.status()).toBe(200);
+    const packagingChange = await page.request.patch(`${apiBaseUrl}/api/articles/${nonFoodEan13}`, {
+      data: { packaging: 'refurbished' },
+    });
+    expect(packagingChange.status()).toBe(200);
+    await archive(page, foodEan13);
+    await reactivate(page, foodEan13);
+
+    const stockBeforeHistory = await page.request.get(`${apiBaseUrl}/api/stock/${foodEan13}`);
+    expect(stockBeforeHistory.status()).toBe(200);
+    const stockBeforeHistoryView = await stockBeforeHistory.json();
+
+    await page.goto('/');
+    const writeRequests: string[] = [];
+    const trackWriteRequests = (request: import('@playwright/test').Request) => {
+      if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method())) {
+        writeRequests.push(`${request.method()} ${new URL(request.url()).pathname}`);
+      }
+    };
+    page.on('request', trackWriteRequests);
+    await page.getByRole('link', { name: 'Historique' }).click();
+    const globalHistoryPromise = waitForRequest(page, 'GET', '/api/history', (url) => !url.search);
+    await page.getByRole('button', { name: 'Historique global', exact: true }).click();
+    expect((await globalHistoryPromise).status()).toBe(200);
+
+    for (const label of [
+      'Approvisionnement',
+      'Inventaire',
+      'Vente Stock',
+      'Contre-mouvement',
+      'Archivage Catalogue',
+      'Réactivation Catalogue',
+      'Changement de DLC',
+      'Changement de Packaging',
+      'Changement Catalogue',
+    ]) {
+      await expect(page.locator('#history-list').getByRole('heading', {
+        level: 3,
+        name: new RegExp(`^${label} — `),
+      }).first()).toBeVisible();
+    }
+
+    const headings = page.locator('#history-list > .history-entry > h3');
+    await expect(headings).toContainText([
+      'Approvisionnement — 2030-01-15T10:00:00+00:00',
+      'Inventaire — 2030-01-13T10:00:00+00:00',
+      'Vente Stock — 2030-01-12T11:00:00+00:00',
+      'Contre-mouvement — 2030-01-11T11:00:00+00:00',
+    ]);
+    const renderedTimestamps = (await headings.allTextContents()).map((heading) => (
+      Date.parse(heading.split('—').at(-1)?.trim() ?? '')
+    ));
+    expect(renderedTimestamps.every(Number.isFinite)).toBe(true);
+    expect(new Set(renderedTimestamps).size).toBeGreaterThanOrEqual(4);
+    expect(renderedTimestamps).toEqual([...renderedTimestamps].sort((left, right) => right - left));
+
+    const supplyCard = page.locator(`[aria-labelledby="history-entry-${bulkSupply.operation.id}"]`);
+    await expect(supplyCard).toContainText(foodEan13);
+    await expect(supplyCard).toContainText(nonFoodEan13);
+    await expect(supplyCard).toContainText('Ligne 1');
+    await expect(supplyCard).toContainText('8 unités');
+    await expect(supplyCard).toContainText('effet +8');
+    await expect(supplyCard).toContainText('Ligne 2');
+    await expect(supplyCard).toContainText('5 unités');
+    await expect(supplyCard).toContainText('effet +5');
+
+    const saleCard = page.locator(`[aria-labelledby="history-entry-${sale.operation.id}"]`);
+    await expect(saleCard).toContainText('Quantité utile');
+    await expect(saleCard).toContainText('2 unités');
+    await expect(saleCard).toContainText('Effet Stock');
+    await expect(saleCard).toContainText('-2');
+    await expect(saleCard).toContainText('Prix HT unitaire historique');
+    await expect(saleCard).toContainText('250 centimes');
+    await expect(saleCard).toContainText('Montant TTC historique');
+    await expect(saleCard).toContainText('528 centimes');
+
+    const inventoryCard = page.locator(`[aria-labelledby="history-entry-${inventoryResult.operation.id}"]`);
+    await expect(inventoryCard).toContainText('Quantité comptée');
+    await expect(inventoryCard).toContainText('7 unités');
+    await expect(inventoryCard).toContainText('Écart');
+    await expect(inventoryCard).toContainText('+1');
+
+    const counterCard = page.locator(`[aria-labelledby="history-entry-${counterMovementResult.counterMovement.id}"]`);
+    await expect(counterCard).toContainText(`Source${inventoryResult.operation.id}`);
+    await expect(counterCard).toContainText('JustificationCorrection de comptage Historique');
+    await expect(counterCard).toContainText('effet inverse -1');
+
+    const historyEntries = page.locator('#history-list > .history-entry');
+    await expect(historyEntries.filter({ hasText: 'Changement de DLC' })).toContainText(
+      'dlc : 2030-02-01 → 2030-02-02',
+    );
+    await expect(historyEntries.filter({ hasText: 'Changement de Packaging' })).toContainText(
+      'packaging : new → refurbished',
+    );
+    await expect(historyEntries.filter({ hasText: 'Changement Catalogue' })).toContainText(
+      `name : ${foodName} → ${renamedFood}`,
+    );
+    await expect(historyEntries.filter({ hasText: 'Archivage Catalogue' })).toContainText('active → archived');
+    await expect(historyEntries.filter({ hasText: 'Réactivation Catalogue' })).toContainText('archived → active');
+
+    const historyPanel = page.locator('#history-panel');
+    await expect(historyPanel.getByRole('button')).toHaveText([
+      'Filtrer l’Historique',
+      'Historique global',
+    ]);
+    await expect(historyPanel.getByRole('button', {
+      name: /Enregistrer|Archiver|Réactiver|Corriger|Supprimer/,
+    })).toHaveCount(0);
+
+    const articleResponsePromise = waitForRequest(page, 'GET', `/api/articles/${foodEan13}`);
+    await page.locator('#lookupEan13').fill(foodEan13);
+    await page.locator('section[aria-labelledby="lookup-title"]')
+      .getByRole('button', { name: 'Consulter', exact: true })
+      .click();
+    expect((await articleResponsePromise).status()).toBe(200);
+    const articleHistoryPromise = waitForRequest(page, 'GET', '/api/history', (url) => (
+      url.searchParams.get('ean13') === foodEan13
+    ));
+    await page.getByRole('button', { name: 'Consulter l’Historique de cet Article', exact: true }).click();
+    expect((await articleHistoryPromise).status()).toBe(200);
+
+    const articleHistory = page.locator('#article-history-list');
+    await expect(articleHistory).toContainText(foodEan13);
+    await expect(articleHistory).not.toContainText(nonFoodEan13);
+    await expect(articleHistory).toContainText('Changement de DLC');
+    await expect(articleHistory).toContainText('dlc : 2030-02-01 → 2030-02-02');
+    await expect(articleHistory).toContainText('Changement Catalogue');
+    await expect(articleHistory).toContainText(`name : ${foodName} → ${renamedFood}`);
+    await expect(articleHistory).not.toContainText('Changement de Packaging');
+    await expect(page.locator('#article-history-panel').getByRole('button')).toHaveText(
+      'Consulter l’Historique de cet Article',
+    );
+
+    page.off('request', trackWriteRequests);
+    expect(writeRequests).toEqual([]);
+    const stockAfterHistory = await page.request.get(`${apiBaseUrl}/api/stock/${foodEan13}`);
+    expect(stockAfterHistory.status()).toBe(200);
+    await expect(stockAfterHistory.json()).resolves.toEqual(stockBeforeHistoryView);
   });
 });

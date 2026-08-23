@@ -3,7 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { test as base } from '@playwright/test';
 
-const apiUrl = 'http://127.0.0.1:5100';
+// Assigned per run by playwright.config.ts; the fallback keeps a plain
+// `npx playwright test` working if the config was bypassed.
+export const apiUrl = `http://127.0.0.1:${process.env['TOKEN_WAREHOUSE_API_PORT'] ?? '5100'}`;
 const playwrightArtifactsPath = path.resolve('artifacts/playwright');
 const repositoryRoot = path.resolve(playwrightArtifactsPath, '../..');
 const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -64,13 +66,15 @@ type Fixtures = {
   historyReadFailure: boolean;
   e2eSeed: 'true' | 'empty' | 'flows' | 'flows-boundary' | 'financial';
   warehouseDate: string;
+  utcNow: string;
 };
 
 export const test = base.extend<Fixtures>({
   historyReadFailure: [false, { option: true }],
   e2eSeed: ['true', { option: true }],
   warehouseDate: ['2030-01-15', { option: true }],
-  isolatedApi: [async ({ historyReadFailure, e2eSeed, warehouseDate }, use) => {
+  utcNow: ['2030-01-15T10:00:00Z', { option: true }],
+  isolatedApi: [async ({ historyReadFailure, e2eSeed, warehouseDate, utcNow }, use) => {
     fs.mkdirSync(playwrightArtifactsPath, { recursive: true });
     const databaseDirectory = fs.mkdtempSync(path.join(playwrightArtifactsPath, 'e2e-'));
     const databasePath = path.join(databaseDirectory, 'token-warehouse.db');
@@ -93,7 +97,7 @@ export const test = base.extend<Fixtures>({
           TOKEN_WAREHOUSE_E2E_SEED: e2eSeed,
           TOKEN_WAREHOUSE_HISTORY_FAILURE: historyReadFailure ? 'true' : 'false',
           TOKEN_WAREHOUSE_WAREHOUSE_DATE: warehouseDate,
-          TOKEN_WAREHOUSE_UTC_NOW: '2030-01-15T10:00:00Z',
+          TOKEN_WAREHOUSE_UTC_NOW: utcNow,
           Warehouse__TimeZoneId: 'Etc/GMT-2',
           ConnectionStrings__Warehouse: `Data Source=${databasePath}`,
         },

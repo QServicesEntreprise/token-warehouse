@@ -11,9 +11,12 @@ et de consultation d’un Article.
   lancement manuel; les tests d'intégration utilisent un fichier temporaire et
   une connexion SQLite `:memory:` conservée ouverte.
 - Le test Playwright démarre l’API avec une base SQLite temporaire isolée pour
-  chaque scénario sous `artifacts/playwright/`, et Angular sur `4200`.
-- Playwright `1.62.1` conserve l’API sur `5100` et Angular sur `4200` pendant
-  que chaque scénario redémarre l’API avec sa propre base.
+  chaque scénario sous `artifacts/playwright/<port>/`.
+- Playwright `1.62.1` réserve deux ports libres par exécution — un pour Angular,
+  un pour l’API — pendant que chaque scénario redémarre l’API avec sa propre
+  base. Deux suites lancées en parallèle n’entrent donc pas en conflit.
+  `TOKEN_WAREHOUSE_WEB_PORT` et `TOKEN_WAREHOUSE_API_PORT` figent ces ports au
+  besoin. Le lancement manuel garde `5100` et `4200`.
 
 Les dépendances vont de `Domain` vers `Application`, puis vers
 `Infrastructure`; `Api` compose les adapters. Aucun generic repository,
