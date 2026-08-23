@@ -40,6 +40,16 @@ builder.Services.AddScoped<StockSaleApplication>();
 builder.Services.AddScoped<IStockSaleContract>(services =>
     services.GetRequiredService<StockSaleApplication>());
 builder.Services.AddScoped<IArticleSaleReader, ArticleSaleReader>();
+var saleCommitGateDirectory = builder.Environment.IsEnvironment("Testing")
+    ? Environment.GetEnvironmentVariable("TOKEN_WAREHOUSE_SALE_COMMIT_GATE")
+    : null;
+if (!string.IsNullOrWhiteSpace(saleCommitGateDirectory))
+{
+    builder.Services.AddScoped<IStockMutationCommitter>(services =>
+        new E2eSaleCommitGate(
+            services.GetRequiredService<SqliteStockMutationCommitter>(),
+            saleCommitGateDirectory));
+}
 builder.Services.AddScoped<SaleApplication>();
 builder.Services.AddScoped<ISaleContract>(services =>
     services.GetRequiredService<SaleApplication>());
@@ -135,5 +145,51 @@ file sealed class FailingHistoryReader(SqliteHistoryReader inner) : IHistoryRead
     {
         await inner.ReadAsync(query, cancellationToken);
         throw new InvalidOperationException("controlled history failure");
+    }
+}
+
+file sealed class E2eSaleCommitGate(
+    IStockMutationCommitter inner,
+    string gateDirectory) : IStockMutationCommitter
+{
+    public ValueTask<StockMutationCommitResult> CommitAsync(
+        InventoryCommitPlan plan,
+        CancellationToken cancellationToken = default)
+        => inner.CommitAsync(plan, cancellationToken);
+
+    public ValueTask<StockMutationCommitResult> CommitAsync(
+        CounterMovementCommitPlan plan,
+        CancellationToken cancellationToken = default)
+        => inner.CommitAsync(plan, cancellationToken);
+
+    public async ValueTask<StockMutationCommitResult> CommitAsync(
+        StockSaleCommitPlan plan,
+        CancellationToken cancellationToken = default)
+    {
+        await WaitForReleaseAsync(cancellationToken);
+        return await inner.CommitAsync(plan, cancellationToken);
+    }
+
+    public async ValueTask<StockMutationCommitResult> CommitAsync(
+        StockSaleCommitPlan plan,
+        IStockSaleCommitParticipant participant,
+        CancellationToken cancellationToken = default)
+    {
+        await WaitForReleaseAsync(cancellationToken);
+        return await inner.CommitAsync(plan, participant, cancellationToken);
+    }
+
+    private async Task WaitForReleaseAsync(CancellationToken cancellationToken)
+    {
+        Directory.CreateDirectory(gateDirectory);
+        await File.WriteAllTextAsync(
+            Path.Combine(gateDirectory, "validated"),
+            string.Empty,
+            cancellationToken);
+        var releasePath = Path.Combine(gateDirectory, "release");
+        while (!File.Exists(releasePath))
+        {
+            await Task.Delay(25, cancellationToken);
+        }
     }
 }

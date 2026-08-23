@@ -63,12 +63,44 @@ type Fixtures = {
   isolatedApi: void;
   historyReadFailure: boolean;
   e2eSeed: 'true' | 'empty' | 'flows' | 'flows-boundary' | 'financial';
+  saleCommitGateEnabled: boolean;
+  saleCommitGate: {
+    directory: string;
+    waitUntilValidated: () => Promise<void>;
+    release: () => void;
+  };
 };
 
 export const test = base.extend<Fixtures>({
   historyReadFailure: [false, { option: true }],
   e2eSeed: ['true', { option: true }],
-  isolatedApi: [async ({ historyReadFailure, e2eSeed }, use) => {
+  saleCommitGateEnabled: [false, { option: true }],
+  saleCommitGate: async ({}, use) => {
+    fs.mkdirSync(playwrightArtifactsPath, { recursive: true });
+    const directory = fs.mkdtempSync(path.join(playwrightArtifactsPath, 'sale-commit-gate-'));
+    const validatedPath = path.join(directory, 'validated');
+    const releasePath = path.join(directory, 'release');
+    await use({
+      directory,
+      waitUntilValidated: async () => {
+        const deadline = Date.now() + 10_000;
+        while (!fs.existsSync(validatedPath)) {
+          if (Date.now() >= deadline) {
+            throw new Error('The Sale commit gate was not reached within 10 seconds.');
+          }
+          await wait(25);
+        }
+      },
+      release: () => fs.writeFileSync(releasePath, ''),
+    });
+    fs.rmSync(directory, { recursive: true, force: true });
+  },
+  isolatedApi: [async ({
+    historyReadFailure,
+    e2eSeed,
+    saleCommitGateEnabled,
+    saleCommitGate,
+  }, use) => {
     fs.mkdirSync(playwrightArtifactsPath, { recursive: true });
     const databaseDirectory = fs.mkdtempSync(path.join(playwrightArtifactsPath, 'e2e-'));
     const databasePath = path.join(databaseDirectory, 'token-warehouse.db');
@@ -90,6 +122,7 @@ export const test = base.extend<Fixtures>({
           ASPNETCORE_ENVIRONMENT: 'Testing',
           TOKEN_WAREHOUSE_E2E_SEED: e2eSeed,
           TOKEN_WAREHOUSE_HISTORY_FAILURE: historyReadFailure ? 'true' : 'false',
+          TOKEN_WAREHOUSE_SALE_COMMIT_GATE: saleCommitGateEnabled ? saleCommitGate.directory : '',
           TOKEN_WAREHOUSE_WAREHOUSE_DATE: '2030-01-15',
           TOKEN_WAREHOUSE_UTC_NOW: '2030-01-15T10:00:00Z',
           Warehouse__TimeZoneId: 'Etc/GMT-2',

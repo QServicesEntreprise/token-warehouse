@@ -15,7 +15,7 @@ import type { SaleResponse } from '../../../src/web/app/sales-api.service';
 import type { BulkSupplyResponse, SupplyResponse } from '../../../src/web/app/stock-api.service';
 import { ean13ForAttempt } from './ean13';
 
-const apiBaseUrl = 'http://127.0.0.1:5100';
+export const apiBaseUrl = 'http://127.0.0.1:5100';
 const defaultFoodEan13 = ean13ForAttempt('111111111', 0);
 const defaultNonFoodEan13 = ean13ForAttempt('222222222', 0);
 
