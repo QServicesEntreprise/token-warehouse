@@ -299,6 +299,10 @@ test('records one ordered Opération en masse and exposes the same order in Hist
   await supplyPanel.locator('#supplyEan13-1').fill(secondActiveEan13);
   await supplyPanel.locator('#supplyQuantity-1').fill('5');
 
+  const historyBeforeResponse = await page.request.get(`${apiBaseUrl}/api/history`);
+  expect(historyBeforeResponse.status()).toBe(200);
+  const historyBefore = await historyBeforeResponse.json() as HistoryEntryResponse[];
+
   const responsePromise = waitForRequest(page, 'POST', '/api/supplies/bulk');
   await supplyPanel.getByRole('button', { name: 'Enregistrer l’Approvisionnement' }).click();
   const response = await responsePromise;
@@ -325,6 +329,7 @@ test('records one ordered Opération en masse and exposes the same order in Hist
   const historyResponse = await page.request.get(`${apiBaseUrl}/api/history`);
   expect(historyResponse.status()).toBe(200);
   const history = await historyResponse.json() as HistoryEntryResponse[];
+  expect(history).toHaveLength(historyBefore.length + 1);
   expect(history.filter((entry) => entry.id === body.operation.id)).toHaveLength(1);
   expect(history.find((entry) => entry.id === body.operation.id)).toMatchObject({
     type: 'SUPPLY',
