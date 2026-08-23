@@ -128,7 +128,7 @@ public static class SupplyEndpoints
             var result = await useCase.GetAsync(id, cancellationToken);
             return result.Status switch
             {
-                SupplyReadStatus.Found => Results.Ok(SupplyOperationResponse.From(result.Operation!)),
+                SupplyReadStatus.Found => Results.Ok(BulkSupplyOperationResponse.From(result.Operation!)),
                 SupplyReadStatus.PersistenceFailed => Results.Problem(
                     statusCode: StatusCodes.Status500InternalServerError,
                     title: "L’Approvisionnement n’a pas pu être relu.",

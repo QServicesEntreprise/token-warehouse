@@ -165,12 +165,35 @@ public interface IReadSupplyUseCase
         CancellationToken cancellationToken = default);
 }
 
+public sealed class SupplyReadApplication(IStockOperationReader operationReader) : IReadSupplyUseCase
+{
+    public async Task<SupplyReadResult> GetAsync(
+        string id,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var operation = await operationReader.FindByIdAsync(id, cancellationToken);
+            return operation?.Type == StockOperationType.Supply
+                ? new(SupplyReadStatus.Found, operation)
+                : new(SupplyReadStatus.NotFound, null);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            return new(SupplyReadStatus.PersistenceFailed, null);
+        }
+    }
+}
+
 public sealed class SupplyApplication(
     IArticleSellabilityReader articleReader,
     IStockPositionReader stockReader,
     ISupplyCommitter committer,
-    IClock clock,
-    IStockOperationReader? operationReader = null) : IRecordSupplyUseCase, IRecordBulkSupplyUseCase, IReadSupplyUseCase
+    IClock clock) : IRecordSupplyUseCase, IRecordBulkSupplyUseCase
 {
     public async Task<BulkSupplyResult> RecordBulkAsync(
         BulkSupplyCommand command,
@@ -530,29 +553,6 @@ public sealed class SupplyApplication(
                     committedPosition,
                     clock.WarehouseDate)),
             []);
-    }
-
-    public async Task<SupplyReadResult> GetAsync(
-        string id,
-        CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            var operation = operationReader is null
-                ? null
-                : await operationReader.FindByIdAsync(id, cancellationToken);
-            return operation?.Type == StockOperationType.Supply
-                ? new(SupplyReadStatus.Found, operation)
-                : new(SupplyReadStatus.NotFound, null);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception)
-        {
-            return new(SupplyReadStatus.PersistenceFailed, null);
-        }
     }
 
     private async Task<IReadOnlyDictionary<Ean13, ArticleSellabilitySnapshot>> ReadArticlesAsync(

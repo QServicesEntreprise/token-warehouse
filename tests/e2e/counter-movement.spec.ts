@@ -285,7 +285,7 @@ test('corrects an archived Article while keeping its sellable stock at zero', as
   await expect(page.locator('#counter-movement-result')).toContainText('Article archivé');
 });
 
-type CorrectableSource = { id: string; type: string };
+type CorrectableSource = { id: string; type: 'SUPPLY' | 'INVENTORY' | 'SALE' };
 
 test('never exposes or accepts a Counter-movement as a correctable source', async ({ page }) => {
   const source = await supply(page, canonicalEan, 1);
@@ -367,15 +367,15 @@ test('lists only the three allowed source types and keeps every source unchanged
 
   const supplyBeforeResponse = await page.request.get(`${apiBaseUrl}/api/supplies/${supplySource.operation.id}`);
   expect(supplyBeforeResponse.status()).toBe(200);
-  const supplyBefore = await supplyBeforeResponse.json();
+  const supplyBefore = await supplyBeforeResponse.text();
   const inventoryBeforeResponse = await page.request.get(
     `${apiBaseUrl}/api/inventories/${inventorySource.operation.id}`,
   );
   expect(inventoryBeforeResponse.status()).toBe(200);
-  const inventoryBefore = await inventoryBeforeResponse.json();
+  const inventoryBefore = await inventoryBeforeResponse.text();
   const saleBeforeResponse = await page.request.get(`${apiBaseUrl}/api/sales/${saleSource.operation.id}`);
   expect(saleBeforeResponse.status()).toBe(200);
-  const saleBefore = await saleBeforeResponse.json();
+  const saleBefore = await saleBeforeResponse.text();
 
   const sourcesResponse = await page.request.get(`${apiBaseUrl}/api/stock/counter-movements/sources`);
   expect(sourcesResponse.status()).toBe(200);
@@ -395,15 +395,15 @@ test('lists only the three allowed source types and keeps every source unchanged
 
   const supplyAfterResponse = await page.request.get(`${apiBaseUrl}/api/supplies/${supplySource.operation.id}`);
   expect(supplyAfterResponse.status()).toBe(200);
-  expect(await supplyAfterResponse.json()).toEqual(supplyBefore);
+  expect(await supplyAfterResponse.text()).toBe(supplyBefore);
   const inventoryAfterResponse = await page.request.get(
     `${apiBaseUrl}/api/inventories/${inventorySource.operation.id}`,
   );
   expect(inventoryAfterResponse.status()).toBe(200);
-  expect(await inventoryAfterResponse.json()).toEqual(inventoryBefore);
+  expect(await inventoryAfterResponse.text()).toBe(inventoryBefore);
   const saleAfterResponse = await page.request.get(`${apiBaseUrl}/api/sales/${saleSource.operation.id}`);
   expect(saleAfterResponse.status()).toBe(200);
-  expect(await saleAfterResponse.json()).toEqual(saleBefore);
+  expect(await saleAfterResponse.text()).toBe(saleBefore);
 });
 
 test.describe('Counter-movement deterministic clock', () => {
