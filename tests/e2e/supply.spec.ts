@@ -2,11 +2,10 @@ import { expect } from '@playwright/test';
 import type { Page, Route } from '@playwright/test';
 import type { HistoryEntryResponse } from '../../src/web/app/history-api.service';
 import type { StockPositionResponse } from '../../src/web/app/stock-api.service';
-import { test } from './fixtures';
+import { apiUrl as apiBaseUrl, test } from './fixtures';
 import { expectProblemDetails, waitForRequest } from './helpers/http';
 import { supply } from './helpers/state';
 
-const apiBaseUrl = 'http://127.0.0.1:5100';
 const activeEan13 = '4567890123456';
 const secondActiveEan13 = '5678901234562';
 const expiredEan13 = '1234567890128';

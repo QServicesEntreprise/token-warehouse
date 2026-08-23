@@ -119,6 +119,26 @@ public static class SupplyEndpoints
                 _ => BulkValidationProblem(result.Errors)
             };
         });
+
+        app.MapGet("/api/supplies/{id}", async (
+            string id,
+            IReadSupplyUseCase useCase,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await useCase.GetAsync(id, cancellationToken);
+            return result.Status switch
+            {
+                SupplyReadStatus.Found => Results.Ok(BulkSupplyOperationResponse.From(result.Operation!)),
+                SupplyReadStatus.PersistenceFailed => Results.Problem(
+                    statusCode: StatusCodes.Status500InternalServerError,
+                    title: "L’Approvisionnement n’a pas pu être relu.",
+                    extensions: new Dictionary<string, object?> { ["code"] = "PERSISTENCE_FAILURE" }),
+                _ => Results.Problem(
+                    statusCode: StatusCodes.Status404NotFound,
+                    title: "Approvisionnement introuvable.",
+                    extensions: new Dictionary<string, object?> { ["code"] = "SUPPLY_NOT_FOUND" })
+            };
+        });
     }
 
     private static async Task<BulkSupplyCommand?> ReadBulkCommandAsync(

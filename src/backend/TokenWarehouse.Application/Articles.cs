@@ -561,7 +561,11 @@ public sealed class ArticleApplication(IArticleStore store, IClock clock, IStock
         }
 
         var article = candidate.Article!;
-        article.ChangePriceHt(Money.FromCents(command.PriceHtCents!.Value));
+        var priceError = article.ChangePriceHt(Money.FromCents(command.PriceHtCents!.Value));
+        if (priceError is not null)
+        {
+            return new ArticleUpdateResult(ArticleUpdateStatus.ValidationFailed, null, [priceError]);
+        }
 
         var updateStatus = await store.UpdatePriceHtAsync(article, cancellationToken);
         if (updateStatus == ArticleStoreUpdateStatus.NotFound)
