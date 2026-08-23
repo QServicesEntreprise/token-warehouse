@@ -283,6 +283,33 @@ public sealed class SupplyApiTests
     }
 
     [Fact]
+    public async Task Rereads_a_supply_unchanged_after_its_correction()
+    {
+        using var factory = new SupplyHostFactory(SupplyTime);
+        using var client = factory.CreateClient();
+        await CreateFoodAsync(client, "0123456789012", "Approvisionnement immuable");
+
+        using var created = await client.PostAsJsonAsync(
+            "/api/supplies",
+            new { ean13 = "0123456789012", quantity = 3 });
+        using var createdBody = JsonDocument.Parse(await created.Content.ReadAsStringAsync());
+        var operationId = createdBody.RootElement.GetProperty("operation").GetProperty("id").GetString();
+
+        using var before = await client.GetAsync($"/api/supplies/{operationId}");
+        Assert.Equal(HttpStatusCode.OK, before.StatusCode);
+        var beforeBody = await before.Content.ReadAsStringAsync();
+
+        using var correction = await client.PostAsJsonAsync(
+            "/api/stock/counter-movements",
+            new { sourceOperationId = operationId, justification = "Correction contrôlée" });
+        Assert.Equal(HttpStatusCode.Created, correction.StatusCode);
+
+        using var after = await client.GetAsync($"/api/supplies/{operationId}");
+        Assert.Equal(HttpStatusCode.OK, after.StatusCode);
+        Assert.Equal(beforeBody, await after.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
     public async Task Returns_physical_stock_and_policy_reason_for_active_non_sellable_articles()
     {
         using var factory = new SupplyHostFactory(SupplyTime);
