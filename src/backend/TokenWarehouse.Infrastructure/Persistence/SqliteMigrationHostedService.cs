@@ -304,6 +304,7 @@ public sealed class SqliteMigrationHostedService(
                 saleCommitDataPayload: takeawaySingle),
             Operation("e2e-flow-sale-onsite", "SALE", "0123456789012", "2030-01-12T11:00:00+00:00", 4,
                 saleCommitDataPayload: onsite),
+            Operation("e2e-flow-after-gap", "supply", "0123456789012", "2030-01-14T10:00:00+00:00", 1),
             Operation("e2e-flow-inventory", "INVENTORY", "0123456789012", "2030-01-13T10:00:00+00:00", 0),
             Operation(
                 "e2e-flow-counter",
@@ -339,6 +340,7 @@ public sealed class SqliteMigrationHostedService(
             Line("e2e-flow-sale-b", 1, "1234567890128", "SALE", 2, -2),
             Line("e2e-flow-sale-takeaway", 1, "0123456789012", "SALE", 1, -1),
             Line("e2e-flow-sale-onsite", 1, "0123456789012", "SALE", 4, -4),
+            Line("e2e-flow-after-gap", 1, "0123456789012", "supply", 1, 1),
             Line("e2e-flow-inventory", 1, "0123456789012", "INVENTORY", 0, 99, 0, 0, 99, 99, 99),
             Line("e2e-flow-counter", 1, "0123456789012", "COUNTER_MOVEMENT", 0, 99, -99));
         if (includeBoundary)

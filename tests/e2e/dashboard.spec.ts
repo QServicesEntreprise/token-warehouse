@@ -1,10 +1,9 @@
 import { expect } from '@playwright/test';
-import { apiUrl, test } from './fixtures';
 import type { Route } from '@playwright/test';
-import { leadingZeroEan13 } from './helpers/ean13';
+import { apiUrl, test } from './fixtures';
+import { ean13ForAttempt, leadingZeroEan13 } from './helpers/ean13';
 import { expectProblemDetails, waitForRequest } from './helpers/http';
-
-
+import { archive, createNonFoodArticle, sell } from './helpers/state';
 
 test('consults the current Dashboard with aligned KPIs, alerts and keyboard links', async ({ page }) => {
   const dashboard = page.locator('#dashboard-panel');
@@ -544,5 +543,211 @@ test.describe('Dashboard states', () => {
     await page.getByRole('button', { name: 'Réessayer', exact: true }).click();
     await expect(dashboardState).toContainText('Article suivi');
     await expect(page.locator('#dashboard-table')).toContainText('Article Dashboard');
+  });
+});
+
+test.describe('Dashboard Stock semantics', () => {
+  test.use({ e2eSeed: 'financial', timezoneId: 'America/Los_Angeles' });
+
+  test('keeps current Stock KPIs while past-period flows and financial indicators change', async ({ page }) => {
+    await sell(page, leadingZeroEan13, 1, 'takeaway');
+
+    await page.goto('/');
+    await page.locator('#dashboard-from').fill('2030-01-15');
+    await page.locator('#dashboard-to').fill('2030-01-15');
+    const currentResponsePromise = waitForRequest(page, 'GET', '/api/dashboard', (url) => (
+      url.searchParams.get('from') === '2030-01-15'
+        && url.searchParams.get('to') === '2030-01-15'
+    ));
+    await page.getByRole('button', { name: 'Lire le Dashboard' }).click();
+    const currentView = await (await currentResponsePromise).json();
+    await expect(page.locator('#dashboard-flows-table').getByRole('row', { name: /2030-01-15/ }))
+      .toContainText('1 unité');
+    await expect(page.locator('#dashboard-financial-revenue-ht')).toContainText('1,00');
+
+    await page.locator('#dashboard-from').fill('2030-01-10');
+    await page.locator('#dashboard-to').fill('2030-01-10');
+    const pastResponsePromise = waitForRequest(page, 'GET', '/api/dashboard', (url) => (
+      url.searchParams.get('from') === '2030-01-10'
+        && url.searchParams.get('to') === '2030-01-10'
+    ));
+    await page.getByRole('button', { name: 'Lire le Dashboard' }).click();
+    const pastView = await (await pastResponsePromise).json();
+
+    expect(pastView.kpis).toEqual(currentView.kpis);
+    expect(currentView.flowsByDay).toEqual([{ date: '2030-01-15', supplies: 0, sales: 1 }]);
+    expect(pastView.flowsByDay).toEqual([{ date: '2030-01-10', supplies: 0, sales: 3 }]);
+    expect(currentView.financial).toMatchObject({
+      revenueHtCents: 100,
+      revenueTtcCents: 106,
+      vatCollectedCents: 6,
+    });
+    expect(pastView.financial).toMatchObject({
+      revenueHtCents: 3000,
+      revenueTtcCents: 3355,
+      vatCollectedCents: 355,
+    });
+    await expect(page.locator('#dashboard-flows-table').getByRole('row', { name: /2030-01-10/ }))
+      .toContainText('3 unités');
+    await expect(page.locator('#dashboard-financial-revenue-ht')).toContainText('30,00');
+    await expect(page.locator('#dashboard-kpi-physical')).toContainText(`${currentView.kpis.physicalStock} unités`);
+    await expect(page.locator('#dashboard-kpi-sellable')).toContainText(`${currentView.kpis.sellableStock} unités`);
+    await expect(page.locator('#dashboard-kpi-non-sellable')).toContainText(`${currentView.kpis.nonSellableStock} unités`);
+  });
+
+  test('renders an impossible filter intersection as empty', async ({ page }) => {
+    await page.goto('/');
+    await page.locator('#dashboard-type').selectOption('nonFood');
+    await page.locator('#dashboard-mode').selectOption('onsite');
+    const emptyResponsePromise = waitForRequest(page, 'GET', '/api/dashboard', (url) => (
+      url.searchParams.get('type') === 'nonFood'
+        && url.searchParams.get('mode') === 'onsite'
+    ));
+    await page.getByRole('button', { name: 'Lire le Dashboard' }).click();
+    const emptyView = await (await emptyResponsePromise).json();
+
+    expect(emptyView.stockByArticle).toEqual([]);
+    expect(emptyView.kpis).toEqual({ physicalStock: 0, sellableStock: 0, nonSellableStock: 0 });
+    await expect(page.locator('#dashboard-state')).toContainText('Aucun Article');
+    await expect(page.locator('#dashboard-table')).toHaveCount(0);
+  });
+
+  test('renders every Stock column for Articles in three different states', async ({ page }) => {
+    await page.goto('/');
+    const table = page.locator('#dashboard-table');
+    const expectedRows = [
+      [
+        leadingZeroEan13,
+        'Alimentaire aux deux modes',
+        'Alimentaire',
+        'Actif',
+        '5 unités',
+        '5 unités',
+        '0 unités',
+        'Disponible',
+        '—',
+      ],
+      [
+        '1234567890128',
+        'Alimentaire à DLC dépassée',
+        'Alimentaire',
+        'Actif',
+        '7 unités',
+        '0 unités',
+        '7 unités',
+        'Non vendable',
+        'DLC dépassée',
+      ],
+      [
+        '2345678901234',
+        'Article archivé',
+        'Non alimentaire',
+        'Archivé',
+        '4 unités',
+        '0 unités',
+        '4 unités',
+        'Non vendable',
+        'Article archivé',
+      ],
+    ];
+
+    for (const [ean13, ...cells] of expectedRows) {
+      await expect(table.getByRole('row', { name: new RegExp(ean13) }).locator('th, td'))
+        .toHaveText([ean13, ...cells]);
+    }
+  });
+
+  test('keeps active ruptures separate from Articles non vendables', async ({ page }) => {
+    const archivedOutOfStockEan13 = ean13ForAttempt('720000001', 0);
+    await createNonFoodArticle(page, {
+      ean13: archivedOutOfStockEan13,
+      name: 'Article archivé sans Stock',
+      packaging: 'new',
+      priceHtCents: 100,
+    });
+    await archive(page, archivedOutOfStockEan13);
+    const responsePromise = waitForRequest(page, 'GET', '/api/dashboard');
+
+    await page.goto('/');
+    const view = await (await responsePromise).json();
+
+    expect(view.alerts.outOfStock).toMatchObject([{
+      ean13: '5678901234562',
+      lifecycleStatus: 'ACTIVE',
+      physicalStock: 0,
+      sellableStock: 0,
+    }]);
+    expect(view.alerts.outOfStock).not.toContainEqual(
+      expect.objectContaining({ ean13: archivedOutOfStockEan13 }),
+    );
+    expect(view.alerts.notSellable).toMatchObject([
+      { ean13: '1234567890128', physicalStock: 7, sellableStock: 0, reason: 'DLC_EXPIRED' },
+      { ean13: '2345678901234', physicalStock: 4, sellableStock: 0, reason: 'ARCHIVED' },
+      { ean13: '3456789012340', physicalStock: 3, sellableStock: 0, reason: 'UNSELLABLE_PACKAGING' },
+    ]);
+    await expect(page.locator('#dashboard-alert-out-of-stock')).not.toContainText(archivedOutOfStockEan13);
+    await expect(page.locator('#dashboard-alert-out-of-stock')).not.toContainText('Article archivé');
+    await expect(page.locator('#dashboard-alert-not-sellable'))
+      .toContainText('Article archivé — 2345678901234 — Article archivé');
+  });
+});
+
+test.describe('Dashboard flow continuity', () => {
+  test.use({ e2eSeed: 'flows', timezoneId: 'America/Los_Angeles' });
+
+  test('keeps an inactive day at zero between two active days', async ({ page }) => {
+    const responsePromise = waitForRequest(page, 'GET', '/api/dashboard');
+
+    await page.goto('/');
+    const view = await (await responsePromise).json();
+    expect(view.flowsByDay.slice(11, 14)).toEqual([
+      { date: '2030-01-12', supplies: 2, sales: 5 },
+      { date: '2030-01-13', supplies: 0, sales: 0 },
+      { date: '2030-01-14', supplies: 1, sales: 0 },
+    ]);
+
+    const flowTable = page.locator('#dashboard-flows-table');
+    await expect(flowTable.getByRole('row', { name: /2030-01-12/ })).toContainText('2 unités');
+    await expect(flowTable.getByRole('row', { name: /2030-01-13/ })).toContainText('0 unité');
+    await expect(flowTable.getByRole('row', { name: /2030-01-14/ })).toContainText('1 unité');
+  });
+});
+
+test.describe('Dashboard correction date', () => {
+  test.use({ e2eSeed: 'financial', timezoneId: 'America/Los_Angeles' });
+
+  test('attributes a financial Counter-movement negatively on its correction date', async ({ page }) => {
+    await page.goto('/');
+    await page.locator('#dashboard-from').fill('2030-01-10');
+    await page.locator('#dashboard-to').fill('2030-01-10');
+    const sourceResponsePromise = waitForRequest(page, 'GET', '/api/dashboard', (url) => (
+      url.searchParams.get('from') === '2030-01-10'
+        && url.searchParams.get('to') === '2030-01-10'
+    ));
+    await page.getByRole('button', { name: 'Lire le Dashboard' }).click();
+    const sourceView = await (await sourceResponsePromise).json();
+    expect(sourceView.financial.byTaxRate).toContainEqual(expect.objectContaining({
+      taxRate: expect.objectContaining({ code: 'onsite' }),
+      amountHtCents: 1000,
+      vatCents: 100,
+      amountTtcCents: 1100,
+    }));
+
+    await page.locator('#dashboard-from').fill('2030-01-20');
+    await page.locator('#dashboard-to').fill('2030-01-20');
+    const correctionResponsePromise = waitForRequest(page, 'GET', '/api/dashboard', (url) => (
+      url.searchParams.get('from') === '2030-01-20'
+        && url.searchParams.get('to') === '2030-01-20'
+    ));
+    await page.getByRole('button', { name: 'Lire le Dashboard' }).click();
+    const correctionView = await (await correctionResponsePromise).json();
+    expect(correctionView.financial.byTaxRate).toContainEqual(expect.objectContaining({
+      taxRate: expect.objectContaining({ code: 'onsite' }),
+      amountHtCents: -1000,
+      vatCents: -100,
+      amountTtcCents: -1100,
+    }));
+    await expect(page.locator('#dashboard-financial-table').getByRole('row', { name: /10 %/ }))
+      .toContainText('-11,00');
   });
 });
