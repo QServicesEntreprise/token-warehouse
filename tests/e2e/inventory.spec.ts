@@ -1,8 +1,10 @@
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
 import type { Page, Route } from '@playwright/test';
+import { leadingZeroEan13 } from './helpers/ean13';
+import { expectProblemDetails, waitForRequest } from './helpers/http';
 
-const canonicalEan = '0123456789012';
+const canonicalEan = leadingZeroEan13;
 const archivedEan = '2345678901234';
 const unknownEan = '4006381333931';
 const timestamp = '2030-01-15T10:00:00+00:00';
@@ -55,10 +57,7 @@ const submitInventory = async (
   countedQuantity: number,
 ) => {
   const submitButton = page.locator('#inventory-form button[type="submit"]');
-  const responsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'POST' && url.pathname === '/api/inventories';
-  });
+  const responsePromise = waitForRequest(page, 'POST', '/api/inventories');
   const delayedResponse = async (route: Route) => {
     await new Promise((resolve) => setTimeout(resolve, 50));
     await route.continue();
@@ -128,10 +127,7 @@ test('reconciles several Articles through one bulk operation and keeps the resul
   await page.locator('#inventory-ean13-2').fill('5678901234562');
   await page.locator('#inventory-countedQuantity-2').fill('0');
 
-  const responsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'POST' && url.pathname === '/api/inventories/bulk';
-  });
+  const responsePromise = waitForRequest(page, 'POST', '/api/inventories/bulk');
   await page.locator('#inventory-form button[type="submit"]').click();
   const response = await responsePromise;
   expect(response.status()).toBe(201);
@@ -158,10 +154,7 @@ test('rejects a duplicate bulk line without reconciling any Article', async ({ p
   await page.locator('#inventory-ean13-1').fill(canonicalEan);
   await page.locator('#inventory-countedQuantity-1').fill('2');
 
-  const responsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'POST' && url.pathname === '/api/inventories/bulk';
-  });
+  const responsePromise = waitForRequest(page, 'POST', '/api/inventories/bulk');
   await page.locator('#inventory-form button[type="submit"]').click();
   const response = await responsePromise;
   expect(response.status()).toBe(400);
@@ -244,17 +237,12 @@ test('preserves invalid input and proves an unknown Article creates no state', a
 
   await page.locator('#inventory-ean13').fill(unknownEan);
   await page.locator('#inventory-countedQuantity').fill('6');
-  const unknownResponsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'POST' && url.pathname === '/api/inventories';
-  });
+  const unknownResponsePromise = waitForRequest(page, 'POST', '/api/inventories');
   await page.locator('#inventory-countedQuantity').press('Enter');
   const unknownResponse = await unknownResponsePromise;
-  expect(unknownResponse.status()).toBe(404);
-  expect(unknownResponse.headers()['content-type']).toContain('application/problem+json');
+  await expectProblemDetails(unknownResponse, { status: 404, code: 'ARTICLE_NOT_FOUND' });
   await expect(unknownResponse.json()).resolves.toMatchObject({
     status: 404,
-    code: 'ARTICLE_NOT_FOUND',
   });
   await expect(page.locator('#inventory-error')).toContainText('introuvable');
   await expect(page.locator('#inventory-ean13')).toHaveValue(unknownEan);
