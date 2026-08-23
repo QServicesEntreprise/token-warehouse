@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test';
-import { test } from './fixtures';
+import { apiUrl as apiBaseUrl, test } from './fixtures';
 import type { Page, Route } from '@playwright/test';
 import { leadingZeroEan13 } from './helpers/ean13';
 import { expectProblemDetails, waitForRequest } from './helpers/http';
@@ -8,7 +8,6 @@ const canonicalEan = leadingZeroEan13;
 const archivedEan = '2345678901234';
 const unknownEan = '4006381333931';
 const timestamp = '2030-01-15T10:00:00+00:00';
-const apiBaseUrl = 'http://127.0.0.1:5100';
 
 type ExpectedReceipt = {
   ean13: string;

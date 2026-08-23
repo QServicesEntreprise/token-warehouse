@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test';
-import { test } from './fixtures';
+import { apiUrl as apiBaseUrl, test } from './fixtures';
 import { ean13ForAttempt, leadingZeroEan13 } from './helpers/ean13';
 import { expectProblemDetails, waitForRequest } from './helpers/http';
 import {
@@ -19,7 +19,6 @@ const bulkFirstEan13 = '5678901234562';
 const bulkSecondEan13 = '4567890123456';
 const emptyHistoryEan13 = '2345678901234';
 const invalidHistoryEan13 = '4006381333932';
-const apiBaseUrl = 'http://127.0.0.1:5100';
 
 type BrowserHistoryEntry = {
   id: string;

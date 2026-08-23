@@ -3,7 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { test as base } from '@playwright/test';
 
-const apiUrl = 'http://127.0.0.1:5100';
+// Assigned per run by playwright.config.ts; the fallback keeps a plain
+// `npx playwright test` working if the config was bypassed.
+export const apiUrl = `http://127.0.0.1:${process.env['TOKEN_WAREHOUSE_API_PORT'] ?? '5100'}`;
 const playwrightArtifactsPath = path.resolve('artifacts/playwright');
 const repositoryRoot = path.resolve(playwrightArtifactsPath, '../..');
 const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
