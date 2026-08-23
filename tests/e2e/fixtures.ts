@@ -65,6 +65,7 @@ type Fixtures = {
   isolatedApi: void;
   historyReadFailure: boolean;
   e2eSeed: 'true' | 'empty' | 'flows' | 'flows-boundary' | 'financial';
+  warehouseDate: string;
   saleCommitGateEnabled: boolean;
   saleCommitGate: {
     directory: string;
@@ -77,6 +78,7 @@ type Fixtures = {
 export const test = base.extend<Fixtures>({
   historyReadFailure: [false, { option: true }],
   e2eSeed: ['true', { option: true }],
+  warehouseDate: ['2030-01-15', { option: true }],
   utcNow: ['2030-01-15T10:00:00Z', { option: true }],
   saleCommitGateEnabled: [false, { option: true }],
   saleCommitGate: async ({}, use) => {
@@ -102,6 +104,7 @@ export const test = base.extend<Fixtures>({
   isolatedApi: [async ({
     historyReadFailure,
     e2eSeed,
+    warehouseDate,
     saleCommitGateEnabled,
     saleCommitGate,
     utcNow,
@@ -128,7 +131,7 @@ export const test = base.extend<Fixtures>({
           TOKEN_WAREHOUSE_E2E_SEED: e2eSeed,
           TOKEN_WAREHOUSE_HISTORY_FAILURE: historyReadFailure ? 'true' : 'false',
           TOKEN_WAREHOUSE_SALE_COMMIT_GATE: saleCommitGateEnabled ? saleCommitGate.directory : '',
-          TOKEN_WAREHOUSE_WAREHOUSE_DATE: '2030-01-15',
+          TOKEN_WAREHOUSE_WAREHOUSE_DATE: warehouseDate,
           TOKEN_WAREHOUSE_UTC_NOW: utcNow,
           Warehouse__TimeZoneId: 'Etc/GMT-2',
           ConnectionStrings__Warehouse: `Data Source=${databasePath}`,
