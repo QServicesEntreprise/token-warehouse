@@ -1,11 +1,10 @@
 import { expect } from '@playwright/test';
-import { test } from './fixtures';
+import { apiUrl as apiBaseUrl, test } from './fixtures';
 import { leadingZeroEan13 } from './helpers/ean13';
 import { waitForRequest } from './helpers/http';
 
 const canonicalEan = leadingZeroEan13;
 const archivedEan = '2345678901234';
-const apiBaseUrl = 'http://127.0.0.1:5100';
 
 type CounterReceipt = {
   counterMovement: {

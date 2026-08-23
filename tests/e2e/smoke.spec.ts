@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test';
-import { test } from './fixtures';
+import { apiUrl, test } from './fixtures';
 import type { Route } from '@playwright/test';
 import {
   ean13ForAttempt,
@@ -669,7 +669,7 @@ test.describe('Dashboard financial indicators', () => {
     const dashboard = page.locator('#dashboard-panel');
     const patchModes = async (ean13: string, modes: string[]) => {
       const response = await page.request.patch(
-        `http://127.0.0.1:5100/api/articles/${ean13}`,
+        `${apiUrl}/api/articles/${ean13}`,
         { data: { consumptionModes: modes } });
       expect(response.status()).toBe(200);
     };
