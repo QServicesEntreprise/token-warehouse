@@ -46,7 +46,7 @@ const expectRejectedWithoutMutation = async (
 test.describe('Sale refusal invariants', () => {
   test.use({ e2eSeed: 'empty' });
 
-  test('refuses an archived Article, leaves Stock and History unchanged, and excludes it only from Sale search', async ({ page }) => {
+  test('refuses an archived Article, leaves Stock and History unchanged, and keeps it in the archived Catalogue', async ({ page }) => {
     const ean13 = ean13ForAttempt('700000001', 0);
     await createFoodArticle(page, {
       ean13,
@@ -59,15 +59,17 @@ test.describe('Sale refusal invariants', () => {
     await archive(page, ean13);
 
     const saleSearch = await page.request.get(`${apiBaseUrl}/api/sales/articles?search=${ean13}`);
-    const archivedCatalogue = await page.request.get(
-      `${apiBaseUrl}/api/articles?status=archived&search=${ean13}`,
-    );
     await expect(saleSearch).toBeOK();
-    await expect(archivedCatalogue).toBeOK();
     await expect(saleSearch.json()).resolves.toEqual([]);
-    await expect(archivedCatalogue.json()).resolves.toEqual([
-      expect.objectContaining({ ean13, status: 'archived' }),
-    ]);
+
+    await page.goto('/');
+    await page.locator('#catalog-status').selectOption('archived');
+    await page.locator('#catalog-search').fill(ean13);
+    await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
+    const archivedRow = page.locator('section[aria-labelledby="catalog-title"]')
+      .getByRole('row', { name: new RegExp(ean13) });
+    await expect(archivedRow).toBeVisible();
+    await expect(archivedRow).toContainText('Archivé');
 
     await expectRejectedWithoutMutation(
       page,
