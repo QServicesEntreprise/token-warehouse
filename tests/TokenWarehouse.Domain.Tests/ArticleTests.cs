@@ -62,7 +62,7 @@ public sealed class ArticleTests
             Ean13 = "4006381333931",
             Type = "food",
             Name = "Café",
-            PriceHtCents = -1,
+            PriceHtCents = 1,
             Dlc = "2026-01-02",
             DlcProvided = true,
             ConsumptionModes = modes.Split(','),

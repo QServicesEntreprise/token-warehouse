@@ -147,6 +147,48 @@ public interface IRecordBulkSupplyUseCase
         CancellationToken cancellationToken = default);
 }
 
+public enum SupplyReadStatus
+{
+    Found,
+    NotFound,
+    PersistenceFailed
+}
+
+public sealed record SupplyReadResult(
+    SupplyReadStatus Status,
+    StockOperation? Operation);
+
+public interface IReadSupplyUseCase
+{
+    Task<SupplyReadResult> GetAsync(
+        string id,
+        CancellationToken cancellationToken = default);
+}
+
+public sealed class SupplyReadApplication(IStockOperationReader operationReader) : IReadSupplyUseCase
+{
+    public async Task<SupplyReadResult> GetAsync(
+        string id,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var operation = await operationReader.FindByIdAsync(id, cancellationToken);
+            return operation?.Type == StockOperationType.Supply
+                ? new(SupplyReadStatus.Found, operation)
+                : new(SupplyReadStatus.NotFound, null);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            return new(SupplyReadStatus.PersistenceFailed, null);
+        }
+    }
+}
+
 public sealed class SupplyApplication(
     IArticleSellabilityReader articleReader,
     IStockPositionReader stockReader,

@@ -164,7 +164,17 @@ public sealed class Article
 
     public int Version { get; }
 
-    public void ChangePriceHt(Money priceHt) => PriceHt = priceHt;
+    public ArticleValidationError? ChangePriceHt(Money priceHt)
+    {
+        var error = ValidatePriceHt(priceHt.Cents);
+        if (error is not null)
+        {
+            return error;
+        }
+
+        PriceHt = priceHt;
+        return null;
+    }
 
     public ArticleAttributeUpdateResult UpdateAttributes(ArticleAttributeChanges changes)
     {
@@ -433,12 +443,10 @@ public sealed class Article
             errors.Add(new("article.name.required", "name", "Le nom de l’Article est requis."));
         }
 
-        if (draft.PriceHtCents is null)
+        var priceError = ValidatePriceHt(draft.PriceHtCents);
+        if (priceError is not null)
         {
-            errors.Add(new(
-                "article.priceHtCents.required",
-                "priceHtCents",
-                "Le Prix HT en centimes est requis."));
+            errors.Add(priceError);
         }
 
         DateOnly? dlc = null;
@@ -565,6 +573,13 @@ public sealed class Article
 
     private static string? FormatDlc(DateOnly? value)
         => value?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    private static ArticleValidationError? ValidatePriceHt(int? value)
+        => value is null
+            ? new("article.priceHtCents.required", "priceHtCents", "Le Prix HT en centimes est requis.")
+            : value < 0
+                ? new("article.priceHtCents.non_negative", "priceHtCents", "Le Prix HT ne peut pas être négatif.")
+                : null;
 
     private static string FormatModes(IEnumerable<ConsumptionMode> values)
         => string.Join(',', values.Select(mode => mode == ConsumptionMode.Takeaway ? "takeaway" : "onsite"));

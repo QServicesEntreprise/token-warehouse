@@ -54,8 +54,10 @@ builder.Services.AddScoped<SaleApplication>();
 builder.Services.AddScoped<ISaleContract>(services =>
     services.GetRequiredService<SaleApplication>());
 builder.Services.AddScoped<SupplyApplication>();
+builder.Services.AddScoped<SupplyReadApplication>();
 builder.Services.AddScoped<IRecordSupplyUseCase>(services => services.GetRequiredService<SupplyApplication>());
 builder.Services.AddScoped<IRecordBulkSupplyUseCase>(services => services.GetRequiredService<SupplyApplication>());
+builder.Services.AddScoped<IReadSupplyUseCase>(services => services.GetRequiredService<SupplyReadApplication>());
 builder.Services.AddScoped<IRegisterInventoryUseCase>(services => services.GetRequiredService<InventoryApplication>());
 builder.Services.AddScoped<IRegisterBulkInventoryUseCase>(services => services.GetRequiredService<InventoryApplication>());
 builder.Services.AddScoped<IReadInventoryUseCase>(services => services.GetRequiredService<InventoryApplication>());
