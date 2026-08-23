@@ -1,9 +1,9 @@
 import { expect } from '@playwright/test';
 import type { Route } from '@playwright/test';
 import { apiUrl, test } from './fixtures';
-import { leadingZeroEan13 } from './helpers/ean13';
+import { ean13ForAttempt, leadingZeroEan13 } from './helpers/ean13';
 import { expectProblemDetails, waitForRequest } from './helpers/http';
-import { sell } from './helpers/state';
+import { archive, createNonFoodArticle, sell } from './helpers/state';
 
 test('consults the current Dashboard with aligned KPIs, alerts and keyboard links', async ({ page }) => {
   const dashboard = page.locator('#dashboard-panel');
@@ -658,6 +658,14 @@ test.describe('Dashboard Stock semantics', () => {
   });
 
   test('keeps active ruptures separate from Articles non vendables', async ({ page }) => {
+    const archivedOutOfStockEan13 = ean13ForAttempt('720000001', 0);
+    await createNonFoodArticle(page, {
+      ean13: archivedOutOfStockEan13,
+      name: 'Article archivé sans Stock',
+      packaging: 'new',
+      priceHtCents: 100,
+    });
+    await archive(page, archivedOutOfStockEan13);
     const responsePromise = waitForRequest(page, 'GET', '/api/dashboard');
 
     await page.goto('/');
@@ -669,11 +677,15 @@ test.describe('Dashboard Stock semantics', () => {
       physicalStock: 0,
       sellableStock: 0,
     }]);
+    expect(view.alerts.outOfStock).not.toContainEqual(
+      expect.objectContaining({ ean13: archivedOutOfStockEan13 }),
+    );
     expect(view.alerts.notSellable).toMatchObject([
       { ean13: '1234567890128', physicalStock: 7, sellableStock: 0, reason: 'DLC_EXPIRED' },
       { ean13: '2345678901234', physicalStock: 4, sellableStock: 0, reason: 'ARCHIVED' },
       { ean13: '3456789012340', physicalStock: 3, sellableStock: 0, reason: 'UNSELLABLE_PACKAGING' },
     ]);
+    await expect(page.locator('#dashboard-alert-out-of-stock')).not.toContainText(archivedOutOfStockEan13);
     await expect(page.locator('#dashboard-alert-out-of-stock')).not.toContainText('Article archivé');
     await expect(page.locator('#dashboard-alert-not-sellable'))
       .toContainText('Article archivé — 2345678901234 — Article archivé');
