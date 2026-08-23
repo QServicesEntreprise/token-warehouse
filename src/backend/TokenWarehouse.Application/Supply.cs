@@ -147,11 +147,30 @@ public interface IRecordBulkSupplyUseCase
         CancellationToken cancellationToken = default);
 }
 
+public enum SupplyReadStatus
+{
+    Found,
+    NotFound,
+    PersistenceFailed
+}
+
+public sealed record SupplyReadResult(
+    SupplyReadStatus Status,
+    StockOperation? Operation);
+
+public interface IReadSupplyUseCase
+{
+    Task<SupplyReadResult> GetAsync(
+        string id,
+        CancellationToken cancellationToken = default);
+}
+
 public sealed class SupplyApplication(
     IArticleSellabilityReader articleReader,
     IStockPositionReader stockReader,
     ISupplyCommitter committer,
-    IClock clock) : IRecordSupplyUseCase, IRecordBulkSupplyUseCase
+    IClock clock,
+    IStockOperationReader? operationReader = null) : IRecordSupplyUseCase, IRecordBulkSupplyUseCase, IReadSupplyUseCase
 {
     public async Task<BulkSupplyResult> RecordBulkAsync(
         BulkSupplyCommand command,
@@ -511,6 +530,29 @@ public sealed class SupplyApplication(
                     committedPosition,
                     clock.WarehouseDate)),
             []);
+    }
+
+    public async Task<SupplyReadResult> GetAsync(
+        string id,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var operation = operationReader is null
+                ? null
+                : await operationReader.FindByIdAsync(id, cancellationToken);
+            return operation?.Type == StockOperationType.Supply
+                ? new(SupplyReadStatus.Found, operation)
+                : new(SupplyReadStatus.NotFound, null);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            return new(SupplyReadStatus.PersistenceFailed, null);
+        }
     }
 
     private async Task<IReadOnlyDictionary<Ean13, ArticleSellabilitySnapshot>> ReadArticlesAsync(

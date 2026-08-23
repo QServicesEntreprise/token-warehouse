@@ -1,8 +1,4 @@
 import { expect } from '@playwright/test';
-import type {
-  CounterMovementResponse,
-  CounterMovementSource,
-} from '../../src/web/app/counter-movement-api.service';
 import { apiUrl as apiBaseUrl, test } from './fixtures';
 import { leadingZeroEan13 } from './helpers/ean13';
 import { expectProblemDetails, waitForRequest } from './helpers/http';
@@ -10,6 +6,24 @@ import { inventory, sell, supply } from './helpers/state';
 
 const canonicalEan = leadingZeroEan13;
 const archivedEan = '2345678901234';
+
+type CounterReceipt = {
+  counterMovement: {
+    id: string;
+    sourceOperationId: string;
+    justification: string;
+    lines: { ean13: string; sourceEffect: number; inverseEffect: number }[];
+  };
+  financialReversal?: {
+    sourceOperationId: string;
+    context: string | null;
+    unitPriceHtCents: number;
+    amountHtCents: number;
+    vatCents: number;
+    amountTtcCents: number;
+  };
+  positions: { ean13: string; physicalStock: number; sellableStock: number; reason: string | null }[];
+};
 
 const openCounterMovement = async (page: import('@playwright/test').Page) => {
   await page.getByRole('link', { name: 'Contre-mouvement' }).click();
@@ -68,7 +82,7 @@ test('corrects a committed supply through the real Stock journey', async ({ page
   const counterResponse = await correctSource(page, sourceId, 'Correction après contrôle');
   expect(counterResponse.status()).toBe(201);
   expect(counterResponse.headers()['content-type']).toContain('application/json');
-  const receipt = await counterResponse.json() as CounterMovementResponse;
+  const receipt = await counterResponse.json() as CounterReceipt;
   expect(receipt.counterMovement.sourceOperationId).toBe(sourceId);
   expect(receipt.counterMovement.justification).toBe('Correction après contrôle');
   expect(receipt.counterMovement.lines[0]?.sourceEffect).toBe(2);
@@ -124,7 +138,7 @@ test('corrects a Sale from its historical snapshot after the Article price and l
 
   const counterResponse = await correctSource(page, sale.operation.id, 'Correction financière historique');
   expect(counterResponse.status()).toBe(201);
-  const receipt = await counterResponse.json() as CounterMovementResponse;
+  const receipt = await counterResponse.json() as CounterReceipt;
   expect(receipt.financialReversal).toMatchObject({
     sourceOperationId: sale.operation.id,
     unitPriceHtCents: 100,
@@ -175,7 +189,7 @@ test('corrects an inventory after a later movement and keeps the source unchange
   await openCounterMovement(page);
   const counterResponse = await correctSource(page, inventoryId, 'Correction après mouvement ultérieur');
   expect(counterResponse.status()).toBe(201);
-  const receipt = await counterResponse.json() as CounterMovementResponse;
+  const receipt = await counterResponse.json() as CounterReceipt;
   expect(receipt.counterMovement.lines[0]?.inverseEffect).toBe(-6);
   expect(receipt.positions[0]?.physicalStock).toBe(7);
 
@@ -211,7 +225,7 @@ test('corrects every line of a bulk supply as one visible counter-movement', asy
   await openCounterMovement(page);
   const counterResponse = await correctSource(page, sourceId, 'Correction du lot');
   expect(counterResponse.status()).toBe(201);
-  const receipt = await counterResponse.json() as CounterMovementResponse;
+  const receipt = await counterResponse.json() as CounterReceipt;
   expect(receipt.counterMovement.sourceOperationId).toBe(sourceId);
   expect(receipt.counterMovement.lines.map((line) => line.inverseEffect)).toEqual([-2, -1]);
   expect(receipt.positions).toHaveLength(2);
@@ -265,11 +279,13 @@ test('corrects an archived Article while keeping its sellable stock at zero', as
   await openCounterMovement(page);
   const counterResponse = await correctSource(page, inventoryReceipt.operation.id, 'Correction du résiduel archivé');
   expect(counterResponse.status()).toBe(201);
-  const receipt = await counterResponse.json() as CounterMovementResponse;
+  const receipt = await counterResponse.json() as CounterReceipt;
   expect(receipt.counterMovement.lines[0]?.inverseEffect).toBe(-2);
   expect(receipt.positions[0]).toMatchObject({ physicalStock: 4, sellableStock: 0, reason: 'ARCHIVED' });
   await expect(page.locator('#counter-movement-result')).toContainText('Article archivé');
 });
+
+type CorrectableSource = { id: string; type: string };
 
 test('never exposes or accepts a Counter-movement as a correctable source', async ({ page }) => {
   const source = await supply(page, canonicalEan, 1);
@@ -277,7 +293,7 @@ test('never exposes or accepts a Counter-movement as a correctable source', asyn
     data: { sourceOperationId: source.operation.id, justification: 'Correction initiale' },
   });
   expect(correctionResponse.status()).toBe(201);
-  const correction = await correctionResponse.json() as CounterMovementResponse;
+  const correction = await correctionResponse.json() as { counterMovement: { id: string } };
 
   const sourcesResponse = await page.request.get(`${apiBaseUrl}/api/stock/counter-movements/sources`);
   expect(sourcesResponse.status()).toBe(200);
@@ -349,11 +365,9 @@ test('lists only the three allowed source types and keeps every source unchanged
   const inventorySource = await inventory(page, canonicalEan, 7);
   const saleSource = await sell(page, canonicalEan, 1, 'takeaway');
 
-  const supplyBeforeResponse = await page.request.get(`${apiBaseUrl}/api/history?ean13=${canonicalEan}`);
+  const supplyBeforeResponse = await page.request.get(`${apiBaseUrl}/api/supplies/${supplySource.operation.id}`);
   expect(supplyBeforeResponse.status()).toBe(200);
-  const supplyBefore = (await supplyBeforeResponse.json() as Array<Record<string, unknown>>)
-    .find(({ id }) => id === supplySource.operation.id);
-  expect(supplyBefore).toBeDefined();
+  const supplyBefore = await supplyBeforeResponse.json();
   const inventoryBeforeResponse = await page.request.get(
     `${apiBaseUrl}/api/inventories/${inventorySource.operation.id}`,
   );
@@ -365,7 +379,7 @@ test('lists only the three allowed source types and keeps every source unchanged
 
   const sourcesResponse = await page.request.get(`${apiBaseUrl}/api/stock/counter-movements/sources`);
   expect(sourcesResponse.status()).toBe(200);
-  const sources = await sourcesResponse.json() as CounterMovementSource[];
+  const sources = await sourcesResponse.json() as CorrectableSource[];
   expect(sources.map(({ type }) => type).sort()).toEqual(['INVENTORY', 'SALE', 'SUPPLY']);
   const sourcesById = new Map(sources.map((source) => [source.id, source]));
   const sourceIds = [supplySource.operation.id, inventorySource.operation.id, saleSource.operation.id];
@@ -375,18 +389,13 @@ test('lists only the three allowed source types and keeps every source unchanged
       data: { sourceOperationId, justification: `Correction de ${sourcesById.get(sourceOperationId)?.type}` },
     });
     expect(correctionResponse.status()).toBe(201);
-    const correction = await correctionResponse.json() as CounterMovementResponse;
+    const correction = await correctionResponse.json() as { source: CorrectableSource };
     expect(correction.source).toEqual(sourcesById.get(sourceOperationId));
   }
 
-  const supplyAfterResponse = await page.request.get(`${apiBaseUrl}/api/history?ean13=${canonicalEan}`);
+  const supplyAfterResponse = await page.request.get(`${apiBaseUrl}/api/supplies/${supplySource.operation.id}`);
   expect(supplyAfterResponse.status()).toBe(200);
-  const supplyAfter = (await supplyAfterResponse.json() as Array<Record<string, unknown>>)
-    .find(({ id }) => id === supplySource.operation.id);
-  expect(supplyAfter).toBeDefined();
-  const supplyOperationAfter = { ...supplyAfter! };
-  delete supplyOperationAfter['correctedByOperationId'];
-  expect(supplyOperationAfter).toEqual(supplyBefore);
+  expect(await supplyAfterResponse.json()).toEqual(supplyBefore);
   const inventoryAfterResponse = await page.request.get(
     `${apiBaseUrl}/api/inventories/${inventorySource.operation.id}`,
   );
