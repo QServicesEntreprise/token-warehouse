@@ -1,10 +1,9 @@
 import { expect, type Page, type Route } from '@playwright/test';
-import { test } from './fixtures';
+import { apiUrl as apiBaseUrl, test } from './fixtures';
 import { ean13ForAttempt, invalidChecksumEan13 } from './helpers/ean13';
 import { expectProblemDetails, waitForRequest } from './helpers/http';
 import { createFoodArticle, createNonFoodArticle, supply } from './helpers/state';
 
-const apiBaseUrl = 'http://127.0.0.1:5100';
 const validEan13 = ean13ForAttempt('650000000', 0);
 
 const foodPayload = (ean13: string): Record<string, unknown> => ({
