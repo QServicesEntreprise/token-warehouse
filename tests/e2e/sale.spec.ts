@@ -1,5 +1,7 @@
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
+import { leadingZeroEan13 } from './helpers/ean13';
+import { waitForRequest } from './helpers/http';
 
 test('searches, rejects an excessive quantity, commits a sale and reloads its result', async ({ page }) => {
   const salePanel = page.locator('#sale-panel');
@@ -14,10 +16,7 @@ test('searches, rejects an excessive quantity, commits a sale and reloads its re
 
   await row.getByRole('button', { name: 'Sélectionner Article actif vendable' }).click();
   await salePanel.locator('#sale-quantity').fill('9');
-  const conflict = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'POST' && url.pathname === '/api/sales';
-  });
+  const conflict = waitForRequest(page, 'POST', '/api/sales');
   await salePanel.locator('#sale-submit').click();
   const conflictResponse = await conflict;
   expect(conflictResponse.status()).toBe(409);
@@ -25,10 +24,7 @@ test('searches, rejects an excessive quantity, commits a sale and reloads its re
   await expect(salePanel.locator('#sale-quantity')).toHaveValue('9');
 
   await salePanel.locator('#sale-quantity').fill('3');
-  const committed = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'POST' && url.pathname === '/api/sales';
-  });
+  const committed = waitForRequest(page, 'POST', '/api/sales');
   await salePanel.locator('#sale-submit').click();
   const committedResponse = await committed;
   expect(committedResponse.status()).toBe(201);
@@ -56,9 +52,9 @@ test('requires a food context, previews both rates and commits the selected mode
   const salePanel = page.locator('#sale-panel');
   await page.goto('/');
 
-  await salePanel.locator('#sale-search').fill('0123456789012');
+  await salePanel.locator('#sale-search').fill(leadingZeroEan13);
   await salePanel.locator('#sale-search-form').getByRole('button', { name: 'Rechercher un Article', exact: true }).click();
-  const row = salePanel.getByRole('row', { name: /0123456789012/ });
+  const row = salePanel.getByRole('row', { name: new RegExp(leadingZeroEan13) });
   await expect(row).toBeVisible();
   await row.getByRole('button', { name: 'Sélectionner Alimentaire aux deux modes' }).click();
 
@@ -73,10 +69,7 @@ test('requires a food context, previews both rates and commits the selected mode
   await expect(salePanel.locator('#sale-quantity')).toHaveValue('1');
 
   await salePanel.getByLabel('À emporter', { exact: true }).check();
-  const committed = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'POST' && url.pathname === '/api/sales';
-  });
+  const committed = waitForRequest(page, 'POST', '/api/sales');
   await salePanel.locator('#sale-submit').click();
   const response = await committed;
   expect(response.status()).toBe(201);
@@ -108,10 +101,7 @@ test('keeps the draft when an Article is past its DLC', async ({ page }) => {
   await row.getByRole('button', { name: 'Sélectionner Alimentaire à DLC dépassée' }).click();
   await salePanel.locator('#sale-quantity').fill('1');
 
-  const rejected = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'POST' && url.pathname === '/api/sales';
-  });
+  const rejected = waitForRequest(page, 'POST', '/api/sales');
   await salePanel.locator('#sale-submit').click();
   expect((await rejected).status()).toBe(409);
   await expect(salePanel.locator('#sale-status')).toContainText('ne peut pas être vendu');

@@ -1,7 +1,9 @@
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
+import { leadingZeroEan13 } from './helpers/ean13';
+import { expectProblemDetails, waitForRequest } from './helpers/http';
 
-const ean13 = '0123456789012';
+const ean13 = leadingZeroEan13;
 const otherEan13 = '1234567890128';
 const inventoryEan13 = '3456789012340';
 const bulkFirstEan13 = '5678901234562';
@@ -54,10 +56,7 @@ test('consults global and Article history after real Stock operations', async ({
   await page.goto('/');
   await expect(page.locator('#stock-table').getByRole('row', { name: /Alimentaire aux deux modes/ })).toContainText('5 unités');
 
-  const supplyResponsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'POST' && url.pathname === '/api/supplies';
-  });
+  const supplyResponsePromise = waitForRequest(page, 'POST', '/api/supplies');
   await page.locator('#supplyEan13').fill(ean13);
   await page.locator('#supplyQuantity').fill('5');
   await page.locator('#supply-form button[type="submit"]').click();
@@ -65,10 +64,7 @@ test('consults global and Article history after real Stock operations', async ({
   expect(supplyResponse.status()).toBe(201);
   const supply = await supplyResponse.json() as { operation: { id: string } };
 
-  const bulkSupplyResponsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'POST' && url.pathname === '/api/supplies/bulk';
-  });
+  const bulkSupplyResponsePromise = waitForRequest(page, 'POST', '/api/supplies/bulk');
   await page.locator('#supplyEan13').fill(bulkFirstEan13);
   await page.locator('#supplyQuantity').fill('2');
   await page.locator('#supply-panel').getByRole('button', { name: 'Ajouter une ligne', exact: true }).click();
@@ -86,10 +82,7 @@ test('consults global and Article history after real Stock operations', async ({
   ]);
   await page.locator('#supply-panel button[aria-label="Retirer la ligne 2"]').click();
 
-  const inventoryResponsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'POST' && url.pathname === '/api/inventories';
-  });
+  const inventoryResponsePromise = waitForRequest(page, 'POST', '/api/inventories');
   await page.locator('#inventory-ean13').fill(ean13);
   await page.locator('#inventory-countedQuantity').fill('12');
   await page.locator('#inventory-form button[type="submit"]').click();
@@ -97,10 +90,7 @@ test('consults global and Article history after real Stock operations', async ({
   expect(inventoryResponse.status()).toBe(201);
   const inventory = await inventoryResponse.json() as { operation: { id: string } };
 
-  const otherSupplyResponsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'POST' && url.pathname === '/api/supplies';
-  });
+  const otherSupplyResponsePromise = waitForRequest(page, 'POST', '/api/supplies');
   await page.locator('#supplyEan13').fill(otherEan13);
   await page.locator('#supplyQuantity').fill('1');
   await page.locator('#supply-form button[type="submit"]').click();
@@ -108,10 +98,7 @@ test('consults global and Article history after real Stock operations', async ({
   expect(otherSupplyResponse.status()).toBe(201);
   const otherSupply = await otherSupplyResponse.json() as { operation: { id: string } };
 
-  const otherInventoryResponsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'POST' && url.pathname === '/api/inventories';
-  });
+  const otherInventoryResponsePromise = waitForRequest(page, 'POST', '/api/inventories');
   await page.locator('#inventory-ean13').fill(otherEan13);
   await page.locator('#inventory-countedQuantity').fill('7');
   await page.locator('#inventory-form button[type="submit"]').click();
@@ -119,10 +106,7 @@ test('consults global and Article history after real Stock operations', async ({
   expect(otherInventoryResponse.status()).toBe(201);
   const otherInventory = await otherInventoryResponse.json() as { operation: { id: string } };
 
-  const zeroInventoryResponsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'POST' && url.pathname === '/api/inventories';
-  });
+  const zeroInventoryResponsePromise = waitForRequest(page, 'POST', '/api/inventories');
   await page.locator('#inventory-ean13').fill(inventoryEan13);
   await page.locator('#inventory-countedQuantity').fill('3');
   await page.locator('#inventory-form button[type="submit"]').click();
@@ -131,19 +115,12 @@ test('consults global and Article history after real Stock operations', async ({
   const zeroInventory = await zeroInventoryResponse.json() as { operation: { id: string } };
 
   await page.getByRole('link', { name: 'Contre-mouvement' }).click();
-  const sourcesResponsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'GET'
-      && url.pathname === '/api/stock/counter-movements/sources';
-  });
+  const sourcesResponsePromise = waitForRequest(page, 'GET', '/api/stock/counter-movements/sources');
   await page.locator('#counter-movement-load').click();
   expect((await sourcesResponsePromise).status()).toBe(200);
   await page.locator('#counter-movement-source').selectOption(inventory.operation.id);
   await page.locator('#counter-movement-justification').fill('Contrôle Historique');
-  const counterResponsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'POST' && url.pathname === '/api/stock/counter-movements';
-  });
+  const counterResponsePromise = waitForRequest(page, 'POST', '/api/stock/counter-movements');
   await page.locator('#counter-movement-submit').click();
   const counterResponse = await counterResponsePromise;
   expect(counterResponse.status()).toBe(201);
@@ -151,10 +128,7 @@ test('consults global and Article history after real Stock operations', async ({
   expect(counter.counterMovement.lines).toHaveLength(1);
   expect(counter.counterMovement.lines[0].inverseEffect).toBe(-2);
 
-  const otherCounterResponsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'POST' && url.pathname === '/api/stock/counter-movements';
-  });
+  const otherCounterResponsePromise = waitForRequest(page, 'POST', '/api/stock/counter-movements');
   await page.locator('#counter-movement-source').selectOption(otherInventory.operation.id);
   await page.locator('#counter-movement-justification').fill('Correction positive Historique');
   await page.locator('#counter-movement-submit').click();
@@ -165,10 +139,7 @@ test('consults global and Article history after real Stock operations', async ({
     counterMovement: { lines: [{ inverseEffect: 1 }] },
   });
 
-  const zeroCounterResponsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'POST' && url.pathname === '/api/stock/counter-movements';
-  });
+  const zeroCounterResponsePromise = waitForRequest(page, 'POST', '/api/stock/counter-movements');
   await page.locator('#counter-movement-source').selectOption(zeroInventory.operation.id);
   await page.locator('#counter-movement-justification').fill('Correction nulle Historique');
   await page.locator('#counter-movement-submit').click();
@@ -180,10 +151,9 @@ test('consults global and Article history after real Stock operations', async ({
   });
 
   await page.getByRole('link', { name: 'Historique' }).click();
-  const globalHistoryPromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'GET' && url.pathname === '/api/history' && !url.search;
-  });
+  const globalHistoryPromise = waitForRequest(page, 'GET', '/api/history', (url) => (
+    !url.search
+  ));
   await page.getByRole('button', { name: 'Historique global', exact: true }).click();
   const globalHistory = await globalHistoryPromise;
   expect(globalHistory.status()).toBe(200);
@@ -271,21 +241,17 @@ test('consults global and Article history after real Stock operations', async ({
   await expect(page.locator('#history-state')).toHaveAttribute('role', 'status');
   await expect(page.locator('#history-state')).toHaveAttribute('aria-live', 'polite');
 
-  const filteredHistoryPromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'GET'
-      && url.pathname === '/api/history'
-      && url.searchParams.get('ean13') === ean13;
-  });
+  const filteredHistoryPromise = waitForRequest(page, 'GET', '/api/history', (url) => (
+    url.searchParams.get('ean13') === ean13
+  ));
   await page.locator('#history-ean13').fill(ean13);
   await page.getByRole('button', { name: 'Filtrer l’Historique', exact: true }).click();
   expect((await filteredHistoryPromise).status()).toBe(200);
   await expect(page.locator('#history-list')).toContainText(ean13);
 
-  const resetGlobalHistoryPromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'GET' && url.pathname === '/api/history' && !url.search;
-  });
+  const resetGlobalHistoryPromise = waitForRequest(page, 'GET', '/api/history', (url) => (
+    !url.search
+  ));
   await page.getByRole('button', { name: 'Historique global', exact: true }).click();
   expect((await resetGlobalHistoryPromise).status()).toBe(200);
   await expect(page.locator('#history-ean13')).toHaveValue('');
@@ -309,12 +275,9 @@ test('consults global and Article history after real Stock operations', async ({
     await expect(card).not.toContainText('précédent');
   }
 
-  const filteredBulkHistoryPromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'GET'
-      && url.pathname === '/api/history'
-      && url.searchParams.get('ean13') === bulkFirstEan13;
-  });
+  const filteredBulkHistoryPromise = waitForRequest(page, 'GET', '/api/history', (url) => (
+    url.searchParams.get('ean13') === bulkFirstEan13
+  ));
   await page.locator('#history-ean13').fill(bulkFirstEan13);
   await page.getByRole('button', { name: 'Filtrer l’Historique', exact: true }).click();
   const filteredBulkHistoryResponse = await filteredBulkHistoryPromise;
@@ -335,20 +298,14 @@ test('consults global and Article history after real Stock operations', async ({
   await expect(filteredBulkHistoryCard).not.toContainText('Quantité utile');
   await expect(filteredBulkHistoryCard).not.toContainText('Stock physique résultant');
 
-  const bulkArticleResponsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'GET' && url.pathname === `/api/articles/${bulkFirstEan13}`;
-  });
+  const bulkArticleResponsePromise = waitForRequest(page, 'GET', `/api/articles/${bulkFirstEan13}`);
   await page.locator('#lookupEan13').fill(bulkFirstEan13);
   await page.locator('section[aria-labelledby="lookup-title"]').getByRole('button', { name: 'Consulter', exact: true }).click();
   expect((await bulkArticleResponsePromise).status()).toBe(200);
 
-  const bulkArticleHistoryPromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'GET'
-      && url.pathname === '/api/history'
-      && url.searchParams.get('ean13') === bulkFirstEan13;
-  });
+  const bulkArticleHistoryPromise = waitForRequest(page, 'GET', '/api/history', (url) => (
+    url.searchParams.get('ean13') === bulkFirstEan13
+  ));
   await page.getByRole('button', { name: 'Consulter l’Historique de cet Article', exact: true }).click();
   const bulkArticleHistoryResponse = await bulkArticleHistoryPromise;
   expect(bulkArticleHistoryResponse.status()).toBe(200);
@@ -363,35 +320,23 @@ test('consults global and Article history after real Stock operations', async ({
   await expect(page.locator('#article-history-list')).toContainText('effet +2');
   await expect(page.locator('#article-history-list')).toContainText('résultat 2');
 
-  const articleResponsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'GET' && url.pathname === `/api/articles/${ean13}`;
-  });
+  const articleResponsePromise = waitForRequest(page, 'GET', `/api/articles/${ean13}`);
   await page.locator('#lookupEan13').fill(ean13);
   await page.locator('section[aria-labelledby="lookup-title"]').getByRole('button', { name: 'Consulter', exact: true }).click();
   expect((await articleResponsePromise).status()).toBe(200);
   await expect(page.getByRole('heading', { name: 'Alimentaire aux deux modes' })).toBeVisible();
 
-  const archiveResponsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'POST' && url.pathname === `/api/articles/${ean13}/archive`;
-  });
+  const archiveResponsePromise = waitForRequest(page, 'POST', `/api/articles/${ean13}/archive`);
   await page.getByRole('button', { name: 'Archiver l’Article', exact: true }).click();
   expect((await archiveResponsePromise).status()).toBe(200);
 
-  const reactivateResponsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'POST' && url.pathname === `/api/articles/${ean13}/reactivate`;
-  });
+  const reactivateResponsePromise = waitForRequest(page, 'POST', `/api/articles/${ean13}/reactivate`);
   await page.getByRole('button', { name: 'Réactiver l’Article', exact: true }).click();
   expect((await reactivateResponsePromise).status()).toBe(200);
 
-  const articleHistoryPromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'GET'
-      && url.pathname === '/api/history'
-      && url.searchParams.get('ean13') === ean13;
-  });
+  const articleHistoryPromise = waitForRequest(page, 'GET', '/api/history', (url) => (
+    url.searchParams.get('ean13') === ean13
+  ));
   await page.getByRole('button', { name: 'Consulter l’Historique de cet Article', exact: true }).click();
   const articleHistoryResponse = await articleHistoryPromise;
   expect(articleHistoryResponse.status()).toBe(200);
@@ -431,19 +376,13 @@ test('consults global and Article history after real Stock operations', async ({
   await expect(articleCounterCard).toContainText('effet inverse -2');
   await expect(articleCounterCard).not.toContainText('précédent');
 
-  const otherArticleResponsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'GET' && url.pathname === `/api/articles/${otherEan13}`;
-  });
+  const otherArticleResponsePromise = waitForRequest(page, 'GET', `/api/articles/${otherEan13}`);
   await page.locator('#lookupEan13').fill(otherEan13);
   await page.locator('section[aria-labelledby="lookup-title"]').getByRole('button', { name: 'Consulter', exact: true }).click();
   expect((await otherArticleResponsePromise).status()).toBe(200);
-  const otherArticleHistoryPromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'GET'
-      && url.pathname === '/api/history'
-      && url.searchParams.get('ean13') === otherEan13;
-  });
+  const otherArticleHistoryPromise = waitForRequest(page, 'GET', '/api/history', (url) => (
+    url.searchParams.get('ean13') === otherEan13
+  ));
   await page.getByRole('button', { name: 'Consulter l’Historique de cet Article', exact: true }).click();
   const otherArticleHistoryResponse = await otherArticleHistoryPromise;
   expect(otherArticleHistoryResponse.status()).toBe(200);
@@ -465,19 +404,13 @@ test('consults global and Article history after real Stock operations', async ({
   await expect(otherArticleCounterCard).toContainText('effet inverse +1');
   await expect(otherArticleCounterCard).not.toContainText('précédent');
 
-  const inventoryArticleResponsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'GET' && url.pathname === `/api/articles/${inventoryEan13}`;
-  });
+  const inventoryArticleResponsePromise = waitForRequest(page, 'GET', `/api/articles/${inventoryEan13}`);
   await page.locator('#lookupEan13').fill(inventoryEan13);
   await page.locator('section[aria-labelledby="lookup-title"]').getByRole('button', { name: 'Consulter', exact: true }).click();
   expect((await inventoryArticleResponsePromise).status()).toBe(200);
-  const inventoryArticleHistoryPromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'GET'
-      && url.pathname === '/api/history'
-      && url.searchParams.get('ean13') === inventoryEan13;
-  });
+  const inventoryArticleHistoryPromise = waitForRequest(page, 'GET', '/api/history', (url) => (
+    url.searchParams.get('ean13') === inventoryEan13
+  ));
   await page.getByRole('button', { name: 'Consulter l’Historique de cet Article', exact: true }).click();
   const inventoryArticleHistoryResponse = await inventoryArticleHistoryPromise;
   expect(inventoryArticleHistoryResponse.status()).toBe(200);
@@ -501,10 +434,9 @@ test('consults global and Article history after real Stock operations', async ({
 
   await page.reload();
   await page.getByRole('link', { name: 'Historique' }).click();
-  const reloadedHistoryPromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'GET' && url.pathname === '/api/history' && !url.search;
-  });
+  const reloadedHistoryPromise = waitForRequest(page, 'GET', '/api/history', (url) => (
+    !url.search
+  ));
   await page.getByRole('button', { name: 'Historique global', exact: true }).click();
   expect((await reloadedHistoryPromise).status()).toBe(200);
   await expect(page.locator('#history-list')).toContainText(supply.operation.id);
@@ -517,31 +449,24 @@ test('consults global and Article history after real Stock operations', async ({
     await new Promise((resolve) => setTimeout(resolve, 200));
     await route.continue();
   }, { times: 1 });
-  const loadingHistoryPromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'GET' && url.pathname === '/api/history' && !url.search;
-  });
+  const loadingHistoryPromise = waitForRequest(page, 'GET', '/api/history', (url) => (
+    !url.search
+  ));
   await page.getByRole('button', { name: 'Historique global', exact: true }).click();
   await expect(page.locator('#history-state')).toContainText('Chargement');
   expect((await loadingHistoryPromise).status()).toBe(200);
 
-  const emptyHistoryPromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'GET'
-      && url.pathname === '/api/history'
-      && url.searchParams.get('ean13') === emptyHistoryEan13;
-  });
+  const emptyHistoryPromise = waitForRequest(page, 'GET', '/api/history', (url) => (
+    url.searchParams.get('ean13') === emptyHistoryEan13
+  ));
   await page.locator('#history-ean13').fill(emptyHistoryEan13);
   await page.getByRole('button', { name: 'Filtrer l’Historique', exact: true }).click();
   expect((await emptyHistoryPromise).status()).toBe(200);
   await expect(page.locator('#history-state')).toContainText('Aucun fait historique');
 
-  const invalidHistoryPromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'GET'
-      && url.pathname === '/api/history'
-      && url.searchParams.get('ean13') === invalidHistoryEan13;
-  });
+  const invalidHistoryPromise = waitForRequest(page, 'GET', '/api/history', (url) => (
+    url.searchParams.get('ean13') === invalidHistoryEan13
+  ));
   await page.locator('#history-ean13').fill(invalidHistoryEan13);
   await page.getByRole('button', { name: 'Filtrer l’Historique', exact: true }).click();
   expect((await invalidHistoryPromise).status()).toBe(400);
@@ -554,18 +479,14 @@ test('keeps a committed Sale and its financial correction separately in History'
   await expect(page.locator('#stock-table').getByRole('row', { name: /Alimentaire aux deux modes/ })).toBeVisible();
 
   await page.getByRole('link', { name: 'Historique' }).click();
-  const initialHistoryPromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'GET' && url.pathname === '/api/history' && !url.search;
-  });
+  const initialHistoryPromise = waitForRequest(page, 'GET', '/api/history', (url) => (
+    !url.search
+  ));
   await page.getByRole('button', { name: 'Historique global', exact: true }).click();
   expect((await initialHistoryPromise).status()).toBe(200);
   await page.getByRole('link', { name: 'Vente', exact: true }).click();
 
-  const saleSearchPromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'GET' && url.pathname === '/api/sales/articles';
-  });
+  const saleSearchPromise = waitForRequest(page, 'GET', '/api/sales/articles');
   await page.locator('#sale-search').fill(ean13);
   await page.getByRole('button', { name: 'Rechercher un Article', exact: true }).click();
   expect((await saleSearchPromise).status()).toBe(200);
@@ -573,14 +494,10 @@ test('keeps a committed Sale and its financial correction separately in History'
   await page.locator('#sale-context-takeaway').check();
   await page.locator('#sale-quantity').fill('2');
 
-  const saleResponsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'POST' && url.pathname === '/api/sales';
-  });
-  const saleHistoryRefreshPromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'GET' && url.pathname === '/api/history' && !url.search;
-  });
+  const saleResponsePromise = waitForRequest(page, 'POST', '/api/sales');
+  const saleHistoryRefreshPromise = waitForRequest(page, 'GET', '/api/history', (url) => (
+    !url.search
+  ));
   await page.locator('#sale-submit').click();
   const saleResponse = await saleResponsePromise;
   expect(saleResponse.status()).toBe(201);
@@ -594,28 +511,21 @@ test('keeps a committed Sale and its financial correction separately in History'
   await expect(page.locator('#history-list')).toContainText(sale.operation.id);
 
   await page.getByRole('link', { name: 'Contre-mouvement' }).click();
-  const sourcesPromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'GET' && url.pathname === '/api/stock/counter-movements/sources';
-  });
+  const sourcesPromise = waitForRequest(page, 'GET', '/api/stock/counter-movements/sources');
   await page.locator('#counter-movement-load').click();
   expect((await sourcesPromise).status()).toBe(200);
   await page.locator('#counter-movement-source').selectOption(sale.operation.id);
   await page.locator('#counter-movement-justification').fill('Correction financière E2E');
 
-  const counterResponsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'POST' && url.pathname === '/api/stock/counter-movements';
-  });
+  const counterResponsePromise = waitForRequest(page, 'POST', '/api/stock/counter-movements');
   await page.locator('#counter-movement-submit').click();
   const counterResponse = await counterResponsePromise;
   expect(counterResponse.status()).toBe(201);
 
   await page.getByRole('link', { name: 'Historique' }).click();
-  const historyPromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'GET' && url.pathname === '/api/history' && !url.search;
-  });
+  const historyPromise = waitForRequest(page, 'GET', '/api/history', (url) => (
+    !url.search
+  ));
   await page.getByRole('button', { name: 'Historique global', exact: true }).click();
   expect((await historyPromise).status()).toBe(200);
   const entries = await historyPromise.then((response) => response.json()) as Array<{
@@ -655,19 +565,13 @@ test('keeps a committed Sale and its financial correction separately in History'
   await expect(correctionCard).toContainText('Prix HT unitaire historique');
   await expect(correctionCard).toContainText('100 centimes');
 
-  const articleResponsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'GET' && url.pathname === `/api/articles/${ean13}`;
-  });
+  const articleResponsePromise = waitForRequest(page, 'GET', `/api/articles/${ean13}`);
   await page.locator('#lookupEan13').fill(ean13);
   await page.locator('section[aria-labelledby="lookup-title"]').getByRole('button', { name: 'Consulter', exact: true }).click();
   expect((await articleResponsePromise).status()).toBe(200);
-  const articleHistoryPromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'GET'
-      && url.pathname === '/api/history'
-      && url.searchParams.get('ean13') === ean13;
-  });
+  const articleHistoryPromise = waitForRequest(page, 'GET', '/api/history', (url) => (
+    url.searchParams.get('ean13') === ean13
+  ));
   await page.getByRole('button', { name: 'Consulter l’Historique de cet Article', exact: true }).click();
   expect((await articleHistoryPromise).status()).toBe(200);
   const articleSaleCard = page.locator(`[aria-labelledby="article-history-entry-${sale.operation.id}"]`);
@@ -686,19 +590,14 @@ test.describe('history read failure runtime seam', () => {
     await page.goto('/');
     await page.getByRole('link', { name: 'Historique' }).click();
 
-    const failurePromise = page.waitForResponse((response) => {
-      const url = new URL(response.url());
-      return response.request().method() === 'GET'
-        && url.pathname === '/api/history'
-        && !url.search;
-    });
+    const failurePromise = waitForRequest(page, 'GET', '/api/history', (url) => (
+    !url.search
+  ));
     await page.getByRole('button', { name: 'Historique global', exact: true }).click();
     const failure = await failurePromise;
-    expect(failure.status()).toBe(500);
-    expect(failure.headers()['content-type']).toContain('application/problem+json');
+    await expectProblemDetails(failure, { status: 500, code: 'HISTORY_READ_FAILURE' });
     await expect(failure.json()).resolves.toMatchObject({
       status: 500,
-      code: 'HISTORY_READ_FAILURE',
     });
     await expect(page.locator('#history-state')).toContainText('L’Historique ne peut pas être lu pour le moment.');
     await expect(page.locator('#history-state')).toHaveAttribute('role', 'status');

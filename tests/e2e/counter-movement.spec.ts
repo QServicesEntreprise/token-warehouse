@@ -1,7 +1,9 @@
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
+import { leadingZeroEan13 } from './helpers/ean13';
+import { waitForRequest } from './helpers/http';
 
-const canonicalEan = '0123456789012';
+const canonicalEan = leadingZeroEan13;
 const archivedEan = '2345678901234';
 const apiBaseUrl = 'http://127.0.0.1:5100';
 
@@ -25,11 +27,7 @@ type CounterReceipt = {
 
 const openCounterMovement = async (page: import('@playwright/test').Page) => {
   await page.getByRole('link', { name: 'Contre-mouvement' }).click();
-  const sourcesResponsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'GET'
-      && url.pathname === '/api/stock/counter-movements/sources';
-  });
+  const sourcesResponsePromise = waitForRequest(page, 'GET', '/api/stock/counter-movements/sources');
   await page.locator('#counter-movement-load').click();
   const sourcesResponse = await sourcesResponsePromise;
   expect(sourcesResponse.status()).toBe(200);
@@ -44,11 +42,7 @@ const correctSource = async (
   const sourceSelect = page.locator('#counter-movement-source');
   await sourceSelect.selectOption(sourceId);
   await page.locator('#counter-movement-justification').fill(justification);
-  const counterResponsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'POST'
-      && url.pathname === '/api/stock/counter-movements';
-  });
+  const counterResponsePromise = waitForRequest(page, 'POST', '/api/stock/counter-movements');
   await page.locator('#counter-movement-submit').click();
   return counterResponsePromise;
 };
@@ -57,10 +51,7 @@ test('corrects a committed supply through the real Stock journey', async ({ page
   await page.goto('/');
   await expect(page.locator('#stock-table').getByRole('row', { name: /Alimentaire aux deux modes/ })).toContainText('5 unités');
 
-  const supplyResponsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'POST' && url.pathname === '/api/supplies';
-  });
+  const supplyResponsePromise = waitForRequest(page, 'POST', '/api/supplies');
   await page.locator('#supplyEan13').fill(canonicalEan);
   await page.locator('#supplyQuantity').fill('2');
   await page.locator('#supply-form button[type="submit"]').click();
@@ -119,14 +110,11 @@ test('corrects a Sale from its historical snapshot after the Article price and l
   await page.goto('/');
   await salePanel.locator('#sale-search').fill(canonicalEan);
   await salePanel.locator('#sale-search-form').getByRole('button', { name: 'Rechercher un Article', exact: true }).click();
-  const saleRow = salePanel.getByRole('row', { name: /0123456789012/ });
+  const saleRow = salePanel.getByRole('row', { name: new RegExp(leadingZeroEan13) });
   await saleRow.getByRole('button', { name: 'Sélectionner Alimentaire aux deux modes' }).click();
   await salePanel.getByLabel('À emporter', { exact: true }).check();
   await salePanel.locator('#sale-quantity').fill('1');
-  const saleResponsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'POST' && url.pathname === '/api/sales';
-  });
+  const saleResponsePromise = waitForRequest(page, 'POST', '/api/sales');
   await salePanel.locator('#sale-submit').click();
   const saleResponse = await saleResponsePromise;
   expect(saleResponse.status()).toBe(201);
@@ -182,10 +170,7 @@ test('corrects an inventory after a later movement and keeps the source unchange
   await page.goto('/');
   await page.locator('#inventory-ean13').fill(canonicalEan);
   await page.locator('#inventory-countedQuantity').fill('11');
-  const inventoryResponsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'POST' && url.pathname === '/api/inventories';
-  });
+  const inventoryResponsePromise = waitForRequest(page, 'POST', '/api/inventories');
   await page.locator('#inventory-form button[type="submit"]').click();
   const inventoryResponse = await inventoryResponsePromise;
   expect(inventoryResponse.status()).toBe(201);
@@ -195,10 +180,7 @@ test('corrects an inventory after a later movement and keeps the source unchange
   const inventoryId = inventoryReceipt.operation.id;
   expect(inventoryReceipt.operation).toMatchObject({ previousPhysicalStock: 5, countedQuantity: 11, inventoryDifference: 6 });
 
-  const supplyResponsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'POST' && url.pathname === '/api/supplies';
-  });
+  const supplyResponsePromise = waitForRequest(page, 'POST', '/api/supplies');
   await page.locator('#supplyEan13').fill(canonicalEan);
   await page.locator('#supplyQuantity').fill('2');
   await page.locator('#supply-form button[type="submit"]').click();
@@ -230,10 +212,7 @@ test('corrects every line of a bulk supply as one visible counter-movement', asy
   await page.locator('#supply-form button[type="button"]').click();
   await page.locator('#supplyEan13-1').fill('4567890123456');
   await page.locator('#supplyQuantity-1').fill('1');
-  const supplyResponsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'POST' && url.pathname === '/api/supplies/bulk';
-  });
+  const supplyResponsePromise = waitForRequest(page, 'POST', '/api/supplies/bulk');
   await page.locator('#supply-form button[type="submit"]').click();
   const supplyResponse = await supplyResponsePromise;
   expect(supplyResponse.status()).toBe(201);
@@ -260,10 +239,7 @@ test('rejects a bulk counter-movement atomically when one line would go negative
   await page.locator('#supply-form button[type="button"]').click();
   await page.locator('#supplyEan13-1').fill('4567890123456');
   await page.locator('#supplyQuantity-1').fill('1');
-  const supplyResponsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'POST' && url.pathname === '/api/supplies/bulk';
-  });
+  const supplyResponsePromise = waitForRequest(page, 'POST', '/api/supplies/bulk');
   await page.locator('#supply-form button[type="submit"]').click();
   const supplyResponse = await supplyResponsePromise;
   expect(supplyResponse.status()).toBe(201);
@@ -271,10 +247,7 @@ test('rejects a bulk counter-movement atomically when one line would go negative
 
   await page.locator('#inventory-ean13').fill(canonicalEan);
   await page.locator('#inventory-countedQuantity').fill('1');
-  const inventoryResponsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'POST' && url.pathname === '/api/inventories';
-  });
+  const inventoryResponsePromise = waitForRequest(page, 'POST', '/api/inventories');
   await page.locator('#inventory-form button[type="submit"]').click();
   expect((await inventoryResponsePromise).status()).toBe(201);
 
@@ -297,10 +270,7 @@ test('corrects an archived Article while keeping its sellable stock at zero', as
   await page.goto('/');
   await page.locator('#inventory-ean13').fill(archivedEan);
   await page.locator('#inventory-countedQuantity').fill('6');
-  const inventoryResponsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === 'POST' && url.pathname === '/api/inventories';
-  });
+  const inventoryResponsePromise = waitForRequest(page, 'POST', '/api/inventories');
   await page.locator('#inventory-form button[type="submit"]').click();
   const inventoryResponse = await inventoryResponsePromise;
   expect(inventoryResponse.status()).toBe(201);
