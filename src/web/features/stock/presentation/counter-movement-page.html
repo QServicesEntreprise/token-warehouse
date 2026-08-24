@@ -120,7 +120,7 @@
             <dl>
               <div><dt>Effet source</dt><dd>{{ signed(line.sourceEffect) }}</dd></div>
               <div><dt>Effet inverse</dt><dd>{{ signed(line.inverseEffect) }}</dd></div>
-              @if (store.position(line.ean13); as currentPosition) {
+              @if (store.positionsByEan13()[line.ean13]; as currentPosition) {
                 <div><dt>Stock physique</dt><dd>{{ currentPosition.physicalQuantity }} unités</dd></div>
                 <div><dt>Stock vendable</dt><dd>{{ currentPosition.sellableQuantity }} unités</dd></div>
                 <div><dt>Disponibilité</dt><dd>{{ availabilityLabel(currentPosition.availability) }}</dd></div>

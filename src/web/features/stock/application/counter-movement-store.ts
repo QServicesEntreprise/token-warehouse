@@ -1,4 +1,4 @@
-import { DestroyRef, Injectable, inject, signal } from '@angular/core';
+import { DestroyRef, Injectable, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Subject, catchError, firstValueFrom, map, of, switchMap, takeUntil, tap } from 'rxjs';
 import { CorrectableSource } from '../domain/correctable-source';
@@ -26,6 +26,9 @@ export class CounterMovementStore {
   readonly receipt = this.receiptValue.asReadonly();
   readonly fieldErrors = this.fieldErrorsValue.asReadonly();
   readonly submitting = this.submittingValue.asReadonly();
+  readonly positionsByEan13 = computed(() => Object.fromEntries(
+    this.receiptValue()?.positions.map((position) => [position.ean13, position]) ?? [],
+  ));
 
   constructor() {
     this.loadRequests.pipe(
@@ -91,10 +94,6 @@ export class CounterMovementStore {
 
   clearFieldError(field: 'sourceOperationId' | 'justification'): void {
     this.fieldErrorsValue.update((errors) => ({ ...errors, [field]: '' }));
-  }
-
-  position(ean13: string): CounterMovementResult['positions'][number] | undefined {
-    return this.receiptValue()?.positions.find((position) => position.ean13 === ean13);
   }
 
   private failureFrom(error: unknown, fallbackTitle: string): StockFailure {

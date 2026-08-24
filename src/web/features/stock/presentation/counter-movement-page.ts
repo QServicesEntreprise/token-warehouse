@@ -1,6 +1,8 @@
 import { AfterViewInit, ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { FormField, FormRoot, form, pattern, required, submit } from '@angular/forms/signals';
 import { CounterMovementStore } from '../application/counter-movement-store';
+import { stockAvailabilityLabel } from './stock-availability-label';
+import { stockNonSellableReasonLabel } from './stock-non-sellable-reason-label';
 
 @Component({
   selector: 'app-counter-movement-page',
@@ -23,6 +25,8 @@ export class CounterMovementPage implements AfterViewInit {
     ({ id }) => id === this.model().sourceOperationId,
   ));
   readonly clientMessage = this.clientMessageValue.asReadonly();
+  readonly availabilityLabel = stockAvailabilityLabel;
+  readonly reasonLabel = stockNonSellableReasonLabel;
 
   ngAfterViewInit(): void {
     document.getElementById('counter-movement-title')?.focus();
@@ -70,20 +74,6 @@ export class CounterMovementPage implements AfterViewInit {
 
   financialContextLabel(context: 'takeaway' | 'onsite' | null): string {
     return context === 'takeaway' ? 'À emporter' : context === 'onsite' ? 'Sur place' : 'Non alimentaire';
-  }
-
-  availabilityLabel(availability: 'available' | 'outOfStock' | 'notSellable'): string {
-    return availability === 'available' ? 'Disponible' : availability === 'outOfStock' ? 'Rupture' : 'Non vendable';
-  }
-
-  reasonLabel(reason: 'archived' | 'dlcExpired' | 'unsellablePackaging' | null): string {
-    return reason === 'archived'
-      ? 'Article archivé'
-      : reason === 'dlcExpired'
-        ? 'DLC dépassée'
-        : reason === 'unsellablePackaging'
-          ? 'Packaging invendable'
-          : '—';
   }
 
   signed(effect: number): string {
