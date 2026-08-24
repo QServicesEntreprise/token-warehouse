@@ -2,6 +2,11 @@
   <header class="page-header"><p class="eyebrow">Catalogue d’Articles</p><h1 id="article-details-title" tabindex="-1">Détail de l’Article</h1><a routerLink="/catalogue">Retour au Catalogue</a></header>
   <section class="panel" aria-labelledby="lookup-title">
     <h2 id="lookup-title" class="sr-only">Consulter par EAN-13</h2>
+    <form class="lookup" (submit)="onLookupSubmit($event)">
+      <label for="lookupEan13">EAN-13</label>
+      <input id="lookupEan13" autocomplete="off" inputmode="numeric" [value]="lookupEan13()" (input)="setLookupEan13($event)" />
+      <button type="submit">Consulter</button>
+    </form>
     @if (store.state() === 'loading') { <p role="status">Chargement de l’Article…</p> }
     @if (store.state() === 'error') { <p id="lookup-error" class="form-error" role="alert">{{ store.error() }}</p> }
     @if (store.article(); as article) {

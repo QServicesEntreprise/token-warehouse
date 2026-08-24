@@ -1,4 +1,4 @@
-import { ConsumptionMode } from '../shared-kernel/consumption-mode';
+import { ConsumptionMode } from '../../../shared-kernel/consumption-mode';
 
 export interface SalePriceQuote {
   saleContext?: ConsumptionMode;

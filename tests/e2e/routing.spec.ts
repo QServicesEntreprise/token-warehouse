@@ -52,3 +52,13 @@ test('opens every section directly and restores navigation history', async ({ pa
     await expect(page.locator(route.target)).toBeFocused();
   }
 });
+
+test('keeps an unsubmitted Catalogue filter while visiting another section', async ({ page }) => {
+  await page.goto('/catalogue');
+  await page.locator('#catalog-search').fill('brouillon conservé');
+
+  await page.getByRole('link', { name: 'Dashboard', exact: true }).click();
+  await page.getByRole('link', { name: 'Catalogue', exact: true }).click();
+
+  await expect(page.locator('#catalog-search')).toHaveValue('brouillon conservé');
+});

@@ -3,17 +3,29 @@ import { ActivatedRouteSnapshot, DetachedRouteHandle, RouteReuseStrategy, Routes
 const loadLegacy = () => import('./legacy-backoffice-page').then((module) => module.LegacyBackofficePage);
 
 let legacyHandle: DetachedRouteHandle | null = null;
+let catalogueListHandle: DetachedRouteHandle | null = null;
 
 const isLegacyRoute = (route: ActivatedRouteSnapshot): boolean => (
   route.routeConfig?.loadComponent === loadLegacy
 );
 
+const isCatalogueListRoute = (route: ActivatedRouteSnapshot): boolean => (
+  route.routeConfig?.path === '' && route.parent?.routeConfig?.path === 'catalogue'
+);
+
 export const legacyRouteReuseStrategy: RouteReuseStrategy = {
   // ponytail: one shared legacy handle preserves form state until RF-10 removes the strangler.
-  shouldDetach: (route) => isLegacyRoute(route),
-  store: (_, handle) => { legacyHandle = handle; },
-  shouldAttach: (route) => isLegacyRoute(route) && legacyHandle !== null,
-  retrieve: (route) => isLegacyRoute(route) ? legacyHandle : null,
+  shouldDetach: (route) => isLegacyRoute(route) || isCatalogueListRoute(route),
+  store: (route, handle) => {
+    if (isCatalogueListRoute(route)) catalogueListHandle = handle;
+    else legacyHandle = handle;
+  },
+  shouldAttach: (route) => isCatalogueListRoute(route)
+    ? catalogueListHandle !== null
+    : isLegacyRoute(route) && legacyHandle !== null,
+  retrieve: (route) => isCatalogueListRoute(route)
+    ? catalogueListHandle
+    : isLegacyRoute(route) ? legacyHandle : null,
   shouldReuseRoute: (future, current) => (
     future.routeConfig === current.routeConfig
     || (isLegacyRoute(future) && isLegacyRoute(current))

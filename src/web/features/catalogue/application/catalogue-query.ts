@@ -1,10 +1,10 @@
 import { ConsumptionMode } from '../../../shared-kernel/consumption-mode';
 import { ArticleType } from '../domain/article-type';
-import { CatalogueStatus } from '../domain/catalogue-status';
+import { ArticleStatusFilter } from '../domain/article-status-filter';
 import { Packaging } from '../domain/packaging';
 
 export interface CatalogueQuery {
-  status: CatalogueStatus;
+  status: ArticleStatusFilter;
   search?: string;
   type?: ArticleType;
   mode?: ConsumptionMode;

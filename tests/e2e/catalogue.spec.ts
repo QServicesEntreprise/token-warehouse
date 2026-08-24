@@ -68,7 +68,7 @@ test('recherche le Catalogue et conserve une intersection vide de trois filtres'
   await page.locator('#catalog-status').selectOption('archived');
   await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
   await expect(catalogPanel.getByRole('row', { name: /Article archivé/ })).toBeVisible();
-  await page.getByRole('link', { name: 'Consulter Article archivé' }).click();
+  await page.getByRole('button', { name: 'Consulter Article archivé' }).click();
   await expect(page.getByRole('heading', { name: 'Article archivé' })).toBeVisible();
   await expect(page.locator('section[aria-labelledby="lookup-title"]').getByText('Archivé', { exact: true })).toBeVisible();
   await page.goBack();
@@ -81,7 +81,7 @@ test('recherche le Catalogue et conserve une intersection vide de trois filtres'
   await page.locator('#catalog-search').fill('chocolat');
   await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
   await expect(articleRow(foodEan)).toBeVisible();
-  const activeDetailAction = articleRow(foodEan).getByRole('link', { name: 'Consulter Chocolat noir' });
+  const activeDetailAction = articleRow(foodEan).getByRole('button', { name: 'Consulter Chocolat noir' });
   await activeDetailAction.focus();
   await page.keyboard.press('Enter');
   await expect(page.getByRole('heading', { name: 'Chocolat noir' })).toBeVisible();
@@ -325,12 +325,13 @@ test('refuse les opérations et le Prix HT sur un Article archivé puis autorise
   await archiveAction.focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('#catalog-lifecycle-status')).toContainText('archivé');
+  await expect(page.locator('#catalog-lifecycle-status')).toBeFocused();
   await expect(articleRow(foodEan)).toHaveCount(0);
 
   await page.locator('#catalog-status').selectOption('archived');
   await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
   await expect(articleRow(foodEan)).toBeVisible();
-  await page.getByRole('link', { name: 'Consulter Chocolat noir' }).click();
+  await page.getByRole('button', { name: 'Consulter Chocolat noir' }).click();
   await expect(page.getByRole('heading', { name: 'Chocolat noir' })).toBeVisible();
   await expect(page.locator('.article-detail').getByText(foodEan)).toBeVisible();
   await expect(page.locator('section[aria-labelledby="lookup-title"]').getByText('Archivé', { exact: true })).toBeVisible();
@@ -409,12 +410,13 @@ test('refuse les opérations et le Prix HT sur un Article archivé puis autorise
   await reactivateAction.focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('#catalog-lifecycle-status')).toContainText('actif');
+  await expect(page.locator('#catalog-lifecycle-status')).toBeFocused();
   await expect(articleRow(foodEan)).toHaveCount(0);
 
   await page.locator('#catalog-status').selectOption('active');
   await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
   await expect(articleRow(foodEan)).toBeVisible();
-  await page.getByRole('link', { name: 'Consulter Chocolat noir' }).click();
+  await page.getByRole('button', { name: 'Consulter Chocolat noir' }).click();
   await expect(page.locator('section[aria-labelledby="lookup-title"]').getByText('Actif', { exact: true })).toBeVisible();
   await page.locator('#detailDlc').fill('2027-02-28');
   await page.getByRole('button', { name: 'Enregistrer les attributs' }).click();
@@ -438,7 +440,7 @@ test('récupère une requête Catalogue en échec et ouvre le détail au clavier
   await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
   await expect(catalogPanel.getByRole('row', { name: /Article archivé/ })).toBeVisible();
 
-  const detailAction = page.getByRole('link', { name: 'Consulter Article archivé' });
+  const detailAction = page.getByRole('button', { name: 'Consulter Article archivé' });
   await detailAction.focus();
   await page.keyboard.press('Enter');
   await expect(page.getByRole('heading', { name: 'Article archivé' })).toBeVisible();

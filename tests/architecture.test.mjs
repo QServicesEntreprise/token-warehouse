@@ -196,6 +196,8 @@ test('Catalogue is an autonomous lazy context and no longer lives in legacy', as
   assert.doesNotMatch(legacy, /ArticleApiService|catalog-title|create-title|lookup-title|catalog[A-Z]/);
   assert.doesNotMatch(sales, /article-api\.service|features\/catalogue/);
   await assert.rejects(readFile(join(appDirectory, 'article-api.service.ts'), 'utf8'));
+  await assert.rejects(readFile(join(appDirectory, 'sale-price-quote.ts'), 'utf8'));
+  await readFile(join(root, 'src/web/features/sales/domain/sale-price-quote.ts'), 'utf8');
 
   const layerSources = async (layer) => Promise.all(
     (await readdir(join(catalogueDirectory, layer), { recursive: true }))

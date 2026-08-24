@@ -71,7 +71,10 @@ export class CatalogueListStore {
       );
       if (requestId !== this.lifecycleRequestId) return false;
       this.lifecycleMessageSignal.set(`${updated.name} est ${updated.status === 'active' ? 'actif' : 'archivé'}.`);
-      this.search(this.currentQuery);
+      this.articlesSignal.update((articles) => this.currentQuery.status === 'all'
+        ? articles.map((article) => article.ean13 === updated.ean13 ? updated : article)
+        : articles.filter((article) => article.ean13 !== updated.ean13));
+      this.stateSignal.set(this.articlesSignal().length > 0 ? 'ready' : 'empty');
       return true;
     } catch (error) {
       if (requestId !== this.lifecycleRequestId) return false;

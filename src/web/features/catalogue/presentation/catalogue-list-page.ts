@@ -1,10 +1,12 @@
 import { AfterViewInit, ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { NavigationEnd, Router, RouterLink } from '@angular/router';
+import { filter } from 'rxjs';
 import { CatalogueListStore } from '../application/catalogue-list-store';
 import { CatalogueQuery } from '../application/catalogue-query';
 import { ArticleSummary } from '../domain/article-summary';
 import { ArticleType } from '../domain/article-type';
-import { CatalogueStatus } from '../domain/catalogue-status';
+import { ArticleStatusFilter } from '../domain/article-status-filter';
 import { Packaging } from '../domain/packaging';
 import { ConsumptionMode } from '../../../shared-kernel/consumption-mode';
 
@@ -19,7 +21,7 @@ import { ConsumptionMode } from '../../../shared-kernel/consumption-mode';
 export class CatalogueListPage implements OnInit, AfterViewInit {
   readonly store = inject(CatalogueListStore);
   private readonly searchSignal = signal('');
-  private readonly statusSignal = signal<CatalogueStatus>('active');
+  private readonly statusSignal = signal<ArticleStatusFilter>('active');
   private readonly typeSignal = signal<ArticleType | 'all'>('all');
   private readonly modeSignal = signal<ConsumptionMode | ''>('');
   private readonly packagingSignal = signal<Packaging | ''>('');
@@ -29,6 +31,14 @@ export class CatalogueListPage implements OnInit, AfterViewInit {
   readonly type = this.typeSignal.asReadonly();
   readonly mode = this.modeSignal.asReadonly();
   readonly packaging = this.packagingSignal.asReadonly();
+
+  constructor() {
+    inject(Router).events.pipe(
+      filter((event): event is NavigationEnd => event instanceof NavigationEnd),
+      filter((event) => event.urlAfterRedirects.split('?')[0] === '/catalogue'),
+      takeUntilDestroyed(),
+    ).subscribe(() => setTimeout(() => document.getElementById('catalog-title')?.focus()));
+  }
 
   ngOnInit(): void {
     this.load();
@@ -43,7 +53,7 @@ export class CatalogueListPage implements OnInit, AfterViewInit {
   }
 
   setStatus(event: Event): void {
-    this.statusSignal.set((event.target as HTMLSelectElement).value as CatalogueStatus);
+    this.statusSignal.set((event.target as HTMLSelectElement).value as ArticleStatusFilter);
   }
 
   setType(event: Event): void {

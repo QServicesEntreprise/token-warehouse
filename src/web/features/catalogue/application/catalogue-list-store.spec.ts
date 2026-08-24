@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { Subject } from 'rxjs';
+import { Subject, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { ArticleSummary } from '../domain/article-summary';
 import { CATALOGUE_GATEWAY } from './catalogue-gateway-token';
@@ -33,6 +33,40 @@ describe('CatalogueListStore', () => {
     expect(store.articles().map(({ name }) => name)).toEqual(['Courant']);
     expect(store.state()).toBe('ready');
   });
+
+  it('keeps the previous result when a refresh fails', () => {
+    fake.searchHandler = () => of([article('1111111111116', 'Conservé')]);
+    store.search({ status: 'active' });
+    fake.searchHandler = () => throwError(() => ({ title: 'Catalogue indisponible' }));
+
+    store.search({ status: 'active' });
+
+    expect(store.articles().map(({ name }) => name)).toEqual(['Conservé']);
+    expect(store.state()).toBe('error');
+    expect(store.stale()).toBe(true);
+  });
+
+  it('removes an archived Article before a delayed refresh can steal focus', async () => {
+    const delayedRefresh = new Subject<readonly ArticleSummary[]>();
+    fake.searchHandler = () => of([article('1111111111116', 'À archiver')]);
+    store.search({ status: 'active' });
+    fake.archiveHandler = () => of({
+      ean13: '1111111111116',
+      type: 'food',
+      name: 'À archiver',
+      priceHtCents: 100,
+      dlc: '2030-01-15',
+      consumptionModes: ['takeaway'],
+      status: 'archived',
+      priceQuotes: [],
+    });
+    fake.searchHandler = () => delayedRefresh;
+
+    await store.toggleLifecycle(store.articles()[0]);
+
+    expect(store.articles()).toEqual([]);
+    expect(store.lifecycleMessage()).toContain('archivé');
+  });
 });
 
 const article = (ean13: string, name: string): ArticleSummary => ({
@@ -42,6 +76,5 @@ const article = (ean13: string, name: string): ArticleSummary => ({
   priceHtCents: 100,
   dlc: '2030-01-15',
   consumptionModes: ['takeaway'],
-  isActive: true,
   status: 'active',
 });

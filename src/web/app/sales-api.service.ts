@@ -1,8 +1,8 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
+import { SalePriceQuote } from '../features/sales/domain/sale-price-quote';
 import { ConsumptionMode } from '../shared-kernel/consumption-mode';
-import { SalePriceQuote } from './sale-price-quote';
 import { StockAvailability, StockPositionResponse, StockReason } from './stock-api.service';
 
 export interface SaleArticleResponse {

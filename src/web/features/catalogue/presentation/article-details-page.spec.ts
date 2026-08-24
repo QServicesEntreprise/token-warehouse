@@ -17,7 +17,6 @@ describe('ArticleDetailsPage', () => {
       priceHtCents: 1000,
       dlc: '2030-01-15',
       consumptionModes: ['takeaway'],
-      isActive: true,
       status: 'active',
       priceQuotes: [],
     });
@@ -38,5 +37,6 @@ describe('ArticleDetailsPage', () => {
 
     expect(fixture.nativeElement.querySelector('.article-detail').textContent).toContain('Café test');
     expect(fixture.nativeElement.querySelector('.article-detail').textContent).toContain('0123456789012');
+    expect(fixture.nativeElement.querySelector('#lookupEan13').value).toBe('0123456789012');
   });
 });

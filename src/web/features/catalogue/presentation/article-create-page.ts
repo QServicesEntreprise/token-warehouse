@@ -1,6 +1,7 @@
 import { AfterViewInit, ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { FieldTree, FormField, TreeValidationResult, form, hidden, pattern, required, submit } from '@angular/forms/signals';
 import { Router, RouterLink } from '@angular/router';
+import { ArticleCreateCommand } from '../application/article-create-command';
 import { ArticleCreateStore } from '../application/article-create-store';
 import { ArticleType } from '../domain/article-type';
 import { Packaging } from '../domain/packaging';
@@ -60,13 +61,11 @@ export class ArticleCreatePage implements AfterViewInit {
     await submit(this.articleForm, {
       action: async () => {
         const value = this.modelSignal();
-        const created = await this.store.create({
-          ean13: value.ean13,
-          type: value.type,
-          name: value.name,
-          priceHtCents: Number(value.priceHtCents),
-          ...(value.type === 'food' ? { dlc: value.dlc, consumptionModes: value.consumptionModes } : { packaging: value.packaging as Packaging }),
-        });
+        const base = { ean13: value.ean13, name: value.name, priceHtCents: Number(value.priceHtCents) };
+        const command: ArticleCreateCommand = value.type === 'food'
+          ? { ...base, type: 'food', dlc: value.dlc, consumptionModes: value.consumptionModes }
+          : { ...base, type: 'nonFood', packaging: value.packaging as Packaging };
+        const created = await this.store.create(command);
         if (created) {
           await this.router.navigate(['/catalogue', created.ean13]);
           return undefined;

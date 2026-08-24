@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { throwError } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { ArticleCreateStore } from './article-create-store';
 import { CATALOGUE_GATEWAY } from './catalogue-gateway-token';
@@ -36,5 +36,22 @@ describe('ArticleCreateStore', () => {
     expect(created).toBeNull();
     expect(store.fieldErrors()).toEqual({ ean13: ['Checksum invalide.'] });
     expect(store.error()).toBe('Création refusée');
+  });
+
+  it('returns the created Article and clears the pending state', async () => {
+    const article = {
+      ean13: '0123456789012',
+      type: 'nonFood' as const,
+      name: 'Batterie',
+      priceHtCents: 2500,
+      packaging: 'new' as const,
+      status: 'active' as const,
+      priceQuotes: [],
+    };
+    fake.createHandler = () => of(article);
+
+    await expect(store.create(article)).resolves.toEqual(article);
+    expect(store.submitting()).toBe(false);
+    expect(store.error()).toBe('');
   });
 });

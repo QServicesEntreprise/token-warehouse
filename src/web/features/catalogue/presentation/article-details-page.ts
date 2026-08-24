@@ -1,7 +1,7 @@
-import { AfterViewInit, ChangeDetectionStrategy, Component, effect, inject, signal } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, Component, inject, linkedSignal, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FieldTree, FormField, TreeValidationResult, form, hidden, pattern, required, submit } from '@angular/forms/signals';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { distinctUntilChanged, map } from 'rxjs';
 import { ArticleDetailsStore } from '../application/article-details-store';
 import { ArticleType } from '../domain/article-type';
@@ -31,9 +31,24 @@ interface PriceFormModel {
 export class ArticleDetailsPage implements AfterViewInit {
   readonly store = inject(ArticleDetailsStore);
   private readonly route = inject(ActivatedRoute);
-  private readonly attributeModelSignal = signal<AttributeFormModel>({ type: 'food', name: '', dlc: '', consumptionModes: [], packaging: '' });
-  private readonly priceModelSignal = signal<PriceFormModel>({ priceHtCents: '' });
+  private readonly router = inject(Router);
+  private readonly lookupEan13Signal = signal('');
+  private readonly attributeModelSignal = linkedSignal<AttributeFormModel>(() => {
+    const article = this.store.article();
+    return article ? {
+      type: article.type,
+      name: article.name,
+      dlc: article.dlc ?? '',
+      consumptionModes: [...(article.consumptionModes ?? [])],
+      packaging: article.packaging ?? '',
+    } : { type: 'food', name: '', dlc: '', consumptionModes: [], packaging: '' };
+  });
+  private readonly priceModelSignal = linkedSignal<PriceFormModel>(() => {
+    const article = this.store.article();
+    return { priceHtCents: article ? String(article.priceHtCents) : '' };
+  });
   readonly attributeModel = this.attributeModelSignal.asReadonly();
+  readonly lookupEan13 = this.lookupEan13Signal.asReadonly();
   readonly modes: readonly { value: ConsumptionMode; label: string }[] = [{ value: 'takeaway', label: 'À emporter' }, { value: 'onsite', label: 'Sur place' }];
   readonly attributeForm = form(this.attributeModelSignal, (path) => {
     required(path.name, { message: 'Le nom est requis.' });
@@ -54,23 +69,24 @@ export class ArticleDetailsPage implements AfterViewInit {
       map((params) => params.get('ean13') ?? ''),
       distinctUntilChanged(),
       takeUntilDestroyed(),
-    ).subscribe((ean13) => this.store.load(ean13));
-    effect(() => {
-      const article = this.store.article();
-      if (!article) return;
-      this.attributeModelSignal.set({
-        type: article.type,
-        name: article.name,
-        dlc: article.dlc ?? '',
-        consumptionModes: [...(article.consumptionModes ?? [])],
-        packaging: article.packaging ?? '',
-      });
-      this.priceModelSignal.set({ priceHtCents: String(article.priceHtCents) });
+    ).subscribe((ean13) => {
+      this.lookupEan13Signal.set(ean13);
+      this.store.load(ean13);
     });
   }
 
   ngAfterViewInit(): void {
     document.getElementById('article-details-title')?.focus();
+  }
+
+  setLookupEan13(event: Event): void {
+    this.lookupEan13Signal.set((event.target as HTMLInputElement).value);
+  }
+
+  async onLookupSubmit(event: Event): Promise<void> {
+    event.preventDefault();
+    const ean13 = this.lookupEan13Signal().trim();
+    if (ean13) await this.router.navigate(['/catalogue', ean13]);
   }
 
   toggleMode(mode: ConsumptionMode, event: Event): void {

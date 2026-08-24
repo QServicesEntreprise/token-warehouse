@@ -17,7 +17,6 @@ describe('CatalogueListPage', () => {
       priceHtCents: 1000,
       dlc: '2030-01-15',
       consumptionModes: ['takeaway'],
-      isActive: true,
       status: 'active',
     }]);
     await TestBed.configureTestingModule({

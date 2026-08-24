@@ -23,7 +23,12 @@ describe('mapArticleDto', () => {
     };
 
     expect(mapArticleDto(dto)).toEqual({
-      ...dto,
+      ean13: dto.ean13,
+      type: dto.type,
+      name: dto.name,
+      priceHtCents: dto.priceHtCents,
+      dlc: dto.dlc,
+      status: dto.status,
       consumptionModes: ['takeaway'],
       stock: { physicalQuantity: 4, sellableQuantity: 3 },
       priceQuotes: [{

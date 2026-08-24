@@ -59,9 +59,9 @@
           @for (article of store.articles(); track article.ean13) {
             <tr>
               <th scope="row">{{ article.name }}</th><td>{{ article.ean13 }}</td><td>{{ article.type === 'food' ? 'Alimentaire' : 'Non alimentaire' }}</td><td>{{ isActive(article) ? 'Actif' : 'Archivé' }}</td>
-              <td>{{ article.type === 'food' ? formatModes(article.consumptionModes ?? []) : formatPackaging(article.packaging) }}</td><td>{{ article.priceHtCents }} centimes</td>
+              <td>{{ article.type === 'food' ? formatModes(article.consumptionModes) : formatPackaging(article.packaging) }}</td><td>{{ article.priceHtCents }} centimes</td>
               <td>
-                <a class="table-action link-button" [attr.aria-label]="'Consulter ' + article.name" [routerLink]="['/catalogue', article.ean13]">Détail</a>
+                <button type="button" class="table-action link-button" [attr.aria-label]="'Consulter ' + article.name" [routerLink]="['/catalogue', article.ean13]">Détail</button>
                 <button type="button" class="table-action" [disabled]="store.transitioningEan() === article.ean13" [attr.aria-label]="(isActive(article) ? 'Archiver ' : 'Réactiver ') + article.name" (click)="toggleLifecycle(article)">
                   {{ store.transitioningEan() === article.ean13 ? 'Traitement…' : (isActive(article) ? 'Archiver' : 'Réactiver') }}
                 </button>

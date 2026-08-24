@@ -1,13 +1,13 @@
 import { ConsumptionMode } from '../../../shared-kernel/consumption-mode';
-import { ArticleType } from '../domain/article-type';
 import { Packaging } from '../domain/packaging';
 
-export interface ArticleCreateCommand {
+interface ArticleCreateCommandBase {
   ean13: string;
-  type: ArticleType;
   name: string;
   priceHtCents: number;
-  dlc?: string;
-  consumptionModes?: ConsumptionMode[];
-  packaging?: Packaging;
 }
+
+export type ArticleCreateCommand = ArticleCreateCommandBase & (
+  | { type: 'food'; dlc: string; consumptionModes: ConsumptionMode[]; packaging?: never }
+  | { type: 'nonFood'; packaging: Packaging; dlc?: never; consumptionModes?: never }
+);
