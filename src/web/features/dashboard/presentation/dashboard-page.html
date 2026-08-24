@@ -1,7 +1,7 @@
-<section id="dashboard-panel" class="panel" aria-labelledby="dashboard-title">
+<main id="dashboard-panel" class="panel" aria-labelledby="dashboard-title">
   <div>
     <p class="eyebrow">Pilotage courant</p>
-    <h2 id="dashboard-title">Dashboard</h2>
+    <h1 id="dashboard-title">Dashboard</h1>
   </div>
   <p>Une lecture unique des positions courantes du Catalogue, sans recalcul côté navigateur.</p>
 
@@ -120,22 +120,22 @@
   @if (store.dashboard(); as current) {
     <div class="dashboard-kpis" aria-label="Indicateurs de Stock courant">
       <article id="dashboard-kpi-physical" class="dashboard-kpi">
-        <h3>Stock physique</h3>
+        <h2>Stock physique</h2>
         <p>{{ current.kpis.physicalStock }} unités</p>
       </article>
       <article id="dashboard-kpi-sellable" class="dashboard-kpi">
-        <h3>Stock vendable</h3>
+        <h2>Stock vendable</h2>
         <p>{{ current.kpis.sellableStock }} unités</p>
       </article>
       <article id="dashboard-kpi-non-sellable" class="dashboard-kpi">
-        <h3>Stock non vendable</h3>
+        <h2>Stock non vendable</h2>
         <p>{{ current.kpis.nonSellableStock }} unités</p>
       </article>
     </div>
 
     <div class="dashboard-alerts">
       <section id="dashboard-alert-out-of-stock" aria-labelledby="dashboard-out-of-stock-title">
-        <h3 id="dashboard-out-of-stock-title">Ruptures actives</h3>
+        <h2 id="dashboard-out-of-stock-title">Ruptures actives</h2>
         @if (current.alerts.outOfStock.length > 0) {
           <ul>
             @for (alert of current.alerts.outOfStock; track alert.ean13) {
@@ -148,7 +148,7 @@
       </section>
 
       <section id="dashboard-alert-not-sellable" aria-labelledby="dashboard-not-sellable-title">
-        <h3 id="dashboard-not-sellable-title">Articles non vendables</h3>
+        <h2 id="dashboard-not-sellable-title">Articles non vendables</h2>
         @if (current.alerts.notSellable.length > 0) {
           <ul>
             @for (alert of current.alerts.notSellable; track alert.ean13) {
@@ -163,7 +163,7 @@
 
     @if (current.flowsByDay.length > 0) {
       <section id="dashboard-flows" aria-labelledby="dashboard-flows-title">
-        <h3 id="dashboard-flows-title">Flux quotidiens</h3>
+        <h2 id="dashboard-flows-title">Flux quotidiens</h2>
         <p>Quantités acceptées selon le calendrier de l’Entrepôt.</p>
         <div class="table-wrap">
           <table id="dashboard-flows-table">
@@ -191,19 +191,19 @@
 
     @if (current.financial; as financial) {
       <section id="dashboard-financial" aria-labelledby="dashboard-financial-title">
-        <h3 id="dashboard-financial-title">Indicateurs financiers</h3>
+        <h2 id="dashboard-financial-title">Indicateurs financiers</h2>
         <p>Montants historiques fournis par les Ventes validées, en euros.</p>
         <div class="dashboard-financial-kpis" aria-label="Résumé financier">
           <article id="dashboard-financial-revenue-ht" class="dashboard-kpi">
-            <h4>Chiffre d’affaires HT</h4>
+            <h3>Chiffre d’affaires HT</h3>
             <p>{{ formatFinancialCents(financial.revenueHtCents) }}</p>
           </article>
           <article id="dashboard-financial-revenue-ttc" class="dashboard-kpi">
-            <h4>Chiffre d’affaires TTC</h4>
+            <h3>Chiffre d’affaires TTC</h3>
             <p>{{ formatFinancialCents(financial.revenueTtcCents) }}</p>
           </article>
           <article id="dashboard-financial-vat" class="dashboard-kpi">
-            <h4>TVA collectée</h4>
+            <h3>TVA collectée</h3>
             <p>{{ formatFinancialCents(financial.vatCollectedCents) }}</p>
           </article>
         </div>
@@ -269,4 +269,4 @@
       </div>
     }
   }
-</section>
+</main>

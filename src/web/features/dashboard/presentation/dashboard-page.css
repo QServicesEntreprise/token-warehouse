@@ -30,9 +30,9 @@
   padding: 1rem;
 }
 
+.dashboard-kpi h2,
 .dashboard-kpi h3,
-.dashboard-kpi h4,
-.dashboard-alerts h3 {
+.dashboard-alerts h2 {
   margin: 0;
 }
 
