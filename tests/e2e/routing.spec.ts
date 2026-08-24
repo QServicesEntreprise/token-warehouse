@@ -17,27 +17,40 @@ test('opens every section directly and restores navigation history', async ({ pa
     await page.goto(route.path, { waitUntil: 'networkidle' });
     await expect(page).toHaveURL(new RegExp(`${route.path.replaceAll('/', '\\/')}$`));
     await expect(page.locator(route.target)).toBeInViewport();
+    await expect(page.locator(route.target)).toBeFocused();
     await expect(page.getByRole('link', { name: route.link, exact: true })).toHaveAttribute('aria-current', 'page');
 
     await page.reload({ waitUntil: 'networkidle' });
     await expect(page).toHaveURL(new RegExp(`${route.path.replaceAll('/', '\\/')}$`));
     await expect(page.locator(route.target)).toBeInViewport();
+    await expect(page.locator(route.target)).toBeFocused();
     await expect(page.getByRole('link', { name: route.link, exact: true })).toHaveAttribute('aria-current', 'page');
   }
 
-  await page.goto('/dashboard');
-  const catalogueLink = page.getByRole('link', { name: 'Catalogue', exact: true });
-  await catalogueLink.focus();
-  await expect(catalogueLink).toBeFocused();
-  await page.keyboard.press('Enter');
-  await expect(page).toHaveURL(/\/catalogue$/);
-  await expect(page.locator('#catalog-title')).toBeInViewport();
+  await page.goto('/dashboard', { waitUntil: 'networkidle' });
+  await page.locator('#catalog-search').fill('brouillon conservé');
+  for (const route of routes.slice(1)) {
+    const link = page.getByRole('link', { name: route.link, exact: true });
+    await link.focus();
+    await expect(link).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(new RegExp(`${route.path.replaceAll('/', '\\/')}$`));
+    await expect(page.locator(route.target)).toBeInViewport();
+    await expect(page.locator(route.target)).toBeFocused();
+  }
 
-  await page.goBack();
-  await expect(page).toHaveURL(/\/dashboard$/);
-  await expect(page.locator('#dashboard-title')).toBeInViewport();
+  for (const route of [...routes.slice(0, -1)].reverse()) {
+    await page.goBack();
+    await expect(page).toHaveURL(new RegExp(`${route.path.replaceAll('/', '\\/')}$`));
+    await expect(page.locator(route.target)).toBeInViewport();
+    await expect(page.locator(route.target)).toBeFocused();
+  }
 
-  await page.goForward();
-  await expect(page).toHaveURL(/\/catalogue$/);
-  await expect(page.locator('#catalog-title')).toBeInViewport();
+  for (const route of routes.slice(1)) {
+    await page.goForward();
+    await expect(page).toHaveURL(new RegExp(`${route.path.replaceAll('/', '\\/')}$`));
+    await expect(page.locator(route.target)).toBeInViewport();
+    await expect(page.locator(route.target)).toBeFocused();
+  }
+  await expect(page.locator('#catalog-search')).toHaveValue('brouillon conservé');
 });

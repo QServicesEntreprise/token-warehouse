@@ -12,7 +12,7 @@ import {
   required,
   submit,
 } from '@angular/forms/signals';
-import { ActivatedRoute, NavigationEnd, Router } from '@angular/router';
+import { NavigationEnd, Router } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { firstValueFrom } from 'rxjs';
 import {
@@ -153,7 +153,7 @@ const routeSectionTargetIds: Record<string, string> = {
   imports: [DashboardComponent, FormField, FormRoot],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <main aria-labelledby="page-title" [attr.data-route-section]="expectedSection()">
+    <main aria-labelledby="page-title">
       <header class="page-header">
         <p class="eyebrow">Catalogue d’Articles</p>
         <h1 id="page-title">Créer et consulter un Article</h1>
@@ -1282,9 +1282,7 @@ const routeSectionTargetIds: Record<string, string> = {
   `,
 })
 export class LegacyBackofficePage implements AfterViewInit, OnInit {
-  private readonly route = inject(ActivatedRoute, { optional: true });
   private readonly router = inject(Router, { optional: true });
-  readonly expectedSection = signal(this.currentRouteSection());
 
   private readonly api = inject(ArticleApiService);
   private readonly stockApi = inject(StockApiService);
@@ -1440,13 +1438,16 @@ export class LegacyBackofficePage implements AfterViewInit, OnInit {
   }
 
   private openCurrentRouteSection(): void {
-    const section = this.currentRouteSection();
-    this.expectedSection.set(section);
-    document.getElementById(routeSectionTargetIds[section ?? ''])?.scrollIntoView();
+    const target = document.getElementById(routeSectionTargetIds[this.currentRouteSection() ?? '']);
+    if (target) {
+      target.tabIndex = -1;
+      target.focus({ preventScroll: true });
+      target.scrollIntoView();
+    }
   }
 
   private currentRouteSection(): string | undefined {
-    let route = this.route;
+    let route = this.router?.routerState.root;
     while (route?.firstChild) {
       route = route.firstChild;
     }
