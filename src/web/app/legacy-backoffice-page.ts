@@ -12,6 +12,7 @@ import {
   required,
   submit,
 } from '@angular/forms/signals';
+import { ActivatedRoute, NavigationEnd, Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import {
   ArticleApiService,
@@ -136,28 +137,17 @@ const lastInventoryIdStorageKey = 'token-warehouse.last-inventory-id';
 const lastSaleIdStorageKey = 'token-warehouse.last-sale-id';
 
 @Component({
-  selector: 'app-root',
+  selector: 'app-legacy-backoffice-page',
   standalone: true,
   imports: [DashboardComponent, FormField, FormRoot],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <main aria-labelledby="page-title">
+    <main aria-labelledby="page-title" [attr.data-route-section]="expectedSection()">
       <header class="page-header">
         <p class="eyebrow">Catalogue d’Articles</p>
         <h1 id="page-title">Créer et consulter un Article</h1>
         <p>Une référence EAN-13, un Prix HT en centimes et les attributs de sa classification.</p>
       </header>
-
-      <nav class="main-nav" aria-label="Navigation principale">
-        <a href="#dashboard-panel">Dashboard</a>
-        <a href="#stock-panel">Stock</a>
-        <a href="#sale-panel">Vente</a>
-        <a href="#supply-panel">Approvisionnement</a>
-        <a href="#inventory-title">Inventaire</a>
-        <a href="#counter-movement-panel">Contre-mouvement</a>
-        <a href="#history-panel">Historique</a>
-        <a href="#catalog-title">Catalogue</a>
-      </nav>
 
       <app-dashboard />
 
@@ -1280,13 +1270,25 @@ const lastSaleIdStorageKey = 'token-warehouse.last-sale-id';
     </main>
   `,
 })
-export class AppComponent implements OnInit {
+export class LegacyBackofficePage implements OnInit {
+  private readonly route = inject(ActivatedRoute, { optional: true });
+  private readonly router = inject(Router, { optional: true });
+  readonly expectedSection = signal(this.currentRouteSection());
+
   private readonly api = inject(ArticleApiService);
   private readonly stockApi = inject(StockApiService);
   private readonly inventoryApi = inject(InventoryApiService);
   private readonly counterMovementApi = inject(CounterMovementApiService);
   private readonly salesApi = inject(SalesApiService);
   private readonly historyApi = inject(HistoryApiService);
+
+  constructor() {
+    this.router?.events.subscribe((event) => {
+      if (event instanceof NavigationEnd) {
+        this.expectedSection.set(this.currentRouteSection());
+      }
+    });
+  }
 
   readonly model = signal<ArticleFormModel>({ ...initialModel, consumptionModes: [] });
   readonly supplyModel = signal<SupplyFormModel>({ ean13: '', quantity: '' });
@@ -1420,6 +1422,14 @@ export class AppComponent implements OnInit {
     void this.loadStock();
     void this.loadLastInventory();
     void this.loadLastSale();
+  }
+
+  private currentRouteSection(): string | undefined {
+    let route = this.route;
+    while (route?.firstChild) {
+      route = route.firstChild;
+    }
+    return route?.snapshot.data['section'] as string | undefined;
   }
   readonly priceHtDraft = signal('');
   readonly priceHtFieldError = signal('');

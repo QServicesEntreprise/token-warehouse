@@ -1,0 +1,28 @@
+<nav class="main-nav" aria-label="Navigation principale">
+  <a
+    routerLink="/dashboard"
+    routerLinkActive="is-active"
+    [routerLinkActiveOptions]="{ exact: true }"
+    ariaCurrentWhenActive="page">
+    Dashboard
+  </a>
+  <a routerLink="/catalogue" routerLinkActive="is-active" ariaCurrentWhenActive="page">Catalogue</a>
+  <a
+    routerLink="/stock"
+    routerLinkActive="is-active"
+    [routerLinkActiveOptions]="{ exact: true }"
+    ariaCurrentWhenActive="page">
+    Stock
+  </a>
+  <a routerLink="/stock/approvisionnements" routerLinkActive="is-active" ariaCurrentWhenActive="page">
+    Approvisionnement
+  </a>
+  <a routerLink="/stock/inventaires" routerLinkActive="is-active" ariaCurrentWhenActive="page">Inventaire</a>
+  <a routerLink="/stock/corrections" routerLinkActive="is-active" ariaCurrentWhenActive="page">
+    Contre-mouvement
+  </a>
+  <a routerLink="/stock/historique" routerLinkActive="is-active" ariaCurrentWhenActive="page">Historique</a>
+  <a routerLink="/ventes" routerLinkActive="is-active" ariaCurrentWhenActive="page">Vente</a>
+</nav>
+
+<router-outlet />

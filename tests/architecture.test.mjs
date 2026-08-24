@@ -131,3 +131,50 @@ test('Playwright runs claim their ports instead of sharing fixed ones', async ()
     assert.doesNotMatch(source, /127\.0\.0\.1:(4200|5100)/);
   }
 });
+
+test('Angular routing shell stays free of legacy business state', async () => {
+  const appDirectory = join(root, 'src/web/app');
+  const app = await readFile(join(appDirectory, 'app.ts'), 'utf8');
+  const template = await readFile(join(appDirectory, 'app.html'), 'utf8');
+  const routes = await readFile(join(appDirectory, 'app.routes.ts'), 'utf8');
+  const config = await readFile(join(appDirectory, 'app.config.ts'), 'utf8');
+
+  assert.match(app, /RouterLink/);
+  assert.match(app, /RouterLinkActive/);
+  assert.match(app, /RouterOutlet/);
+  assert.doesNotMatch(app, /HttpClient|ApiService|\bsignal\s*\(|\bcomputed\s*\(|\binject\s*\(/);
+  assert.match(template, /routerLink=/);
+  assert.match(template, /routerLinkActive=/);
+  assert.match(template, /<router-outlet\s*\/?\s*>/);
+  assert.doesNotMatch(template, /HttpClient|ApiService|\bsignal\s*\(|\bcomputed\s*\(/);
+
+  for (const path of [
+    'dashboard',
+    'catalogue',
+    'stock',
+    'approvisionnements',
+    'inventaires',
+    'corrections',
+    'historique',
+    'ventes',
+  ]) {
+    assert.match(routes, new RegExp(`path: '${path}'`));
+  }
+  assert.match(routes, /data:\s*\{\s*section:/);
+  assert.match(routes, /const loadLegacy\s*=\s*\(\)\s*=>\s*import\(['"]\.\/legacy-backoffice-page['"]\)/);
+  assert.match(routes, /loadComponent:\s*loadLegacy/);
+  assert.match(config, /provideRouter\(routes\)/);
+
+  const legacyAllowlist = [
+    'legacy-backoffice-page.spec.ts',
+    'legacy-backoffice-page.ts',
+  ];
+  const legacyFiles = (await readdir(appDirectory))
+    .filter((file) => file.startsWith('legacy-backoffice-page.'))
+    .sort();
+  assert.deepEqual(legacyFiles, legacyAllowlist);
+  assert.match(
+    await readFile(join(appDirectory, 'legacy-backoffice-page.ts'), 'utf8'),
+    /export class LegacyBackofficePage/,
+  );
+});
