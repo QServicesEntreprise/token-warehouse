@@ -413,3 +413,48 @@ test('rejects an empty bulk Inventory without applying any state', async ({ page
   expect(historyAfterResponse.status()).toBe(200);
   await expect(historyAfterResponse.json()).resolves.toEqual(historyBefore);
 });
+
+test('disables Inventory submission and sends one request while the mutation is pending', async ({ page }) => {
+  await openInventory(page);
+  const submitButton = page.locator('#inventory-form button[type="submit"]');
+  await page.locator('#inventory-ean13').fill(canonicalEan);
+  await page.locator('#inventory-countedQuantity').fill('9');
+
+  let releaseResponse = () => {};
+  const responseGate = new Promise<void>((resolve) => {
+    releaseResponse = resolve;
+  });
+  let postCount = 0;
+  const requestListener = (request: import('@playwright/test').Request) => {
+    const url = new URL(request.url());
+    if (request.method() === 'POST' && url.pathname === '/api/inventories') {
+      postCount += 1;
+    }
+  };
+  const delayedResponse = async (route: Route) => {
+    await responseGate;
+    await route.continue();
+  };
+  await page.route('**/api/inventories', delayedResponse);
+  page.on('request', requestListener);
+
+  const responsePromise = waitForRequest(page, 'POST', '/api/inventories');
+  const twoClicks = page.evaluate(() => {
+    const button = document.querySelector<HTMLButtonElement>('#inventory-form button[type="submit"]');
+    button?.click();
+    button?.click();
+  });
+  try {
+    await expect(submitButton).toBeDisabled();
+    await expect(submitButton).toHaveText('Enregistrement…');
+    await expect.poll(() => postCount).toBe(1);
+    releaseResponse();
+    expect((await responsePromise).status()).toBe(201);
+    await twoClicks;
+  } finally {
+    releaseResponse();
+    await twoClicks.catch(() => {});
+    page.off('request', requestListener);
+    await page.unroute('**/api/inventories', delayedResponse);
+  }
+});

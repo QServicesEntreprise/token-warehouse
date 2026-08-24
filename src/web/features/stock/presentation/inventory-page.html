@@ -48,8 +48,8 @@
       }
 
       <button id="inventory-add-line" type="button" class="secondary-button" (click)="addLine()">Ajouter une ligne</button>
-      <button type="submit" [disabled]="store.submitting()">
-        {{ store.submitting() ? 'Enregistrement…' : 'Enregistrer l’Inventaire' }}
+      <button type="submit" [disabled]="inventoryForm().submitting()">
+        {{ inventoryForm().submitting() ? 'Enregistrement…' : 'Enregistrer l’Inventaire' }}
       </button>
     </form>
 
