@@ -5,13 +5,13 @@ import { Article } from '../domain/article';
 import { ArticleAttributesUpdateCommand } from './article-attributes-update-command';
 import { CatalogueGateway } from './catalogue-gateway';
 import { CATALOGUE_GATEWAY } from './catalogue-gateway-token';
-import { CatalogueListStore } from './catalogue-list-store';
+import { CatalogueInvalidation } from './catalogue-invalidation';
 import { toCatalogueProblem } from './to-catalogue-problem';
 
 @Injectable()
 export class ArticleDetailsStore {
   private readonly gateway = inject(CATALOGUE_GATEWAY);
-  private readonly catalogue = inject(CatalogueListStore);
+  private readonly invalidation = inject(CatalogueInvalidation);
   private readonly ean13Requests = new Subject<string>();
   private readonly articleSignal = signal<Article | null>(null);
   private readonly stateSignal = signal<'loading' | 'ready' | 'error'>('loading');
@@ -20,6 +20,7 @@ export class ArticleDetailsStore {
   private readonly submittingSignal = signal(false);
   private readonly messageSignal = signal('');
   private mutationRequestId = 0;
+  private currentEan13 = '';
 
   readonly article = this.articleSignal.asReadonly();
   readonly state = this.stateSignal.asReadonly();
@@ -52,11 +53,17 @@ export class ArticleDetailsStore {
       this.articleSignal.set(result.article);
       this.stateSignal.set('ready');
     });
+    this.invalidation.articleChanges.pipe(takeUntilDestroyed()).subscribe((ean13) => {
+      if (ean13 === this.currentEan13) this.ean13Requests.next(ean13);
+    });
   }
 
   load(ean13: string): void {
+    this.currentEan13 = ean13;
     this.mutationRequestId += 1;
     this.submittingSignal.set(false);
+    this.fieldErrorsSignal.set({});
+    this.messageSignal.set('');
     this.ean13Requests.next(ean13);
   }
 
@@ -87,7 +94,7 @@ export class ArticleDetailsStore {
     this.messageSignal.set('');
     try {
       const updated = await firstValueFrom(result);
-      this.catalogue.refresh();
+      this.invalidation.notifyArticleChanged(updated.ean13);
       if (requestId !== this.mutationRequestId) return null;
       this.articleSignal.set(updated);
       this.messageSignal.set(message);

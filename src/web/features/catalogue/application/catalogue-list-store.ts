@@ -4,11 +4,13 @@ import { Subject, catchError, firstValueFrom, map, of, switchMap, tap } from 'rx
 import { ArticleSummary } from '../domain/article-summary';
 import { CATALOGUE_GATEWAY } from './catalogue-gateway-token';
 import { CatalogueQuery } from './catalogue-query';
+import { CatalogueInvalidation } from './catalogue-invalidation';
 import { toCatalogueProblem } from './to-catalogue-problem';
 
 @Injectable()
 export class CatalogueListStore {
   private readonly gateway = inject(CATALOGUE_GATEWAY);
+  private readonly invalidation = inject(CatalogueInvalidation);
   private readonly queries = new Subject<CatalogueQuery>();
   private readonly articlesSignal = signal<readonly ArticleSummary[]>([]);
   private readonly stateSignal = signal<'loading' | 'ready' | 'empty' | 'error'>('loading');
@@ -51,6 +53,7 @@ export class CatalogueListStore {
       this.stateSignal.set(result.articles.length > 0 ? 'ready' : 'empty');
       this.staleSignal.set(false);
     });
+    this.invalidation.articleChanges.pipe(takeUntilDestroyed()).subscribe(() => this.refresh());
   }
 
   search(query: CatalogueQuery): void {
@@ -78,7 +81,7 @@ export class CatalogueListStore {
         ? articles.map((article) => article.ean13 === updated.ean13 ? updated : article)
         : articles.filter((article) => article.ean13 !== updated.ean13));
       this.stateSignal.set(this.articlesSignal().length > 0 ? 'ready' : 'empty');
-      this.refresh();
+      this.invalidation.notifyArticleChanged(updated.ean13);
       return true;
     } catch (error) {
       this.lifecycleMessageSignal.set(toCatalogueProblem(error, 'La transition du cycle de vie a échoué.').title);

@@ -33,6 +33,7 @@ export class ArticleDetailsPage implements AfterViewInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly lookupEan13Signal = signal('');
+  private detailLoadId = 0;
   private readonly attributeModelSignal = linkedSignal<AttributeFormModel>(() => {
     const article = this.store.article();
     return article ? {
@@ -70,7 +71,10 @@ export class ArticleDetailsPage implements AfterViewInit {
       distinctUntilChanged(),
       takeUntilDestroyed(),
     ).subscribe((ean13) => {
+      this.detailLoadId += 1;
       this.lookupEan13Signal.set(ean13);
+      this.attributeForm().reset({ type: 'food', name: '', dlc: '', consumptionModes: [], packaging: '' });
+      this.priceForm().reset({ priceHtCents: '' });
       this.store.load(ean13);
     });
   }
@@ -102,6 +106,7 @@ export class ArticleDetailsPage implements AfterViewInit {
 
   async onAttributeSubmit(event: Event): Promise<void> {
     event.preventDefault();
+    const detailLoadId = this.detailLoadId;
     let restoreFocus = false;
     await submit(this.attributeForm, {
       action: async () => {
@@ -109,7 +114,7 @@ export class ArticleDetailsPage implements AfterViewInit {
         const updated = await this.store.updateAttributes(value.type === 'food'
           ? { name: value.name, dlc: value.dlc, consumptionModes: value.consumptionModes }
           : { name: value.name, packaging: value.packaging as Packaging });
-        if (updated) return undefined;
+        if (updated || this.detailLoadId !== detailLoadId) return undefined;
         restoreFocus = true;
         return this.serverErrors('attributes');
       },
@@ -120,11 +125,12 @@ export class ArticleDetailsPage implements AfterViewInit {
 
   async onPriceSubmit(event: Event): Promise<void> {
     event.preventDefault();
+    const detailLoadId = this.detailLoadId;
     let restoreFocus = false;
     await submit(this.priceForm, {
       action: async () => {
         const updated = await this.store.updatePrice(Number(this.priceModelSignal().priceHtCents));
-        if (updated) return undefined;
+        if (updated || this.detailLoadId !== detailLoadId) return undefined;
         restoreFocus = true;
         return this.serverErrors('price');
       },
@@ -135,8 +141,10 @@ export class ArticleDetailsPage implements AfterViewInit {
 
   async toggleLifecycle(): Promise<void> {
     const button = document.getElementById('detail-lifecycle-action');
+    const detailLoadId = this.detailLoadId;
     await this.store.toggleLifecycle();
-    setTimeout(() => (button?.isConnected ? button : document.getElementById('catalog-lifecycle-status'))?.focus());
+    if (this.detailLoadId !== detailLoadId) return;
+    setTimeout(() => { if (button?.isConnected) button.focus(); });
   }
 
   private serverErrors(form: 'attributes' | 'price'): TreeValidationResult {

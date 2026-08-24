@@ -3,13 +3,13 @@ import { firstValueFrom } from 'rxjs';
 import { Article } from '../domain/article';
 import { ArticleCreateCommand } from './article-create-command';
 import { CATALOGUE_GATEWAY } from './catalogue-gateway-token';
-import { CatalogueListStore } from './catalogue-list-store';
+import { CatalogueInvalidation } from './catalogue-invalidation';
 import { toCatalogueProblem } from './to-catalogue-problem';
 
 @Injectable()
 export class ArticleCreateStore {
   private readonly gateway = inject(CATALOGUE_GATEWAY);
-  private readonly catalogue = inject(CatalogueListStore);
+  private readonly invalidation = inject(CatalogueInvalidation);
   private readonly submittingSignal = signal(false);
   private readonly errorSignal = signal('');
   private readonly fieldErrorsSignal = signal<Record<string, string[]>>({});
@@ -24,7 +24,7 @@ export class ArticleCreateStore {
     this.fieldErrorsSignal.set({});
     try {
       const created = await firstValueFrom(this.gateway.create(command));
-      this.catalogue.refresh();
+      this.invalidation.notifyArticleChanged(created.ean13);
       return created;
     } catch (error) {
       const problem = toCatalogueProblem(error, 'La création a échoué.');

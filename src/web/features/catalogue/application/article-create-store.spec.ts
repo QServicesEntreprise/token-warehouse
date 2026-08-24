@@ -17,6 +17,7 @@ describe('ArticleCreateStore', () => {
       CatalogueListStore,
       { provide: CATALOGUE_GATEWAY, useValue: fake },
     ] });
+    TestBed.inject(CatalogueListStore);
     store = TestBed.inject(ArticleCreateStore);
   });
 
