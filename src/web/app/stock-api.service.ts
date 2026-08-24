@@ -62,10 +62,6 @@ export interface BulkSupplyResponse {
 export class StockApiService {
   private readonly http = inject(HttpClient);
 
-  getByEan13(ean13: string): Observable<StockPositionResponse> {
-    return this.http.get<StockPositionResponse>(`/api/stock/${encodeURIComponent(ean13)}`);
-  }
-
   recordSupply(payload: SupplyPayload): Observable<SupplyResponse> {
     return this.http.post<SupplyResponse>('/api/supplies', payload);
   }

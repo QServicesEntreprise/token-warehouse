@@ -1,5 +1,6 @@
 import { AfterViewInit, ChangeDetectionStrategy, Component, OnInit, effect, inject, signal } from '@angular/core';
 import { StockPositionStore } from '../application/stock-position-store';
+import { stockLabels } from './stock-labels';
 
 @Component({
   selector: 'app-stock-page',
@@ -37,21 +38,11 @@ export class StockPage implements AfterViewInit, OnInit {
     this.store.load(this.filterValue());
   }
 
-  availabilityLabel(availability: string): string {
-    return availability === 'available'
-      ? 'Disponible'
-      : availability === 'outOfStock'
-        ? 'Rupture'
-        : 'Non vendable';
+  availabilityLabel(availability: keyof typeof stockLabels.availability): string {
+    return stockLabels.availability[availability];
   }
 
-  reasonLabel(reason: string | null): string {
-    return reason === 'archived'
-      ? 'Article archivé'
-      : reason === 'dlcExpired'
-        ? 'DLC dépassée'
-        : reason === 'unsellablePackaging'
-          ? 'Packaging invendable'
-          : '—';
+  reasonLabel(reason: keyof typeof stockLabels.reason | null): string {
+    return reason ? stockLabels.reason[reason] : '—';
   }
 }

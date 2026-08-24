@@ -1,7 +1,10 @@
 import { ActivatedRouteSnapshot, DetachedRouteHandle, RouteReuseStrategy, Routes } from '@angular/router';
 import { STOCK_GATEWAY } from '../features/stock/application/stock-gateway-token';
+import { InventoryStore } from '../features/stock/application/inventory-store';
+import { LAST_INVENTORY_STORAGE } from '../features/stock/application/last-inventory-storage-token';
 import { StockPositionStore } from '../features/stock/application/stock-position-store';
 import { HttpStockGateway } from '../features/stock/infrastructure/http-stock-gateway';
+import { SessionLastInventoryStorage } from '../features/stock/infrastructure/session-last-inventory-storage';
 import { LAST_SALE_STORAGE } from './features/sales/application/last-sale-storage.token';
 import { SaleStore } from './features/sales/application/sale-store';
 import { SALES_GATEWAY } from './features/sales/application/sales-gateway.token';
@@ -73,8 +76,12 @@ export const routes: Routes = [
       },
       {
         path: 'inventaires',
-        data: { section: 'inventaires' },
-        loadComponent: loadLegacy,
+        providers: [
+          InventoryStore,
+          { provide: STOCK_GATEWAY, useClass: HttpStockGateway },
+          { provide: LAST_INVENTORY_STORAGE, useClass: SessionLastInventoryStorage },
+        ],
+        loadComponent: () => import('../features/stock/presentation/inventory-page').then((module) => module.InventoryPage),
       },
       {
         path: 'corrections',

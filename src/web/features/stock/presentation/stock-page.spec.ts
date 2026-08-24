@@ -1,10 +1,11 @@
 import { TestBed } from '@angular/core/testing';
-import { Observable, of } from 'rxjs';
+import { Observable, of, throwError } from 'rxjs';
 import { describe, expect, it } from 'vitest';
 import { STOCK_GATEWAY } from '../application/stock-gateway-token';
 import { StockGateway } from '../application/stock-gateway';
 import { StockPositionStore } from '../application/stock-position-store';
 import { StockPosition } from '../domain/stock-position';
+import { InventoryReceipt } from '../domain/inventory-receipt';
 import { StockPage } from './stock-page';
 
 const blockedPosition: StockPosition = {
@@ -24,6 +25,18 @@ class FakeStockGateway implements StockGateway {
 
   getByEan13(): Observable<StockPosition> {
     return of(blockedPosition);
+  }
+
+  recordInventory(): Observable<InventoryReceipt> {
+    return throwError(() => new Error('Inventaire hors test'));
+  }
+
+  recordBulkInventory(): Observable<InventoryReceipt> {
+    return throwError(() => new Error('Inventaire hors test'));
+  }
+
+  getInventoryById(): Observable<InventoryReceipt> {
+    return throwError(() => new Error('Inventaire hors test'));
   }
 }
 

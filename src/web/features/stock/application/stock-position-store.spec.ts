@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { Observable, Subject, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { StockPosition } from '../domain/stock-position';
+import { InventoryReceipt } from '../domain/inventory-receipt';
 import { STOCK_GATEWAY } from './stock-gateway-token';
 import { StockGateway } from './stock-gateway';
 import { StockPositionStore } from './stock-position-store';
@@ -26,6 +27,18 @@ class FakeStockGateway implements StockGateway {
 
   getByEan13(ean13: string): Observable<StockPosition> {
     return this.detailResponses.get(ean13) ?? throwError(() => new Error('Position absente'));
+  }
+
+  recordInventory(): Observable<InventoryReceipt> {
+    return throwError(() => new Error('Inventaire hors test'));
+  }
+
+  recordBulkInventory(): Observable<InventoryReceipt> {
+    return throwError(() => new Error('Inventaire hors test'));
+  }
+
+  getInventoryById(): Observable<InventoryReceipt> {
+    return throwError(() => new Error('Inventaire hors test'));
   }
 }
 
