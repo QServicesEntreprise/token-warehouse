@@ -301,6 +301,8 @@ const lastSaleIdStorageKey = 'token-warehouse.last-sale-id';
                   <th scope="col">Prix HT</th>
                   <th scope="col">Stock physique</th>
                   <th scope="col">Stock vendable</th>
+                  <th scope="col">Disponibilité</th>
+                  <th scope="col">Devis TTC</th>
                   <th scope="col"><span class="sr-only">Action</span></th>
                 </tr>
               </thead>
@@ -314,6 +316,12 @@ const lastSaleIdStorageKey = 'token-warehouse.last-sale-id';
                     <td>{{ article.priceHtCents }} centimes</td>
                     <td>{{ article.physicalQuantity }} unités</td>
                     <td>{{ article.sellableQuantity }} unités</td>
+                    <td>{{ formatStockAvailability(article.availability) }}</td>
+                    <td>
+                      @for (quote of article.priceQuotes ?? []; track quote.saleContext ?? quote.taxRate.code) {
+                        <div>{{ quote.saleContext === 'takeaway' ? 'À emporter' : quote.saleContext === 'onsite' ? 'Sur place' : 'Non alimentaire' }} : {{ quote.priceTtcCents }} centimes</div>
+                      }
+                    </td>
                     <td>
                       <button
                         type="button"

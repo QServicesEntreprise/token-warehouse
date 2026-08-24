@@ -16,6 +16,7 @@ import type { BulkSupplyResponse, SupplyResponse } from '../../../src/web/app/st
 import { apiUrl as apiBaseUrl } from '../fixtures';
 import { ean13ForAttempt } from './ean13';
 
+export { apiBaseUrl };
 const defaultFoodEan13 = ean13ForAttempt('111111111', 0);
 const defaultNonFoodEan13 = ean13ForAttempt('222222222', 0);
 
