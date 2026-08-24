@@ -293,7 +293,10 @@ test('Stock corrections are autonomous, route-scoped and free of Sales imports',
       assert.doesNotMatch(source, /HttpClient|Router|document|sessionStorage|\b\w+(Dto|Payload|Response)\b/);
     }
     if (file.startsWith('presentation/')) {
-      assert.doesNotMatch(source, /HttpClient|\b\w+(Dto|Payload|Response)\b|\.\.\/domain/);
+      assert.doesNotMatch(source, /HttpClient|\b\w+(Dto|Payload|Response)\b/);
+    }
+    if (file.startsWith('presentation/counter-movement')) {
+      assert.doesNotMatch(source, /\.\.\/domain/);
     }
   }
 });

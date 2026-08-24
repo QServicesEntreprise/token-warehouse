@@ -27,6 +27,14 @@ class FakeStockGateway implements StockGateway {
     return throwError(() => new Error('Position absente'));
   }
 
+  recordSupply(): Observable<never> {
+    return throwError(() => new Error('Approvisionnement inattendu'));
+  }
+
+  recordBulkSupply(): Observable<never> {
+    return throwError(() => new Error('Approvisionnement inattendu'));
+  }
+
   listCorrectableSources(): Observable<readonly CorrectableSource[]> {
     return of([correctableSource]);
   }
