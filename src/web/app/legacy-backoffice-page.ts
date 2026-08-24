@@ -13,6 +13,7 @@ import {
   submit,
 } from '@angular/forms/signals';
 import { ActivatedRoute, NavigationEnd, Router } from '@angular/router';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { firstValueFrom } from 'rxjs';
 import {
   ArticleApiService,
@@ -1283,7 +1284,7 @@ export class LegacyBackofficePage implements OnInit {
   private readonly historyApi = inject(HistoryApiService);
 
   constructor() {
-    this.router?.events.subscribe((event) => {
+    this.router?.events.pipe(takeUntilDestroyed()).subscribe((event) => {
       if (event instanceof NavigationEnd) {
         this.expectedSection.set(this.currentRouteSection());
       }
