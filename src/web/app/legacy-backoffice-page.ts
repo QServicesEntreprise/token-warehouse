@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
 import {
   FieldTree,
   FormField,
@@ -136,6 +136,16 @@ const initialInventoryModel: InventoryFormModel = {
 
 const lastInventoryIdStorageKey = 'token-warehouse.last-inventory-id';
 const lastSaleIdStorageKey = 'token-warehouse.last-sale-id';
+const routeSectionTargetIds: Record<string, string> = {
+  dashboard: 'dashboard-title',
+  catalogue: 'catalog-title',
+  stock: 'stock-title',
+  approvisionnements: 'supply-title',
+  inventaires: 'inventory-title',
+  corrections: 'counter-movement-title',
+  historique: 'history-title',
+  ventes: 'sale-title',
+};
 
 @Component({
   selector: 'app-legacy-backoffice-page',
@@ -1271,7 +1281,7 @@ const lastSaleIdStorageKey = 'token-warehouse.last-sale-id';
     </main>
   `,
 })
-export class LegacyBackofficePage implements OnInit {
+export class LegacyBackofficePage implements AfterViewInit, OnInit {
   private readonly route = inject(ActivatedRoute, { optional: true });
   private readonly router = inject(Router, { optional: true });
   readonly expectedSection = signal(this.currentRouteSection());
@@ -1286,7 +1296,7 @@ export class LegacyBackofficePage implements OnInit {
   constructor() {
     this.router?.events.pipe(takeUntilDestroyed()).subscribe((event) => {
       if (event instanceof NavigationEnd) {
-        this.expectedSection.set(this.currentRouteSection());
+        this.openCurrentRouteSection();
       }
     });
   }
@@ -1423,6 +1433,16 @@ export class LegacyBackofficePage implements OnInit {
     void this.loadStock();
     void this.loadLastInventory();
     void this.loadLastSale();
+  }
+
+  ngAfterViewInit(): void {
+    this.openCurrentRouteSection();
+  }
+
+  private openCurrentRouteSection(): void {
+    const section = this.currentRouteSection();
+    this.expectedSection.set(section);
+    document.getElementById(routeSectionTargetIds[section ?? ''])?.scrollIntoView();
   }
 
   private currentRouteSection(): string | undefined {
