@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { AfterViewInit, ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
+import { AfterViewInit, ApplicationRef, ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
 import {
   FieldTree,
   FormField,
@@ -291,6 +291,7 @@ const routeSectionTargetIds: Record<string, string> = {
 })
 export class LegacyBackofficePage implements AfterViewInit, OnInit {
   private readonly router = inject(Router, { optional: true });
+  private readonly applicationRef = inject(ApplicationRef);
 
   private readonly inventoryApi = inject(InventoryApiService);
   private readonly historyApi = inject(HistoryApiService);
@@ -352,12 +353,14 @@ export class LegacyBackofficePage implements AfterViewInit, OnInit {
     if (section === 'historique' && this.historyLoaded()) {
       void this.loadHistory();
     }
-    const target = document.getElementById(routeSectionTargetIds[section]);
-    if (target) {
+    void this.applicationRef.whenStable().then(() => {
+      if (this.openedRouteSection !== section) return;
+      const target = document.getElementById(routeSectionTargetIds[section]);
+      if (!target) return;
       target.tabIndex = -1;
       target.focus({ preventScroll: true });
       target.scrollIntoView();
-    }
+    });
   }
 
   private currentRouteSection(): string | undefined {
