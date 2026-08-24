@@ -10,9 +10,10 @@ import {
   DashboardPackaging,
   DashboardQuery,
   DashboardResponse,
+  DashboardStockAvailability,
+  DashboardStockReason,
   DashboardTaxRateSummaryResponse,
 } from './dashboard-api.service';
-import { StockAvailability, StockReason } from './stock-api.service';
 
 type DashboardState = 'loading' | 'ready' | 'empty' | 'error';
 type DashboardTypeSelection = DashboardArticleType | 'all';
@@ -399,7 +400,7 @@ export class DashboardComponent implements OnInit {
     return this.dashboardFieldError(field) === null ? null : `dashboard-${field}-error`;
   }
 
-  formatStockAvailability(availability: StockAvailability): string {
+  formatStockAvailability(availability: DashboardStockAvailability): string {
     return availability === 'AVAILABLE'
       ? 'Disponible'
       : availability === 'OUT_OF_STOCK'
@@ -407,7 +408,7 @@ export class DashboardComponent implements OnInit {
         : 'Non vendable';
   }
 
-  formatStockReason(reason: StockReason | null): string {
+  formatStockReason(reason: DashboardStockReason | null): string {
     return reason === 'ARCHIVED'
       ? 'Article archivé'
       : reason === 'DLC_EXPIRED'

@@ -156,4 +156,52 @@ describe('HttpStockGateway', () => {
 
     await expect(result).resolves.toMatchObject({ id: 'inventory-1', lines: [{ position: { physicalQuantity: 11 } }] });
   });
+
+  it('records a unit Approvisionnement through its dedicated contract', async () => {
+    const result = firstValueFrom(gateway.recordSupply({ ean13: '0123456789012', quantity: 3 }));
+    const request = http.expectOne('/api/supplies');
+    expect(request.request.method).toBe('POST');
+    expect(request.request.body).toEqual({ ean13: '0123456789012', quantity: 3 });
+    request.flush({
+      operation: {
+        id: 'supply-1', type: 'supply', ean13: '0123456789012', quantity: 3,
+        occurredAt: '2030-01-15T10:00:00Z',
+      },
+      position: {
+        ean13: '0123456789012', name: 'Article reçu', type: 'food', isActive: true, status: 'active',
+        physicalQuantity: 11, sellableQuantity: 11, availability: 'AVAILABLE', reason: null,
+      },
+    });
+
+    await expect(result).resolves.toMatchObject({
+      operation: { id: 'supply-1', lines: [{ ean13: '0123456789012', quantity: 3 }] },
+      positions: [{ physicalQuantity: 11, sellableQuantity: 11 }],
+    });
+  });
+
+  it('records one bulk Approvisionnement request and returns every committed result', async () => {
+    const lines = [
+      { ean13: '0123456789012', quantity: 3 },
+      { ean13: '5901234123457', quantity: 2 },
+    ];
+    const result = firstValueFrom(gateway.recordBulkSupply({ lines }));
+    const request = http.expectOne('/api/supplies/bulk');
+    expect(request.request.method).toBe('POST');
+    expect(request.request.body).toEqual({ lines });
+    request.flush({
+      operation: {
+        id: 'bulk-1', type: 'supply', occurredAt: '2030-01-15T10:00:00Z',
+        lines: lines.map((line, index) => ({ lineNumber: index + 1, ...line })),
+      },
+      positions: lines.map((line) => ({
+        ean13: line.ean13, name: line.ean13, type: 'food', isActive: true, status: 'active',
+        physicalQuantity: line.quantity, sellableQuantity: line.quantity, availability: 'AVAILABLE', reason: null,
+      })),
+    });
+
+    await expect(result).resolves.toMatchObject({
+      operation: { id: 'bulk-1', lines },
+      positions: [{ physicalQuantity: 3 }, { physicalQuantity: 2 }],
+    });
+  });
 });

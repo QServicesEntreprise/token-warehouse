@@ -1,7 +1,7 @@
 import { expect } from '@playwright/test';
 import type { Page, Route } from '@playwright/test';
 import type { HistoryEntryResponse } from '../../src/web/app/history-api.service';
-import type { StockPositionResponse } from '../../src/web/app/stock-api.service';
+import type { StockPositionDto } from '../../src/web/features/stock/infrastructure/dto/stock-position.dto';
 import { apiUrl as apiBaseUrl, test } from './fixtures';
 import { expectProblemDetails, waitForRequest } from './helpers/http';
 import { supply } from './helpers/state';
@@ -17,10 +17,10 @@ const stockRow = (page: Page, ean13: string) => page
   .locator('#stock-table')
   .getByRole('row', { name: new RegExp(ean13) });
 
-const readStock = async (page: Page, ean13: string): Promise<StockPositionResponse> => {
+const readStock = async (page: Page, ean13: string): Promise<StockPositionDto> => {
   const response = await page.request.get(`${apiBaseUrl}/api/stock/${ean13}`);
   expect(response.status()).toBe(200);
-  return response.json() as Promise<StockPositionResponse>;
+  return response.json() as Promise<StockPositionDto>;
 };
 
 test('records a unit Approvisionnement and returns the committed Stock physique and Stock vendable', async ({ page }) => {
@@ -39,7 +39,7 @@ test('records a unit Approvisionnement and returns the committed Stock physique 
   expect(response.status()).toBe(201);
   const body = await response.json() as {
     operation: { id: string; occurredAt: string };
-    position: StockPositionResponse;
+    position: StockPositionDto;
   };
   expect(body.operation.id).toMatch(/\S+/);
   expect(body.operation.occurredAt).toBe('2030-01-15T10:00:00+00:00');
@@ -314,7 +314,7 @@ test('records one ordered Opération en masse and exposes the same order in Hist
       id: string;
       lines: Array<{ lineNumber: number; ean13: string; quantity: number }>;
     };
-    positions: StockPositionResponse[];
+    positions: StockPositionDto[];
   };
   expect(body.operation.lines).toEqual([
     { lineNumber: 1, ean13: activeEan13, quantity: 3 },

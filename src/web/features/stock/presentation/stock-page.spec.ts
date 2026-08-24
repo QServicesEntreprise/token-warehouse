@@ -38,6 +38,14 @@ class FakeStockGateway implements StockGateway {
   getInventoryById(): Observable<InventoryReceipt> {
     return throwError(() => new Error('Inventaire hors test'));
   }
+
+  recordSupply(): Observable<never> {
+    return throwError(() => new Error('Approvisionnement inattendu'));
+  }
+
+  recordBulkSupply(): Observable<never> {
+    return throwError(() => new Error('Approvisionnement inattendu'));
+  }
 }
 
 describe('StockPage', () => {

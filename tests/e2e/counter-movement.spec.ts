@@ -172,7 +172,12 @@ test('corrects an inventory after a later movement and keeps the source unchange
   const inventoryId = inventoryReceipt.operation.id;
   expect(inventoryReceipt.operation).toMatchObject({ previousPhysicalStock: 5, countedQuantity: 11, inventoryDifference: 6 });
 
-  await supply(page, canonicalEan, 2);
+  await page.goto('/stock/approvisionnements');
+  const supplyResponsePromise = waitForRequest(page, 'POST', '/api/supplies');
+  await page.locator('#supplyEan13').fill(canonicalEan);
+  await page.locator('#supplyQuantity').fill('2');
+  await page.locator('#supply-form button[type="submit"]').click();
+  expect((await supplyResponsePromise).status()).toBe(201);
 
   await page.goto('/stock/corrections');
   await openCounterMovement(page);
@@ -195,7 +200,7 @@ test('corrects an inventory after a later movement and keeps the source unchange
 });
 
 test('corrects every line of a bulk supply as one visible counter-movement', async ({ page }) => {
-  await page.goto('/stock/corrections');
+  await page.goto('/stock/approvisionnements');
   await page.locator('#supplyEan13').fill(canonicalEan);
   await page.locator('#supplyQuantity').fill('2');
   await page.locator('#supply-form button[type="button"]').click();
@@ -222,7 +227,7 @@ test('corrects every line of a bulk supply as one visible counter-movement', asy
 });
 
 test('rejects a bulk counter-movement atomically when one line would go negative', async ({ page }) => {
-  await page.goto('/stock/corrections');
+  await page.goto('/stock/approvisionnements');
   await page.locator('#supplyEan13').fill(canonicalEan);
   await page.locator('#supplyQuantity').fill('2');
   await page.locator('#supply-form button[type="button"]').click();

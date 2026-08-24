@@ -3,6 +3,7 @@ import { STOCK_GATEWAY } from '../features/stock/application/stock-gateway-token
 import { InventoryStore } from '../features/stock/application/inventory-store';
 import { LAST_INVENTORY_STORAGE } from '../features/stock/application/last-inventory-storage-token';
 import { StockPositionStore } from '../features/stock/application/stock-position-store';
+import { SupplyStore } from '../features/stock/application/supply-store';
 import { HttpStockGateway } from '../features/stock/infrastructure/http-stock-gateway';
 import { SessionLastInventoryStorage } from '../features/stock/infrastructure/session-last-inventory-storage';
 import { LAST_SALE_STORAGE } from './features/sales/application/last-sale-storage.token';
@@ -72,7 +73,12 @@ export const routes: Routes = [
       {
         path: 'approvisionnements',
         data: { section: 'approvisionnements' },
-        loadComponent: loadLegacy,
+        providers: [
+          HttpStockGateway,
+          SupplyStore,
+          { provide: STOCK_GATEWAY, useExisting: HttpStockGateway },
+        ],
+        loadComponent: () => import('../features/stock/presentation/supply-page').then((module) => module.SupplyPage),
       },
       {
         path: 'inventaires',

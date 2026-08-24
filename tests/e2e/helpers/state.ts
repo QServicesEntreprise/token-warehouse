@@ -10,7 +10,8 @@ import type { Packaging } from '../../../src/web/features/catalogue/domain/packa
 import type { ConsumptionMode } from '../../../src/web/shared-kernel/consumption-mode';
 import type { InventoryReceiptDto } from '../../../src/web/features/stock/infrastructure/dto/inventory-receipt.dto';
 import type { SaleResult } from '../../../src/web/app/features/sales/domain/sale-result';
-import type { BulkSupplyResponse, SupplyResponse } from '../../../src/web/app/stock-api.service';
+import type { RecordBulkSupplyResponseDto } from '../../../src/web/features/stock/infrastructure/dto/record-bulk-supply-response.dto';
+import type { RecordSupplyResponseDto } from '../../../src/web/features/stock/infrastructure/dto/record-supply-response.dto';
 import { apiUrl as apiBaseUrl } from '../fixtures';
 import { ean13ForAttempt } from './ean13';
 
@@ -67,13 +68,13 @@ export const createNonFoodArticle = async (
   }));
 };
 
-export const supply = async (page: Page, ean13: string, quantity: number): Promise<SupplyResponse> =>
+export const supply = async (page: Page, ean13: string, quantity: number): Promise<RecordSupplyResponseDto> =>
   expectOkJson(await page.request.post(`${apiBaseUrl}/api/supplies`, { data: { ean13, quantity } }));
 
 export const supplyBulk = async (
   page: Page,
   lines: Array<{ ean13: string; quantity: number }>,
-): Promise<BulkSupplyResponse> => expectOkJson(await page.request.post(
+): Promise<RecordBulkSupplyResponseDto> => expectOkJson(await page.request.post(
   `${apiBaseUrl}/api/supplies/bulk`,
   { data: { lines } },
 ));

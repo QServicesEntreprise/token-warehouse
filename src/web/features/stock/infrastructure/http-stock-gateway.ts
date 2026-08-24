@@ -4,13 +4,22 @@ import { Observable, catchError, forkJoin, map, switchMap, throwError } from 'rx
 import { StockGateway } from '../application/stock-gateway';
 import { InventoryCommand } from '../domain/inventory-command';
 import { InventoryReceipt } from '../domain/inventory-receipt';
+import { RecordBulkSupplyCommand } from '../domain/record-bulk-supply-command';
+import { RecordSupplyCommand } from '../domain/record-supply-command';
 import { StockPosition } from '../domain/stock-position';
-import { InventoryReceiptDto } from './dto/inventory-receipt.dto';
+import { SupplyResult } from '../domain/supply-result';
 import { InventoryOperationDto } from './dto/inventory-operation.dto';
+import { InventoryReceiptDto } from './dto/inventory-receipt.dto';
+import { RecordBulkSupplyResponseDto } from './dto/record-bulk-supply-response.dto';
+import { RecordSupplyResponseDto } from './dto/record-supply-response.dto';
 import { StockPositionDto } from './dto/stock-position.dto';
 import { mapInventoryCommand } from './map-inventory-command';
-import { mapInventoryReceiptDto } from './map-inventory-receipt-dto';
 import { mapInventoryOperationDto } from './map-inventory-operation-dto';
+import { mapInventoryReceiptDto } from './map-inventory-receipt-dto';
+import { mapRecordBulkSupplyCommand } from './map-record-bulk-supply-command';
+import { mapRecordBulkSupplyResponse } from './map-record-bulk-supply-response';
+import { mapRecordSupplyCommand } from './map-record-supply-command';
+import { mapRecordSupplyResponse } from './map-record-supply-response';
 import { mapStockFailure } from './map-stock-failure';
 import { mapStockPositionDto } from './map-stock-position-dto';
 
@@ -54,6 +63,23 @@ export class HttpStockGateway implements StockGateway {
         (operation.lines ?? [operation]).map((line) => this.getByEan13(line.ean13)),
       ).pipe(map((positions) => mapInventoryOperationDto(operation, positions)))),
       catchError((error: unknown) => throwError(() => mapStockFailure(error, 'Le dernier Inventaire ne peut pas être relu.'))),
+    );
+  }
+
+  recordSupply(command: RecordSupplyCommand): Observable<SupplyResult> {
+    return this.http.post<RecordSupplyResponseDto>('/api/supplies', mapRecordSupplyCommand(command)).pipe(
+      map(mapRecordSupplyResponse),
+      catchError((error: unknown) => throwError(() => mapStockFailure(error, 'L’Approvisionnement n’a pas pu être enregistré.'))),
+    );
+  }
+
+  recordBulkSupply(command: RecordBulkSupplyCommand): Observable<SupplyResult> {
+    return this.http.post<RecordBulkSupplyResponseDto>(
+      '/api/supplies/bulk',
+      mapRecordBulkSupplyCommand(command),
+    ).pipe(
+      map(mapRecordBulkSupplyResponse),
+      catchError((error: unknown) => throwError(() => mapStockFailure(error, 'L’Approvisionnement en masse n’a pas pu être enregistré.'))),
     );
   }
 }
