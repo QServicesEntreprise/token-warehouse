@@ -1,4 +1,5 @@
 import { CorrectableSourceDto } from './correctable-source.dto';
+import { CounterMovementFinancialDto } from './counter-movement-financial.dto';
 
 export interface CounterMovementResultDto {
   counterMovement: {
@@ -23,18 +24,5 @@ export interface CounterMovementResultDto {
     availability: 'AVAILABLE' | 'OUT_OF_STOCK' | 'NOT_SELLABLE';
     reason: 'ARCHIVED' | 'DLC_EXPIRED' | 'UNSELLABLE_PACKAGING' | null;
   }[];
-  financialReversal?: {
-    sourceOperationId: string;
-    context: 'takeaway' | 'onsite' | null;
-    unitPriceHtCents: number;
-    taxRate: {
-      code: string;
-      ratio: string;
-      numerator: number;
-      denominator: number;
-    };
-    amountHtCents: number;
-    vatCents: number;
-    amountTtcCents: number;
-  };
+  financialReversal?: CounterMovementFinancialDto & { sourceOperationId: string };
 }

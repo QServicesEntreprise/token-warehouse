@@ -37,7 +37,12 @@ describe('mapCounterMovementResultDto', () => {
         amountTtcCents: -317,
       },
     })).toMatchObject({
-      positions: [{ physicalStock: 5, sellableStock: 0, reason: 'ARCHIVED' }],
+      positions: [{
+        physicalQuantity: 5,
+        sellableQuantity: 0,
+        availability: 'notSellable',
+        nonSellableReason: 'archived',
+      }],
       financialReversal: {
         unitPriceHtCents: 100,
         amountHtCents: -300,

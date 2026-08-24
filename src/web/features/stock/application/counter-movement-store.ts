@@ -1,6 +1,6 @@
 import { DestroyRef, Injectable, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { Subject, catchError, firstValueFrom, map, of, switchMap, tap } from 'rxjs';
+import { Subject, catchError, firstValueFrom, map, of, switchMap, takeUntil, tap } from 'rxjs';
 import { CorrectableSource } from '../domain/correctable-source';
 import { CounterMovementResult } from '../domain/counter-movement-result';
 import { RecordCounterMovementCommand } from '../domain/record-counter-movement-command';
@@ -12,6 +12,7 @@ export class CounterMovementStore {
   private readonly gateway = inject(STOCK_GATEWAY);
   private readonly destroyRef = inject(DestroyRef);
   private readonly loadRequests = new Subject<void>();
+  private readonly cancelSourceLoads = new Subject<void>();
   private readonly sourcesStateValue = signal<'idle' | 'loading' | 'ready' | 'empty' | 'error'>('idle');
   private readonly sourcesValue = signal<readonly CorrectableSource[]>([]);
   private readonly messageValue = signal('');
@@ -34,8 +35,11 @@ export class CounterMovementStore {
         this.messageValue.set('');
       }),
       switchMap(() => this.gateway.listCorrectableSources().pipe(
+        takeUntil(this.cancelSourceLoads),
         map((sources) => ({ sources })),
-        catchError((error: unknown) => of({ error: this.failureFrom(error) })),
+        catchError((error: unknown) => of({
+          error: this.failureFrom(error, 'Les Opérations corrigeables ne peuvent pas être chargées.'),
+        })),
       )),
       takeUntilDestroyed(),
     ).subscribe((result) => {
@@ -50,6 +54,9 @@ export class CounterMovementStore {
   }
 
   loadSources(): void {
+    if (this.submittingValue()) {
+      return;
+    }
     this.loadRequests.next();
   }
 
@@ -57,6 +64,7 @@ export class CounterMovementStore {
     if (this.submittingValue()) {
       return false;
     }
+    this.cancelSourceLoads.next();
     this.submittingValue.set(true);
     this.receiptValue.set(null);
     this.fieldErrorsValue.set({});
@@ -70,7 +78,7 @@ export class CounterMovementStore {
       this.sourcesStateValue.set(this.sourcesValue().length > 0 ? 'ready' : 'empty');
       return true;
     } catch (error) {
-      const failure = this.failureFrom(error);
+      const failure = this.failureFrom(error, 'Le Contre-mouvement ne peut pas être enregistré.');
       this.fieldErrorsValue.set(Object.fromEntries(
         Object.entries(failure.fieldErrors).map(([field, messages]) => [field, messages[0] ?? 'Valeur invalide.']),
       ));
@@ -85,9 +93,13 @@ export class CounterMovementStore {
     this.fieldErrorsValue.update((errors) => ({ ...errors, [field]: '' }));
   }
 
-  private failureFrom(error: unknown): StockFailure {
+  position(ean13: string): CounterMovementResult['positions'][number] | undefined {
+    return this.receiptValue()?.positions.find((position) => position.ean13 === ean13);
+  }
+
+  private failureFrom(error: unknown, fallbackTitle: string): StockFailure {
     return typeof error === 'object' && error !== null && 'title' in error
       ? error as StockFailure
-      : { fieldErrors: {}, title: 'Les Opérations corrigeables ne peuvent pas être chargées.' };
+      : { fieldErrors: {}, title: fallbackTitle };
   }
 }

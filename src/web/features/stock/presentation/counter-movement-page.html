@@ -10,7 +10,7 @@
       id="counter-movement-load"
       type="button"
       class="secondary-button"
-      [disabled]="store.sourcesState() === 'loading'"
+      [disabled]="store.sourcesState() === 'loading' || store.submitting()"
       (click)="loadSources()">
       {{ store.sourcesState() === 'loading' ? 'Chargement…' : 'Charger les Opérations corrigeables' }}
     </button>
@@ -120,11 +120,11 @@
             <dl>
               <div><dt>Effet source</dt><dd>{{ signed(line.sourceEffect) }}</dd></div>
               <div><dt>Effet inverse</dt><dd>{{ signed(line.inverseEffect) }}</dd></div>
-              @if (position(receipt, line.ean13); as currentPosition) {
-                <div><dt>Stock physique</dt><dd>{{ currentPosition.physicalStock }} unités</dd></div>
-                <div><dt>Stock vendable</dt><dd>{{ currentPosition.sellableStock }} unités</dd></div>
+              @if (store.position(line.ean13); as currentPosition) {
+                <div><dt>Stock physique</dt><dd>{{ currentPosition.physicalQuantity }} unités</dd></div>
+                <div><dt>Stock vendable</dt><dd>{{ currentPosition.sellableQuantity }} unités</dd></div>
                 <div><dt>Disponibilité</dt><dd>{{ availabilityLabel(currentPosition.availability) }}</dd></div>
-                <div><dt>Raison</dt><dd>{{ reasonLabel(currentPosition.reason) }}</dd></div>
+                <div><dt>Raison</dt><dd>{{ reasonLabel(currentPosition.nonSellableReason) }}</dd></div>
               }
             </dl>
           </section>

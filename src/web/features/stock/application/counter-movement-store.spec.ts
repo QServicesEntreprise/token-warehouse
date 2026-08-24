@@ -30,10 +30,10 @@ const result: CounterMovementResult = {
   source: source('supply-01'),
   positions: [{
     ean13: '0123456789012',
-    physicalStock: 5,
-    sellableStock: 5,
-    availability: 'AVAILABLE',
-    reason: null,
+    physicalQuantity: 5,
+    sellableQuantity: 5,
+    availability: 'available',
+    nonSellableReason: null,
   }],
 };
 
@@ -96,6 +96,21 @@ describe('CounterMovementStore', () => {
       sourceOperationId: 'supply-01',
       justification: 'Erreur de saisie',
     })).resolves.toBe(true);
+
+    expect(store.receipt()).toBe(result);
+    expect(store.sources()).toEqual([]);
+    expect(store.sourcesState()).toBe('empty');
+  });
+
+  it('does not let an older source list undo a committed correction', async () => {
+    const obsolete = new Subject<readonly CorrectableSource[]>();
+    gateway.sourceResponses.push(of([source('supply-01')]), obsolete);
+    gateway.recordResponse = of(result);
+    store.loadSources();
+    store.loadSources();
+
+    await store.record({ sourceOperationId: 'supply-01', justification: 'Erreur de saisie' });
+    obsolete.next([source('supply-01')]);
 
     expect(store.receipt()).toBe(result);
     expect(store.sources()).toEqual([]);

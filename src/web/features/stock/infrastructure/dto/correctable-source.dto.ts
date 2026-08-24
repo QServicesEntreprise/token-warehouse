@@ -1,3 +1,5 @@
+import { CounterMovementFinancialDto } from './counter-movement-financial.dto';
+
 export interface CorrectableSourceDto {
   id: string;
   type: 'SUPPLY' | 'INVENTORY' | 'SALE';
@@ -8,17 +10,5 @@ export interface CorrectableSourceDto {
     ean13: string;
     stockEffect: number;
   }[];
-  financial?: {
-    context: 'takeaway' | 'onsite' | null;
-    unitPriceHtCents: number;
-    taxRate: {
-      code: string;
-      ratio: string;
-      numerator: number;
-      denominator: number;
-    };
-    amountHtCents: number;
-    vatCents: number;
-    amountTtcCents: number;
-  };
+  financial?: CounterMovementFinancialDto;
 }

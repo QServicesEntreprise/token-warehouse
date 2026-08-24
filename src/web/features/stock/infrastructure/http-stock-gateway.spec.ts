@@ -167,7 +167,7 @@ describe('HttpStockGateway', () => {
 
     await expect(result).resolves.toMatchObject({
       counterMovement: { id: 'counter-01', sourceOperationId: 'supply-01' },
-      positions: [{ physicalStock: 5, sellableStock: 5 }],
+      positions: [{ physicalQuantity: 5, sellableQuantity: 5 }],
     });
   });
 });

@@ -1,4 +1,7 @@
 import { CorrectableSource } from './correctable-source';
+import { CounterMovementFinancial } from './counter-movement-financial';
+import { StockAvailability } from './stock-availability';
+import { StockNonSellableReason } from './stock-non-sellable-reason';
 
 export interface CounterMovementResult {
   readonly counterMovement: {
@@ -18,23 +21,10 @@ export interface CounterMovementResult {
   readonly source: CorrectableSource;
   readonly positions: readonly {
     readonly ean13: string;
-    readonly physicalStock: number;
-    readonly sellableStock: number;
-    readonly availability: 'AVAILABLE' | 'OUT_OF_STOCK' | 'NOT_SELLABLE';
-    readonly reason: 'ARCHIVED' | 'DLC_EXPIRED' | 'UNSELLABLE_PACKAGING' | null;
+    readonly physicalQuantity: number;
+    readonly sellableQuantity: number;
+    readonly availability: StockAvailability;
+    readonly nonSellableReason: StockNonSellableReason | null;
   }[];
-  readonly financialReversal?: {
-    readonly sourceOperationId: string;
-    readonly context: 'takeaway' | 'onsite' | null;
-    readonly unitPriceHtCents: number;
-    readonly taxRate: {
-      readonly code: string;
-      readonly ratio: string;
-      readonly numerator: number;
-      readonly denominator: number;
-    };
-    readonly amountHtCents: number;
-    readonly vatCents: number;
-    readonly amountTtcCents: number;
-  };
+  readonly financialReversal?: CounterMovementFinancial & { readonly sourceOperationId: string };
 }

@@ -1,7 +1,6 @@
 import { AfterViewInit, ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { FormField, FormRoot, form, pattern, required, submit } from '@angular/forms/signals';
 import { CounterMovementStore } from '../application/counter-movement-store';
-import { CounterMovementResult } from '../domain/counter-movement-result';
 
 @Component({
   selector: 'app-counter-movement-page',
@@ -73,26 +72,22 @@ export class CounterMovementPage implements AfterViewInit {
     return context === 'takeaway' ? 'À emporter' : context === 'onsite' ? 'Sur place' : 'Non alimentaire';
   }
 
-  availabilityLabel(availability: 'AVAILABLE' | 'OUT_OF_STOCK' | 'NOT_SELLABLE'): string {
-    return availability === 'AVAILABLE' ? 'Disponible' : availability === 'OUT_OF_STOCK' ? 'Rupture' : 'Non vendable';
+  availabilityLabel(availability: 'available' | 'outOfStock' | 'notSellable'): string {
+    return availability === 'available' ? 'Disponible' : availability === 'outOfStock' ? 'Rupture' : 'Non vendable';
   }
 
-  reasonLabel(reason: 'ARCHIVED' | 'DLC_EXPIRED' | 'UNSELLABLE_PACKAGING' | null): string {
-    return reason === 'ARCHIVED'
+  reasonLabel(reason: 'archived' | 'dlcExpired' | 'unsellablePackaging' | null): string {
+    return reason === 'archived'
       ? 'Article archivé'
-      : reason === 'DLC_EXPIRED'
+      : reason === 'dlcExpired'
         ? 'DLC dépassée'
-        : reason === 'UNSELLABLE_PACKAGING'
+        : reason === 'unsellablePackaging'
           ? 'Packaging invendable'
           : '—';
   }
 
   signed(effect: number): string {
     return effect > 0 ? `+${effect}` : String(effect);
-  }
-
-  position(result: CounterMovementResult, ean13: string): CounterMovementResult['positions'][number] | undefined {
-    return result.positions.find((position) => position.ean13 === ean13);
   }
 
   private focusError(): void {
