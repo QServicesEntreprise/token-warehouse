@@ -9,7 +9,7 @@ test('consults the current Dashboard with aligned KPIs, alerts and keyboard link
   const dashboard = page.locator('#dashboard-panel');
   const dashboardResponse = waitForRequest(page, 'GET', '/api/dashboard');
 
-  await page.goto('/');
+  await page.goto('/dashboard');
   const firstResponse = await dashboardResponse;
   expect(firstResponse.status()).toBe(200);
   const firstView = await firstResponse.json();
@@ -66,7 +66,7 @@ test('filters the Dashboard by explicit period and Article dimensions', async ({
   const dashboard = page.locator('#dashboard-panel');
   const dashboardResponse = waitForRequest(page, 'GET', '/api/dashboard');
 
-  await page.goto('/');
+  await page.goto('/dashboard');
   await expect(page.locator('#dashboard-from')).toHaveValue('2030-01-01');
   await expect(page.locator('#dashboard-to')).toHaveValue('2030-01-31');
   const initialResponse = await dashboardResponse;
@@ -171,7 +171,7 @@ test.describe('Dashboard daily flows', () => {
     const dashboard = page.locator('#dashboard-panel');
     const dashboardResponse = waitForRequest(page, 'GET', '/api/dashboard');
 
-    await page.goto('/');
+    await page.goto('/dashboard');
     const firstResponse = await dashboardResponse;
     expect(firstResponse.status()).toBe(200);
     const firstView = await firstResponse.json();
@@ -298,7 +298,7 @@ test.describe('Dashboard daily flow calendar boundary', () => {
   test('uses the configured warehouse timezone around UTC midnight', async ({ page }) => {
     const dashboardResponse = waitForRequest(page, 'GET', '/api/dashboard');
 
-    await page.goto('/');
+    await page.goto('/dashboard');
     const response = await dashboardResponse;
     expect(response.status()).toBe(200);
     const view = await response.json();
@@ -323,7 +323,7 @@ test.describe('Dashboard financial indicators', () => {
       expect(response.status()).toBe(200);
     };
 
-    await page.goto('/');
+    await page.goto('/dashboard');
     await expect(page.locator('#dashboard-from')).toHaveValue('2030-01-01');
     await patchModes('1234567890128', ['onsite']);
     await patchModes('1234567890128', ['takeaway']);
@@ -380,7 +380,7 @@ test.describe('Dashboard financial indicators', () => {
     const dashboard = page.locator('#dashboard-panel');
     const initialResponsePromise = waitForRequest(page, 'GET', '/api/dashboard');
 
-    await page.goto('/');
+    await page.goto('/dashboard');
     const initialResponse = await initialResponsePromise;
     expect(initialResponse.status()).toBe(200);
     const initialView = await initialResponse.json();
@@ -443,7 +443,7 @@ test.describe('Dashboard financial indicators', () => {
 test('keeps Dashboard controls and focus after a period error, then retries the same selection', async ({ page }) => {
   const dashboard = page.locator('#dashboard-panel');
 
-  await page.goto('/');
+  await page.goto('/dashboard');
   await expect(page.locator('#dashboard-from')).toHaveValue('2030-01-01');
   await expect(page.locator('#dashboard-to')).toHaveValue('2030-01-31');
   await expect(page.locator('label[for="dashboard-from"]')).toBeVisible();
@@ -510,7 +510,7 @@ test.describe('Dashboard states', () => {
     };
 
     await page.route(dashboardRoute, delayedDashboardRoute);
-    const navigation = page.goto('/');
+    const navigation = page.goto('/dashboard');
     await expect(dashboardState).toContainText('Chargement du Dashboard');
     releaseLoading();
     await navigation;
@@ -552,7 +552,7 @@ test.describe('Dashboard Stock semantics', () => {
   test('keeps current Stock KPIs while past-period flows and financial indicators change', async ({ page }) => {
     await sell(page, leadingZeroEan13, 1, 'takeaway');
 
-    await page.goto('/');
+    await page.goto('/dashboard');
     await page.locator('#dashboard-from').fill('2030-01-15');
     await page.locator('#dashboard-to').fill('2030-01-15');
     const currentResponsePromise = waitForRequest(page, 'GET', '/api/dashboard', (url) => (
@@ -596,7 +596,7 @@ test.describe('Dashboard Stock semantics', () => {
   });
 
   test('renders an impossible filter intersection as empty', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/dashboard');
     await page.locator('#dashboard-type').selectOption('nonFood');
     await page.locator('#dashboard-mode').selectOption('onsite');
     const emptyResponsePromise = waitForRequest(page, 'GET', '/api/dashboard', (url) => (
@@ -613,7 +613,7 @@ test.describe('Dashboard Stock semantics', () => {
   });
 
   test('renders every Stock column for Articles in three different states', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/dashboard');
     const table = page.locator('#dashboard-table');
     const expectedRows = [
       [
@@ -668,7 +668,7 @@ test.describe('Dashboard Stock semantics', () => {
     await archive(page, archivedOutOfStockEan13);
     const responsePromise = waitForRequest(page, 'GET', '/api/dashboard');
 
-    await page.goto('/');
+    await page.goto('/dashboard');
     const view = await (await responsePromise).json();
 
     expect(view.alerts.outOfStock).toMatchObject([{
@@ -698,7 +698,7 @@ test.describe('Dashboard flow continuity', () => {
   test('keeps an inactive day at zero between two active days', async ({ page }) => {
     const responsePromise = waitForRequest(page, 'GET', '/api/dashboard');
 
-    await page.goto('/');
+    await page.goto('/dashboard');
     const view = await (await responsePromise).json();
     expect(view.flowsByDay.slice(11, 14)).toEqual([
       { date: '2030-01-12', supplies: 2, sales: 5 },
@@ -717,7 +717,7 @@ test.describe('Dashboard correction date', () => {
   test.use({ e2eSeed: 'financial', timezoneId: 'America/Los_Angeles' });
 
   test('attributes a financial Counter-movement negatively on its correction date', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/dashboard');
     await page.locator('#dashboard-from').fill('2030-01-10');
     await page.locator('#dashboard-to').fill('2030-01-10');
     const sourceResponsePromise = waitForRequest(page, 'GET', '/api/dashboard', (url) => (

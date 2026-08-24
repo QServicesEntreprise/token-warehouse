@@ -12,7 +12,6 @@ import { NavigationEnd, Router } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { firstValueFrom } from 'rxjs';
 import { ConsumptionMode } from '../shared-kernel/consumption-mode';
-import { DashboardComponent } from './dashboard.component';
 import {
   CounterMovementApiService,
   CounterMovementFinancialResponse,
@@ -43,7 +42,6 @@ type CounterMovementSourcesState = 'idle' | 'loading' | 'ready' | 'empty' | 'err
 type HistoryState = 'idle' | 'loading' | 'ready' | 'empty' | 'error';
 
 const routeSectionTargetIds: Record<string, string> = {
-  dashboard: 'dashboard-title',
   corrections: 'counter-movement-title',
   historique: 'history-title',
 };
@@ -51,7 +49,7 @@ const routeSectionTargetIds: Record<string, string> = {
 @Component({
   selector: 'app-legacy-backoffice-page',
   standalone: true,
-  imports: [DashboardComponent, FormField, FormRoot],
+  imports: [FormField, FormRoot],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <main aria-labelledby="page-title">
@@ -60,8 +58,6 @@ const routeSectionTargetIds: Record<string, string> = {
         <h1 id="page-title">Créer et consulter un Article</h1>
         <p>Une référence EAN-13, un Prix HT en centimes et les attributs de sa classification.</p>
       </header>
-
-      <app-dashboard />
 
       <section id="history-panel" class="panel" aria-labelledby="history-title">
         <div>
