@@ -4,6 +4,9 @@ import { describe, expect, it } from 'vitest';
 import { STOCK_GATEWAY } from '../application/stock-gateway-token';
 import { StockGateway } from '../application/stock-gateway';
 import { StockPositionStore } from '../application/stock-position-store';
+import { CorrectableSource } from '../domain/correctable-source';
+import { CounterMovementResult } from '../domain/counter-movement-result';
+import { RecordCounterMovementCommand } from '../domain/record-counter-movement-command';
 import { StockPosition } from '../domain/stock-position';
 import { StockPage } from './stock-page';
 
@@ -32,6 +35,14 @@ class FakeStockGateway implements StockGateway {
 
   recordBulkSupply(): Observable<never> {
     return throwError(() => new Error('Approvisionnement inattendu'));
+  }
+
+  listCorrectableSources(): Observable<readonly CorrectableSource[]> {
+    return of([]);
+  }
+
+  recordCounterMovement(_command: RecordCounterMovementCommand): Observable<CounterMovementResult> {
+    return throwError(() => new Error('Correction absente'));
   }
 }
 
