@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { Article } from '../domain/article';
 import { ArticleDetailsStore } from './article-details-store';
 import { CATALOGUE_GATEWAY } from './catalogue-gateway-token';
+import { CatalogueListStore } from './catalogue-list-store';
 import { FakeCatalogueGateway } from './testing/fake-catalogue-gateway';
 
 describe('ArticleDetailsStore', () => {
@@ -14,6 +15,7 @@ describe('ArticleDetailsStore', () => {
     fake = new FakeCatalogueGateway();
     TestBed.configureTestingModule({ providers: [
       ArticleDetailsStore,
+      CatalogueListStore,
       { provide: CATALOGUE_GATEWAY, useValue: fake },
     ] });
     store = TestBed.inject(ArticleDetailsStore);
@@ -64,6 +66,21 @@ describe('ArticleDetailsStore', () => {
     await expect(store.updatePrice(-1)).resolves.toBeNull();
     expect(store.fieldErrors()).toEqual({ priceHtCents: ['Le Prix HT est invalide.'] });
     expect(store.error()).toBe('Prix refusé');
+  });
+
+  it('refreshes the cached Catalogue query after a committed detail mutation', async () => {
+    let searches = 0;
+    fake.getHandler = () => of(article('1111111111116', 'Courant'));
+    fake.updatePriceHandler = () => of({ ...article('1111111111116', 'Courant'), priceHtCents: 200 });
+    fake.searchHandler = () => {
+      searches += 1;
+      return of([]);
+    };
+    store.load('1111111111116');
+
+    await store.updatePrice(200);
+
+    expect(searches).toBe(1);
   });
 });
 

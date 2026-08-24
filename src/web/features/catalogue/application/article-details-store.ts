@@ -5,11 +5,13 @@ import { Article } from '../domain/article';
 import { ArticleAttributesUpdateCommand } from './article-attributes-update-command';
 import { CatalogueGateway } from './catalogue-gateway';
 import { CATALOGUE_GATEWAY } from './catalogue-gateway-token';
+import { CatalogueListStore } from './catalogue-list-store';
 import { toCatalogueProblem } from './to-catalogue-problem';
 
 @Injectable()
 export class ArticleDetailsStore {
   private readonly gateway = inject(CATALOGUE_GATEWAY);
+  private readonly catalogue = inject(CatalogueListStore);
   private readonly ean13Requests = new Subject<string>();
   private readonly articleSignal = signal<Article | null>(null);
   private readonly stateSignal = signal<'loading' | 'ready' | 'error'>('loading');
@@ -87,6 +89,7 @@ export class ArticleDetailsStore {
       if (requestId !== this.mutationRequestId) return null;
       this.articleSignal.set(updated);
       this.messageSignal.set(message);
+      this.catalogue.refresh();
       return updated;
     } catch (error) {
       if (requestId !== this.mutationRequestId) return null;

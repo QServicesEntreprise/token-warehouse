@@ -10,7 +10,9 @@ const isLegacyRoute = (route: ActivatedRouteSnapshot): boolean => (
 );
 
 const isCatalogueListRoute = (route: ActivatedRouteSnapshot): boolean => (
-  route.routeConfig?.path === '' && route.parent?.routeConfig?.path === 'catalogue'
+  route.routeConfig?.path === ''
+  && route.firstChild === null
+  && route.pathFromRoot.some((snapshot) => snapshot.routeConfig?.path === 'catalogue')
 );
 
 export const legacyRouteReuseStrategy: RouteReuseStrategy = {

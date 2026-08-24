@@ -17,7 +17,6 @@ export class CatalogueListStore {
   private readonly transitioningEanSignal = signal('');
   private readonly lifecycleMessageSignal = signal('');
   private currentQuery: CatalogueQuery = { status: 'active' };
-  private lifecycleRequestId = 0;
 
   readonly articles = this.articlesSignal.asReadonly();
   readonly state = this.stateSignal.asReadonly();
@@ -56,11 +55,16 @@ export class CatalogueListStore {
 
   search(query: CatalogueQuery): void {
     this.currentQuery = query;
-    this.queries.next(query);
+    this.refresh();
+  }
+
+  refresh(): void {
+    this.queries.next(this.currentQuery);
   }
 
   async toggleLifecycle(article: ArticleSummary): Promise<boolean> {
-    const requestId = ++this.lifecycleRequestId;
+    // ponytail: lifecycle writes are globally serialized; split per EAN only if throughput requires it.
+    if (this.transitioningEanSignal()) return false;
     this.transitioningEanSignal.set(article.ean13);
     this.lifecycleMessageSignal.set('');
     try {
@@ -69,7 +73,6 @@ export class CatalogueListStore {
           ? this.gateway.archive(article.ean13)
           : this.gateway.reactivate(article.ean13),
       );
-      if (requestId !== this.lifecycleRequestId) return false;
       this.lifecycleMessageSignal.set(`${updated.name} est ${updated.status === 'active' ? 'actif' : 'archivé'}.`);
       this.articlesSignal.update((articles) => this.currentQuery.status === 'all'
         ? articles.map((article) => article.ean13 === updated.ean13 ? updated : article)
@@ -77,11 +80,10 @@ export class CatalogueListStore {
       this.stateSignal.set(this.articlesSignal().length > 0 ? 'ready' : 'empty');
       return true;
     } catch (error) {
-      if (requestId !== this.lifecycleRequestId) return false;
       this.lifecycleMessageSignal.set(toCatalogueProblem(error, 'La transition du cycle de vie a échoué.').title);
       return false;
     } finally {
-      if (requestId === this.lifecycleRequestId) this.transitioningEanSignal.set('');
+      this.transitioningEanSignal.set('');
     }
   }
 }

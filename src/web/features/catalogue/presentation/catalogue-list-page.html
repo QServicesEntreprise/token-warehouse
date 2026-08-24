@@ -62,7 +62,7 @@
               <td>{{ article.type === 'food' ? formatModes(article.consumptionModes) : formatPackaging(article.packaging) }}</td><td>{{ article.priceHtCents }} centimes</td>
               <td>
                 <button type="button" class="table-action link-button" [attr.aria-label]="'Consulter ' + article.name" [routerLink]="['/catalogue', article.ean13]">Détail</button>
-                <button type="button" class="table-action" [disabled]="store.transitioningEan() === article.ean13" [attr.aria-label]="(isActive(article) ? 'Archiver ' : 'Réactiver ') + article.name" (click)="toggleLifecycle(article)">
+                <button type="button" class="table-action" [disabled]="!!store.transitioningEan()" [attr.aria-label]="(isActive(article) ? 'Archiver ' : 'Réactiver ') + article.name" (click)="toggleLifecycle(article)">
                   {{ store.transitioningEan() === article.ean13 ? 'Traitement…' : (isActive(article) ? 'Archiver' : 'Réactiver') }}
                 </button>
               </td>

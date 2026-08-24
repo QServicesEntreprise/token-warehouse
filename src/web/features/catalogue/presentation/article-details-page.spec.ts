@@ -4,6 +4,7 @@ import { of } from 'rxjs';
 import { describe, expect, it } from 'vitest';
 import { CATALOGUE_GATEWAY } from '../application/catalogue-gateway-token';
 import { ArticleDetailsStore } from '../application/article-details-store';
+import { CatalogueListStore } from '../application/catalogue-list-store';
 import { FakeCatalogueGateway } from '../application/testing/fake-catalogue-gateway';
 import { ArticleDetailsPage } from './article-details-page';
 
@@ -25,6 +26,7 @@ describe('ArticleDetailsPage', () => {
       providers: [
         provideRouter([]),
         ArticleDetailsStore,
+        CatalogueListStore,
         { provide: CATALOGUE_GATEWAY, useValue: fake },
         { provide: ActivatedRoute, useValue: { paramMap: of(convertToParamMap({ ean13: '0123456789012' })) } },
       ],

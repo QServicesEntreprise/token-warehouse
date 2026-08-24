@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { Subject, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { ArticleSummary } from '../domain/article-summary';
+import { Article } from '../domain/article';
 import { CATALOGUE_GATEWAY } from './catalogue-gateway-token';
 import { CatalogueListStore } from './catalogue-list-store';
 import { CatalogueQuery } from './catalogue-query';
@@ -66,6 +67,29 @@ describe('CatalogueListStore', () => {
 
     expect(store.articles()).toEqual([]);
     expect(store.lifecycleMessage()).toContain('archivé');
+  });
+
+  it('does not start a second lifecycle transition while one is pending', async () => {
+    const pending = new Subject<Article>();
+    const calls: string[] = [];
+    fake.searchHandler = () => of([
+      article('1111111111116', 'Premier'),
+      article('2222222222222', 'Second'),
+    ]);
+    fake.archiveHandler = (ean13) => {
+      calls.push(ean13);
+      return pending;
+    };
+    store.search({ status: 'active' });
+
+    const first = store.toggleLifecycle(store.articles()[0]);
+    const second = store.toggleLifecycle(store.articles()[1]);
+    pending.next({ ...store.articles()[0], status: 'archived', priceQuotes: [] });
+    pending.complete();
+
+    await expect(first).resolves.toBe(true);
+    await expect(second).resolves.toBe(false);
+    expect(calls).toEqual(['1111111111116']);
   });
 });
 

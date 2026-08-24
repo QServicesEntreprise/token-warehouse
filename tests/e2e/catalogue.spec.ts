@@ -123,7 +123,9 @@ test('crée les trois formes d’Article et initialise leurs Stocks à zéro', a
   const nonFoodEan = ean13ForAttempt('400638133', attempt);
   const articleDetailText = (text: string) => page.locator('.article-detail').getByText(text);
 
-  await page.goto('/catalogue/nouveau');
+  await page.goto('/catalogue');
+  await expect(page.getByRole('row', { name: new RegExp(foodEan) })).toHaveCount(0);
+  await page.getByRole('link', { name: 'Créer un Article' }).click();
   await page.locator('#ean13').focus();
   await page.keyboard.press('Tab');
   await expect(page.locator('#type')).toBeFocused();
@@ -147,6 +149,8 @@ test('crée les trois formes d’Article et initialise leurs Stocks à zéro', a
   await expect(page.locator('.price-quotes')).toContainText('1/10');
   await expect(page.locator('#priceTtcCents')).toHaveCount(0);
   await expect(page.locator('.article-detail').getByText('0 unités', { exact: true })).toHaveCount(2);
+  await page.getByRole('link', { name: 'Catalogue', exact: true }).click();
+  await expect(page.getByRole('row', { name: new RegExp(foodEan) })).toBeVisible();
   await page.goto('/stock');
   const stockRow = page.locator('#stock-panel').getByRole('row', { name: /Chocolat noir/ });
   await expect(stockRow).toBeVisible();
