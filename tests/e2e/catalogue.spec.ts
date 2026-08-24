@@ -58,8 +58,8 @@ test('recherche le Catalogue et conserve une intersection vide de trois filtres'
   const catalogPanel = page.locator('section[aria-labelledby="catalog-title"]');
   const articleRow = (ean13: string) => catalogPanel.getByRole('row', { name: new RegExp(ean13) });
 
-  await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Créer et consulter un Article' })).toBeVisible();
+  await page.goto('/catalogue');
+  await expect(page.getByRole('heading', { name: 'Catalogue', exact: true })).toBeVisible();
   await page.locator('#catalog-search').fill(ean13ForAttempt('650000001', attempt));
   await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
   await expect(page.getByText('Aucun Article ne correspond à ces critères.')).toBeVisible();
@@ -71,6 +71,7 @@ test('recherche le Catalogue et conserve une intersection vide de trois filtres'
   await page.getByRole('button', { name: 'Consulter Article archivé' }).click();
   await expect(page.getByRole('heading', { name: 'Article archivé' })).toBeVisible();
   await expect(page.locator('section[aria-labelledby="lookup-title"]').getByText('Archivé', { exact: true })).toBeVisible();
+  await page.goBack();
 
   await page.locator('#catalog-status').selectOption('all');
   await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
@@ -84,6 +85,7 @@ test('recherche le Catalogue et conserve une intersection vide de trois filtres'
   await activeDetailAction.focus();
   await page.keyboard.press('Enter');
   await expect(page.getByRole('heading', { name: 'Chocolat noir' })).toBeVisible();
+  await page.goBack();
 
   await page.locator('#catalog-search').fill(foodEan);
   await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
@@ -121,7 +123,9 @@ test('crée les trois formes d’Article et initialise leurs Stocks à zéro', a
   const nonFoodEan = ean13ForAttempt('400638133', attempt);
   const articleDetailText = (text: string) => page.locator('.article-detail').getByText(text);
 
-  await page.goto('/');
+  await page.goto('/catalogue');
+  await expect(page.getByRole('row', { name: new RegExp(foodEan) })).toHaveCount(0);
+  await page.getByRole('link', { name: 'Créer un Article' }).click();
   await page.locator('#ean13').focus();
   await page.keyboard.press('Tab');
   await expect(page.locator('#type')).toBeFocused();
@@ -145,11 +149,14 @@ test('crée les trois formes d’Article et initialise leurs Stocks à zéro', a
   await expect(page.locator('.price-quotes')).toContainText('1/10');
   await expect(page.locator('#priceTtcCents')).toHaveCount(0);
   await expect(page.locator('.article-detail').getByText('0 unités', { exact: true })).toHaveCount(2);
-  await page.reload();
+  await page.getByRole('link', { name: 'Catalogue', exact: true }).click();
+  await expect(page.getByRole('row', { name: new RegExp(foodEan) })).toBeVisible();
+  await page.goto('/stock');
   const stockRow = page.locator('#stock-panel').getByRole('row', { name: /Chocolat noir/ });
   await expect(stockRow).toBeVisible();
   await expect(stockRow.getByRole('cell', { name: '0 unités', exact: true })).toHaveCount(2);
 
+  await page.goto('/catalogue/nouveau');
   await page.locator('#ean13').fill(singleFoodEan);
   await page.locator('#name').fill('Café à emporter');
   await page.locator('#priceHtCents').fill('1000');
@@ -165,14 +172,13 @@ test('crée les trois formes d’Article et initialise leurs Stocks à zéro', a
   await expect(singleFoodQuote).not.toContainText('Sur place');
 
   await page.reload();
-  await page.locator('#lookupEan13').fill(singleFoodEan);
-  await page.getByRole('button', { name: 'Consulter', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Café à emporter' })).toBeVisible();
   await expect(page.locator('.price-quote')).toHaveCount(1);
   await expect(page.locator('.price-quote')).toContainText('À emporter');
   await expect(page.locator('.price-quote')).toContainText('11/200');
   await expect(page.locator('.price-quote')).toContainText('1055 centimes');
 
+  await page.goto('/catalogue/nouveau');
   await page.locator('#type').selectOption('nonFood');
   await expect(page.locator('#dlc')).toHaveCount(0);
   await expect(page.locator('#consumptionModes')).toHaveCount(0);
@@ -188,8 +194,6 @@ test('crée les trois formes d’Article et initialise leurs Stocks à zéro', a
   await expect(articleDetailText('3000 centimes')).toBeVisible();
 
   await page.reload();
-  await page.locator('#lookupEan13').fill(nonFoodEan);
-  await page.getByRole('button', { name: 'Consulter', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Batterie reconditionnée' })).toBeVisible();
   await expect(page.locator('.article-detail').getByText(nonFoodEan)).toBeVisible();
   await expect(page.locator('.article-detail').getByText('Non alimentaire', { exact: true })).toBeVisible();
@@ -200,6 +204,7 @@ test('crée les trois formes d’Article et initialise leurs Stocks à zéro', a
   await expect(page.locator('.price-quote')).toContainText('1/5');
   await expect(page.locator('.price-quote')).toContainText('500 centimes');
 
+  await page.goto('/catalogue/nouveau');
   await page.locator('#type').selectOption('food');
   await page.locator('#ean13').fill(invalidChecksumEan13);
   await page.locator('#name').fill('EAN invalide');
@@ -241,9 +246,7 @@ test('modifie le Prix HT et retrouve les changements de DLC et Packaging dans l�
   });
   const articleDetailText = (text: string) => page.locator('.article-detail').getByText(text);
 
-  await page.goto('/');
-  await page.locator('#lookupEan13').fill(foodEan);
-  await page.getByRole('button', { name: 'Consulter', exact: true }).click();
+  await page.goto(`/catalogue/${foodEan}`);
   await page.locator('#detailPriceHtCents').fill('199');
   await page.getByRole('button', { name: 'Enregistrer le Prix HT' }).click();
   await expect(articleDetailText('210 centimes')).toBeVisible();
@@ -262,13 +265,13 @@ test('modifie le Prix HT et retrouve les changements de DLC et Packaging dans l�
   await page.locator('#detailDlc').fill('2027-01-31');
   await page.getByRole('button', { name: 'Enregistrer les attributs' }).click();
   await expect(articleDetailText('2027-01-31')).toBeVisible();
-  await page.getByRole('button', { name: 'Consulter l’Historique de cet Article' }).click();
-  await expect(page.locator('#article-history-list')).toContainText('Changement de DLC');
-  await expect(page.locator('#article-history-list')).toContainText('dlc : 2030-12-31 → 2027-01-31');
+  await page.goto('/stock/historique');
+  await page.locator('#history-ean13').fill(foodEan);
+  await page.getByRole('button', { name: 'Filtrer l’Historique', exact: true }).click();
+  await expect(page.locator('#history-list')).toContainText('Changement de DLC');
+  await expect(page.locator('#history-list')).toContainText('dlc : 2030-12-31 → 2027-01-31');
 
-  await page.reload();
-  await page.locator('#lookupEan13').fill(foodEan);
-  await page.getByRole('button', { name: 'Consulter', exact: true }).click();
+  await page.goto(`/catalogue/${foodEan}`);
   await expect(page.getByRole('heading', { name: 'Chocolat noir' })).toBeVisible();
   await expect(articleDetailText('2027-01-31')).toBeVisible();
   await expect(articleDetailText('takeaway, onsite')).toBeVisible();
@@ -276,13 +279,10 @@ test('modifie le Prix HT et retrouve les changements de DLC et Packaging dans l�
   await expect(articleDetailText('219 centimes')).toBeVisible();
 
   await page.reload();
-  await page.locator('#lookupEan13').fill(foodEan);
-  await page.getByRole('button', { name: 'Consulter', exact: true }).click();
   await expect(articleDetailText('2027-01-31')).toBeVisible();
   await expect(articleDetailText('takeaway, onsite')).toBeVisible();
 
-  await page.locator('#lookupEan13').fill(nonFoodEan);
-  await page.getByRole('button', { name: 'Consulter', exact: true }).click();
+  await page.goto(`/catalogue/${nonFoodEan}`);
   await page.locator('#detailPackaging').selectOption('unsellable');
   await page.getByRole('button', { name: 'Enregistrer les attributs' }).click();
   await expect(page.getByText('unsellable')).toBeVisible();
@@ -293,17 +293,17 @@ test('modifie le Prix HT et retrouve les changements de DLC et Packaging dans l�
   await expect(page.getByText('unsellable')).toBeVisible();
 
   await page.reload();
-  await page.locator('#lookupEan13').fill(nonFoodEan);
-  await page.getByRole('button', { name: 'Consulter', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Batterie reconditionnée' })).toBeVisible();
   await expect(articleDetailText('1999 centimes')).toBeVisible();
   await expect(articleDetailText('2399 centimes')).toBeVisible();
   await expect(articleDetailText('400 centimes')).toBeVisible();
   await expect(page.getByText('unsellable')).toBeVisible();
   await expect(page.locator('.price-quote')).toHaveCount(1);
-  await page.getByRole('button', { name: 'Consulter l’Historique de cet Article' }).click();
-  await expect(page.locator('#article-history-list')).toContainText('Changement de Packaging');
-  await expect(page.locator('#article-history-list')).toContainText('packaging : refurbished → unsellable');
+  await page.goto('/stock/historique');
+  await page.locator('#history-ean13').fill(nonFoodEan);
+  await page.getByRole('button', { name: 'Filtrer l’Historique', exact: true }).click();
+  await expect(page.locator('#history-list')).toContainText('Changement de Packaging');
+  await expect(page.locator('#history-list')).toContainText('packaging : refurbished → unsellable');
 });
 
 test('refuse les opérations et le Prix HT sur un Article archivé puis autorise sa modification réactivée', async ({ page }, testInfo) => {
@@ -321,7 +321,7 @@ test('refuse les opérations et le Prix HT sur un Article archivé puis autorise
   const articleRow = (ean13: string) => catalogPanel.getByRole('row', { name: new RegExp(ean13) });
   const articleDetailText = (text: string) => page.locator('.article-detail').getByText(text);
 
-  await page.goto('/');
+  await page.goto('/catalogue');
   await page.locator('#catalog-search').fill(foodEan);
   await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
   await expect(articleRow(foodEan)).toBeVisible();
@@ -329,6 +329,7 @@ test('refuse les opérations et le Prix HT sur un Article archivé puis autorise
   await archiveAction.focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('#catalog-lifecycle-status')).toContainText('archivé');
+  await expect(page.locator('#catalog-lifecycle-status')).toBeFocused();
   await expect(articleRow(foodEan)).toHaveCount(0);
 
   await page.locator('#catalog-status').selectOption('archived');
@@ -358,13 +359,12 @@ test('refuse les opérations et le Prix HT sur un Article archivé puis autorise
     { status: 409, code: 'NOT_SELLABLE' },
   );
 
-  await page.reload();
+  await page.goto('/stock');
   const stockRow = page.locator('#stock-panel').getByRole('row', { name: /Chocolat noir/ });
   await expect(stockRow).toContainText('4 unités');
   await expect(stockRow).toContainText('0 unités');
   await expect(stockRow).toContainText('Article archivé');
-  await page.locator('#lookupEan13').fill(foodEan);
-  await page.getByRole('button', { name: 'Consulter', exact: true }).click();
+  await page.goto(`/catalogue/${foodEan}`);
   await expect(page.getByRole('heading', { name: 'Chocolat noir' })).toBeVisible();
   await expect(page.locator('.article-detail').getByText(foodEan)).toBeVisible();
   await expect(page.locator('section[aria-labelledby="lookup-title"]').getByText('Archivé', { exact: true })).toBeVisible();
@@ -373,6 +373,7 @@ test('refuse les opérations et le Prix HT sur un Article archivé puis autorise
   await expect(articleDetailText('2030-12-31')).toBeVisible();
   await expect(articleDetailText('takeaway')).toBeVisible();
 
+  await page.goto('/catalogue/nouveau');
   await page.locator('#ean13').fill(foodEan);
   await page.locator('#name').fill('Doublon archivé');
   await page.locator('#priceHtCents').fill('1000');
@@ -389,6 +390,7 @@ test('refuse les opérations et le Prix HT sur un Article archivé puis autorise
   await expect(page.locator('#ean13-error')).toContainText('déjà');
   await expect(page.locator('#ean13')).toBeFocused();
 
+  await page.goto('/catalogue');
   await page.locator('#catalog-search').fill(foodEan);
   await page.locator('#catalog-status').selectOption('archived');
   const archivedListResponsePromise = waitForRequest(page, 'GET', '/api/articles', (url) => (
@@ -412,6 +414,7 @@ test('refuse les opérations et le Prix HT sur un Article archivé puis autorise
   await reactivateAction.focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('#catalog-lifecycle-status')).toContainText('actif');
+  await expect(page.locator('#catalog-lifecycle-status')).toBeFocused();
   await expect(articleRow(foodEan)).toHaveCount(0);
 
   await page.locator('#catalog-status').selectOption('active');
@@ -427,8 +430,6 @@ test('refuse les opérations et le Prix HT sur un Article archivé puis autorise
   await expect(articleDetailText('299 centimes')).toBeVisible();
 
   await page.reload();
-  await page.locator('#lookupEan13').fill(foodEan);
-  await page.getByRole('button', { name: 'Consulter', exact: true }).click();
   await expect(articleDetailText('2027-02-28')).toBeVisible();
   await expect(page.getByText('2027-02-28')).toBeVisible();
 });
@@ -436,8 +437,8 @@ test('refuse les opérations et le Prix HT sur un Article archivé puis autorise
 test('récupère une requête Catalogue en échec et ouvre le détail au clavier', async ({ page }) => {
   const catalogPanel = page.locator('section[aria-labelledby="catalog-title"]');
 
-  await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Créer et consulter un Article' })).toBeVisible();
+  await page.goto('/catalogue');
+  await expect(page.getByRole('heading', { name: 'Catalogue', exact: true })).toBeVisible();
   await page.locator('#catalog-status').selectOption('archived');
   await page.locator('#catalog-search').fill('Article archivé');
   await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
@@ -447,6 +448,11 @@ test('récupère une requête Catalogue en échec et ouvre le détail au clavier
   await detailAction.focus();
   await page.keyboard.press('Enter');
   await expect(page.getByRole('heading', { name: 'Article archivé' })).toBeVisible();
+  await page.goBack();
+  await page.locator('#catalog-status').selectOption('archived');
+  await page.locator('#catalog-search').fill('Article archivé');
+  await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
+  await expect(catalogPanel.getByRole('row', { name: /Article archivé/ })).toBeVisible();
 
   let failCatalogueRequest = true;
   const catalogueRoute = async (route: Route) => {

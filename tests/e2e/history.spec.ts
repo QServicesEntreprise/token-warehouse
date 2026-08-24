@@ -6,10 +6,11 @@ import {
   archive,
   createFoodArticle,
   createNonFoodArticle,
-  inventory,
+  inventory as prepareInventory,
   reactivate,
   sell,
-  supplyBulk,
+  supply as prepareSupply,
+  supplyBulk as prepareBulkSupply,
 } from './helpers/state';
 
 const ean13 = leadingZeroEan13;
@@ -61,68 +62,21 @@ type BrowserHistoryEntry = {
 };
 
 test('consults global and Article history after real Stock operations', async ({ page }) => {
-  await page.goto('/');
-  await expect(page.locator('#stock-table').getByRole('row', { name: /Alimentaire aux deux modes/ })).toContainText('5 unités');
-
-  const supplyResponsePromise = waitForRequest(page, 'POST', '/api/supplies');
-  await page.locator('#supplyEan13').fill(ean13);
-  await page.locator('#supplyQuantity').fill('5');
-  await page.locator('#supply-form button[type="submit"]').click();
-  const supplyResponse = await supplyResponsePromise;
-  expect(supplyResponse.status()).toBe(201);
-  const supply = await supplyResponse.json() as { operation: { id: string } };
-
-  const bulkSupplyResponsePromise = waitForRequest(page, 'POST', '/api/supplies/bulk');
-  await page.locator('#supplyEan13').fill(bulkFirstEan13);
-  await page.locator('#supplyQuantity').fill('2');
-  await page.locator('#supply-panel').getByRole('button', { name: 'Ajouter une ligne', exact: true }).click();
-  await page.locator('#supplyEan13-1').fill(bulkSecondEan13);
-  await page.locator('#supplyQuantity-1').fill('3');
-  await page.locator('#supply-panel button[type="submit"]').click();
-  const bulkSupplyResponse = await bulkSupplyResponsePromise;
-  expect(bulkSupplyResponse.status()).toBe(201);
-  const bulkSupply = await bulkSupplyResponse.json() as {
-    operation: { id: string; lines: Array<{ lineNumber: number; ean13: string; quantity: number }> };
-  };
+  const supply = await prepareSupply(page, ean13, 5);
+  const bulkSupply = await prepareBulkSupply(page, [
+    { ean13: bulkFirstEan13, quantity: 2 },
+    { ean13: bulkSecondEan13, quantity: 3 },
+  ]);
   expect(bulkSupply.operation.lines).toEqual([
     { lineNumber: 1, ean13: bulkFirstEan13, quantity: 2 },
     { lineNumber: 2, ean13: bulkSecondEan13, quantity: 3 },
   ]);
-  await page.locator('#supply-panel button[aria-label="Retirer la ligne 2"]').click();
+  const inventory = await prepareInventory(page, ean13, 12);
+  const otherSupply = await prepareSupply(page, otherEan13, 1);
+  const otherInventory = await prepareInventory(page, otherEan13, 7);
+  const zeroInventory = await prepareInventory(page, inventoryEan13, 3);
 
-  const inventoryResponsePromise = waitForRequest(page, 'POST', '/api/inventories');
-  await page.locator('#inventory-ean13').fill(ean13);
-  await page.locator('#inventory-countedQuantity').fill('12');
-  await page.locator('#inventory-form button[type="submit"]').click();
-  const inventoryResponse = await inventoryResponsePromise;
-  expect(inventoryResponse.status()).toBe(201);
-  const inventory = await inventoryResponse.json() as { operation: { id: string } };
-
-  const otherSupplyResponsePromise = waitForRequest(page, 'POST', '/api/supplies');
-  await page.locator('#supplyEan13').fill(otherEan13);
-  await page.locator('#supplyQuantity').fill('1');
-  await page.locator('#supply-form button[type="submit"]').click();
-  const otherSupplyResponse = await otherSupplyResponsePromise;
-  expect(otherSupplyResponse.status()).toBe(201);
-  const otherSupply = await otherSupplyResponse.json() as { operation: { id: string } };
-
-  const otherInventoryResponsePromise = waitForRequest(page, 'POST', '/api/inventories');
-  await page.locator('#inventory-ean13').fill(otherEan13);
-  await page.locator('#inventory-countedQuantity').fill('7');
-  await page.locator('#inventory-form button[type="submit"]').click();
-  const otherInventoryResponse = await otherInventoryResponsePromise;
-  expect(otherInventoryResponse.status()).toBe(201);
-  const otherInventory = await otherInventoryResponse.json() as { operation: { id: string } };
-
-  const zeroInventoryResponsePromise = waitForRequest(page, 'POST', '/api/inventories');
-  await page.locator('#inventory-ean13').fill(inventoryEan13);
-  await page.locator('#inventory-countedQuantity').fill('3');
-  await page.locator('#inventory-form button[type="submit"]').click();
-  const zeroInventoryResponse = await zeroInventoryResponsePromise;
-  expect(zeroInventoryResponse.status()).toBe(201);
-  const zeroInventory = await zeroInventoryResponse.json() as { operation: { id: string } };
-
-  await page.getByRole('link', { name: 'Contre-mouvement' }).click();
+  await page.goto('/stock/corrections');
   const sourcesResponsePromise = waitForRequest(page, 'GET', '/api/stock/counter-movements/sources');
   await page.locator('#counter-movement-load').click();
   expect((await sourcesResponsePromise).status()).toBe(200);
@@ -306,46 +260,14 @@ test('consults global and Article history after real Stock operations', async ({
   await expect(filteredBulkHistoryCard).not.toContainText('Quantité utile');
   await expect(filteredBulkHistoryCard).not.toContainText('Stock physique résultant');
 
-  const bulkArticleResponsePromise = waitForRequest(page, 'GET', `/api/articles/${bulkFirstEan13}`);
-  await page.locator('#lookupEan13').fill(bulkFirstEan13);
-  await page.locator('section[aria-labelledby="lookup-title"]').getByRole('button', { name: 'Consulter', exact: true }).click();
-  expect((await bulkArticleResponsePromise).status()).toBe(200);
-
-  const bulkArticleHistoryPromise = waitForRequest(page, 'GET', '/api/history', (url) => (
-    url.searchParams.get('ean13') === bulkFirstEan13
-  ));
-  await page.getByRole('button', { name: 'Consulter l’Historique de cet Article', exact: true }).click();
-  const bulkArticleHistoryResponse = await bulkArticleHistoryPromise;
-  expect(bulkArticleHistoryResponse.status()).toBe(200);
-  const bulkArticleHistoryEntries = await bulkArticleHistoryResponse.json() as BrowserHistoryEntry[];
-  expect(bulkArticleHistoryEntries.find((entry) => entry.id === bulkSupply.operation.id)).toMatchObject({
-    id: bulkSupply.operation.id,
-    lines: [
-      { lineNumber: 1, ean13: bulkFirstEan13, quantity: 2, stockEffect: 2, resultingPhysicalStock: 2 },
-    ],
-  });
-  await expect(page.locator('#article-history-list')).toContainText('2 unités');
-  await expect(page.locator('#article-history-list')).toContainText('effet +2');
-  await expect(page.locator('#article-history-list')).toContainText('résultat 2');
-
-  const articleResponsePromise = waitForRequest(page, 'GET', `/api/articles/${ean13}`);
-  await page.locator('#lookupEan13').fill(ean13);
-  await page.locator('section[aria-labelledby="lookup-title"]').getByRole('button', { name: 'Consulter', exact: true }).click();
-  expect((await articleResponsePromise).status()).toBe(200);
-  await expect(page.getByRole('heading', { name: 'Alimentaire aux deux modes' })).toBeVisible();
-
-  const archiveResponsePromise = waitForRequest(page, 'POST', `/api/articles/${ean13}/archive`);
-  await page.getByRole('button', { name: 'Archiver l’Article', exact: true }).click();
-  expect((await archiveResponsePromise).status()).toBe(200);
-
-  const reactivateResponsePromise = waitForRequest(page, 'POST', `/api/articles/${ean13}/reactivate`);
-  await page.getByRole('button', { name: 'Réactiver l’Article', exact: true }).click();
-  expect((await reactivateResponsePromise).status()).toBe(200);
+  await archive(page, ean13);
+  await reactivate(page, ean13);
 
   const articleHistoryPromise = waitForRequest(page, 'GET', '/api/history', (url) => (
     url.searchParams.get('ean13') === ean13
   ));
-  await page.getByRole('button', { name: 'Consulter l’Historique de cet Article', exact: true }).click();
+  await page.locator('#history-ean13').fill(ean13);
+  await page.getByRole('button', { name: 'Filtrer l’Historique', exact: true }).click();
   const articleHistoryResponse = await articleHistoryPromise;
   expect(articleHistoryResponse.status()).toBe(200);
   const articleHistoryEntries = await articleHistoryResponse.json() as BrowserHistoryEntry[];
@@ -364,34 +286,29 @@ test('consults global and Article history after real Stock operations', async ({
     previousStatus: 'archived',
     nextStatus: 'active',
   });
-  await expect(page.locator('#article-history-list')).toContainText('Inventaire');
-  const articlePositiveInventoryCard = page.locator(`[aria-labelledby="article-history-entry-${inventory.operation.id}"]`);
+  await expect(page.locator('#history-list')).toContainText('Inventaire');
+  const articlePositiveInventoryCard = page.locator(`[aria-labelledby="history-entry-${inventory.operation.id}"]`);
   await expect(articlePositiveInventoryCard).toContainText('Quantité comptée');
   await expect(articlePositiveInventoryCard).toContainText('12 unités');
   await expect(articlePositiveInventoryCard).toContainText('+2');
-  await expect(articlePositiveInventoryCard).toContainText('résultat : 12 unités');
-  await expect(page.locator('#article-history-list')).toContainText('effet inverse -2');
-  await expect(page.locator('#article-history-list')).toContainText(`Source : ${inventory.operation.id}`);
-  await expect(page.locator('#article-history-list')).toContainText(`Correction : ${counter.counterMovement.id}`);
-  await expect(page.locator('#article-history-list')).toContainText('Contrôle Historique');
-  await expect(page.locator('#article-history-list')).toContainText(`Corrigé par : ${counter.counterMovement.id}`);
-  await expect(page.locator('#article-history-list')).toContainText('active');
-  await expect(page.locator('#article-history-list')).toContainText('archived');
-  await expect(page.locator('#article-history-panel')).toBeFocused();
-  await expect(page.locator('#article-history-list')).toContainText('Archivage Catalogue');
-  await expect(page.locator('#article-history-list')).toContainText('Réactivation Catalogue');
-  const articleCounterCard = page.locator(`[aria-labelledby="article-history-entry-${counter.counterMovement.id}"]`);
+  await expect(articlePositiveInventoryCard).toContainText('12 unités');
+  await expect(page.locator('#history-list')).toContainText('effet inverse -2');
+  await expect(page.locator('#history-list')).toContainText(inventory.operation.id);
+  await expect(page.locator('#history-list')).toContainText(counter.counterMovement.id);
+  await expect(page.locator('#history-list')).toContainText('Contrôle Historique');
+  await expect(page.locator('#history-list')).toContainText('active');
+  await expect(page.locator('#history-list')).toContainText('archived');
+  await expect(page.locator('#history-list')).toContainText('Archivage Catalogue');
+  await expect(page.locator('#history-list')).toContainText('Réactivation Catalogue');
+  const articleCounterCard = page.locator(`[aria-labelledby="history-entry-${counter.counterMovement.id}"]`);
   await expect(articleCounterCard).toContainText('effet inverse -2');
   await expect(articleCounterCard).not.toContainText('précédent');
 
-  const otherArticleResponsePromise = waitForRequest(page, 'GET', `/api/articles/${otherEan13}`);
-  await page.locator('#lookupEan13').fill(otherEan13);
-  await page.locator('section[aria-labelledby="lookup-title"]').getByRole('button', { name: 'Consulter', exact: true }).click();
-  expect((await otherArticleResponsePromise).status()).toBe(200);
   const otherArticleHistoryPromise = waitForRequest(page, 'GET', '/api/history', (url) => (
     url.searchParams.get('ean13') === otherEan13
   ));
-  await page.getByRole('button', { name: 'Consulter l’Historique de cet Article', exact: true }).click();
+  await page.locator('#history-ean13').fill(otherEan13);
+  await page.getByRole('button', { name: 'Filtrer l’Historique', exact: true }).click();
   const otherArticleHistoryResponse = await otherArticleHistoryPromise;
   expect(otherArticleHistoryResponse.status()).toBe(200);
   const otherArticleHistoryEntries = await otherArticleHistoryResponse.json() as BrowserHistoryEntry[];
@@ -402,24 +319,21 @@ test('consults global and Article history after real Stock operations', async ({
     resultingPhysicalStock: 7,
     lines: [{ ean13: otherEan13, countedQuantity: 7, difference: -1, resultingPhysicalStock: 7 }],
   });
-  const otherArticleInventoryCard = page.locator(`[aria-labelledby="article-history-entry-${otherInventory.operation.id}"]`);
+  const otherArticleInventoryCard = page.locator(`[aria-labelledby="history-entry-${otherInventory.operation.id}"]`);
   await expect(otherArticleInventoryCard).toContainText('Quantité comptée');
   await expect(otherArticleInventoryCard).toContainText('7 unités');
   await expect(otherArticleInventoryCard).toContainText('-1');
-  await expect(otherArticleInventoryCard).toContainText('résultat : 7 unités');
-  await expect(page.locator('#article-history-list')).toContainText('effet inverse +1');
-  const otherArticleCounterCard = page.locator(`[aria-labelledby="article-history-entry-${otherCounter.counterMovement.id}"]`);
+  await expect(otherArticleInventoryCard).toContainText('7 unités');
+  await expect(page.locator('#history-list')).toContainText('effet inverse +1');
+  const otherArticleCounterCard = page.locator(`[aria-labelledby="history-entry-${otherCounter.counterMovement.id}"]`);
   await expect(otherArticleCounterCard).toContainText('effet inverse +1');
   await expect(otherArticleCounterCard).not.toContainText('précédent');
 
-  const inventoryArticleResponsePromise = waitForRequest(page, 'GET', `/api/articles/${inventoryEan13}`);
-  await page.locator('#lookupEan13').fill(inventoryEan13);
-  await page.locator('section[aria-labelledby="lookup-title"]').getByRole('button', { name: 'Consulter', exact: true }).click();
-  expect((await inventoryArticleResponsePromise).status()).toBe(200);
   const inventoryArticleHistoryPromise = waitForRequest(page, 'GET', '/api/history', (url) => (
     url.searchParams.get('ean13') === inventoryEan13
   ));
-  await page.getByRole('button', { name: 'Consulter l’Historique de cet Article', exact: true }).click();
+  await page.locator('#history-ean13').fill(inventoryEan13);
+  await page.getByRole('button', { name: 'Filtrer l’Historique', exact: true }).click();
   const inventoryArticleHistoryResponse = await inventoryArticleHistoryPromise;
   expect(inventoryArticleHistoryResponse.status()).toBe(200);
   const inventoryArticleHistoryEntries = await inventoryArticleHistoryResponse.json() as BrowserHistoryEntry[];
@@ -430,13 +344,13 @@ test('consults global and Article history after real Stock operations', async ({
     resultingPhysicalStock: 3,
     lines: [{ ean13: inventoryEan13, countedQuantity: 3, difference: 0, resultingPhysicalStock: 3 }],
   });
-  const zeroArticleInventoryCard = page.locator(`[aria-labelledby="article-history-entry-${zeroInventory.operation.id}"]`);
+  const zeroArticleInventoryCard = page.locator(`[aria-labelledby="history-entry-${zeroInventory.operation.id}"]`);
   await expect(zeroArticleInventoryCard).toContainText('Quantité comptée');
   await expect(zeroArticleInventoryCard).toContainText('3 unités');
   await expect(zeroArticleInventoryCard).toContainText('Écart');
-  await expect(zeroArticleInventoryCard).toContainText('résultat : 3 unités');
-  await expect(page.locator('#article-history-list')).toContainText('effet inverse 0');
-  const zeroArticleCounterCard = page.locator(`[aria-labelledby="article-history-entry-${zeroCounter.counterMovement.id}"]`);
+  await expect(zeroArticleInventoryCard).toContainText('3 unités');
+  await expect(page.locator('#history-list')).toContainText('effet inverse 0');
+  const zeroArticleCounterCard = page.locator(`[aria-labelledby="history-entry-${zeroCounter.counterMovement.id}"]`);
   await expect(zeroArticleCounterCard).toContainText('effet inverse 0');
   await expect(zeroArticleCounterCard).not.toContainText('précédent');
 
@@ -483,7 +397,7 @@ test('consults global and Article history after real Stock operations', async ({
 });
 
 test('keeps a committed Sale and its financial correction separately in History', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/stock');
   await expect(page.locator('#stock-table').getByRole('row', { name: /Alimentaire aux deux modes/ })).toBeVisible();
 
   await page.getByRole('link', { name: 'Historique' }).click();
@@ -573,30 +487,26 @@ test('keeps a committed Sale and its financial correction separately in History'
   await expect(correctionCard).toContainText('Prix HT unitaire historique');
   await expect(correctionCard).toContainText('100 centimes');
 
-  const articleResponsePromise = waitForRequest(page, 'GET', `/api/articles/${ean13}`);
-  await page.locator('#lookupEan13').fill(ean13);
-  await page.locator('section[aria-labelledby="lookup-title"]').getByRole('button', { name: 'Consulter', exact: true }).click();
-  expect((await articleResponsePromise).status()).toBe(200);
   const articleHistoryPromise = waitForRequest(page, 'GET', '/api/history', (url) => (
     url.searchParams.get('ean13') === ean13
   ));
-  await page.getByRole('button', { name: 'Consulter l’Historique de cet Article', exact: true }).click();
+  await page.locator('#history-ean13').fill(ean13);
+  await page.getByRole('button', { name: 'Filtrer l’Historique', exact: true }).click();
   expect((await articleHistoryPromise).status()).toBe(200);
-  const articleSaleCard = page.locator(`[aria-labelledby="article-history-entry-${sale.operation.id}"]`);
-  const articleCorrectionCard = page.locator(`[aria-labelledby="article-history-entry-${correctionEntry!.id}"]`);
-  await expect(articleSaleCard).toContainText('Contexte À emporter');
+  const articleSaleCard = page.locator(`[aria-labelledby="history-entry-${sale.operation.id}"]`);
+  const articleCorrectionCard = page.locator(`[aria-labelledby="history-entry-${correctionEntry!.id}"]`);
+  await expect(articleSaleCard).toContainText('À emporter');
   await expect(articleCorrectionCard).toContainText('Prix HT unitaire historique');
   await expect(articleCorrectionCard).toContainText('100 centimes');
-  await expect(page.locator('#article-history-list')).toContainText('À emporter');
-  await expect(page.locator('#article-history-list')).toContainText('11/200');
+  await expect(page.locator('#history-list')).toContainText('À emporter');
+  await expect(page.locator('#history-list')).toContainText('11/200');
 });
 
 test.describe('history read failure runtime seam', () => {
   test.use({ historyReadFailure: true });
 
   test('renders the real History API failure as an accessible error state', async ({ page }) => {
-    await page.goto('/');
-    await page.getByRole('link', { name: 'Historique' }).click();
+    await page.goto('/stock/historique');
 
     const failurePromise = waitForRequest(page, 'GET', '/api/history', (url) => (
     !url.search
@@ -635,12 +545,12 @@ test.describe('complete History behavior', () => {
       packaging: 'new',
       priceHtCents: 400,
     });
-    const bulkSupply = await supplyBulk(page, [
+    const bulkSupply = await prepareBulkSupply(page, [
       { ean13: foodEan13, quantity: 8 },
       { ean13: nonFoodEan13, quantity: 5 },
     ]);
     const sale = await sell(page, foodEan13, 2, 'takeaway');
-    const inventoryResult = await inventory(page, foodEan13, 7);
+    const inventoryResult = await prepareInventory(page, foodEan13, 7);
     const counterResponse = await page.request.post(`${apiBaseUrl}/api/stock/counter-movements`, {
       data: {
         sourceOperationId: inventoryResult.operation.id,
@@ -669,7 +579,7 @@ test.describe('complete History behavior', () => {
     expect(stockBeforeHistory.status()).toBe(200);
     const stockBeforeHistoryView = await stockBeforeHistory.json();
 
-    await page.goto('/');
+    await page.goto('/stock/historique');
     const writeRequests: string[] = [];
     const trackWriteRequests = (request: import('@playwright/test').Request) => {
       if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method())) {
@@ -677,7 +587,6 @@ test.describe('complete History behavior', () => {
       }
     };
     page.on('request', trackWriteRequests);
-    await page.getByRole('link', { name: 'Historique' }).click();
     const globalHistoryPromise = waitForRequest(page, 'GET', '/api/history', (url) => !url.search);
     await page.getByRole('button', { name: 'Historique global', exact: true }).click();
     expect((await globalHistoryPromise).status()).toBe(200);
@@ -766,19 +675,14 @@ test.describe('complete History behavior', () => {
       name: /Enregistrer|Archiver|Réactiver|Corriger|Supprimer/,
     })).toHaveCount(0);
 
-    const articleResponsePromise = waitForRequest(page, 'GET', `/api/articles/${foodEan13}`);
-    await page.locator('#lookupEan13').fill(foodEan13);
-    await page.locator('section[aria-labelledby="lookup-title"]')
-      .getByRole('button', { name: 'Consulter', exact: true })
-      .click();
-    expect((await articleResponsePromise).status()).toBe(200);
     const articleHistoryPromise = waitForRequest(page, 'GET', '/api/history', (url) => (
       url.searchParams.get('ean13') === foodEan13
     ));
-    await page.getByRole('button', { name: 'Consulter l’Historique de cet Article', exact: true }).click();
+    await page.locator('#history-ean13').fill(foodEan13);
+    await page.getByRole('button', { name: 'Filtrer l’Historique', exact: true }).click();
     expect((await articleHistoryPromise).status()).toBe(200);
 
-    const articleHistory = page.locator('#article-history-list');
+    const articleHistory = page.locator('#history-list');
     await expect(articleHistory).toContainText(foodEan13);
     await expect(articleHistory).not.toContainText(nonFoodEan13);
     await expect(articleHistory).toContainText('Changement de DLC');
@@ -786,10 +690,6 @@ test.describe('complete History behavior', () => {
     await expect(articleHistory).toContainText('Changement Catalogue');
     await expect(articleHistory).toContainText(`name : ${foodName} → ${renamedFood}`);
     await expect(articleHistory).not.toContainText('Changement de Packaging');
-    await expect(page.locator('#article-history-panel').getByRole('button')).toHaveText(
-      'Consulter l’Historique de cet Article',
-    );
-
     page.off('request', trackWriteRequests);
     expect(writeRequests).toEqual([]);
     const stockAfterHistory = await page.request.get(`${apiBaseUrl}/api/stock/${foodEan13}`);

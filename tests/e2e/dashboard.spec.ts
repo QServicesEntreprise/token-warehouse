@@ -3,7 +3,7 @@ import type { Route } from '@playwright/test';
 import { apiUrl, test } from './fixtures';
 import { ean13ForAttempt, leadingZeroEan13 } from './helpers/ean13';
 import { expectProblemDetails, waitForRequest } from './helpers/http';
-import { archive, createNonFoodArticle, sell } from './helpers/state';
+import { archive, createFoodArticle, createNonFoodArticle, sell } from './helpers/state';
 
 test('consults the current Dashboard with aligned KPIs, alerts and keyboard links', async ({ page }) => {
   const dashboard = page.locator('#dashboard-panel');
@@ -532,13 +532,13 @@ test.describe('Dashboard states', () => {
     await expect(page.locator('#dashboard-table')).toHaveCount(0);
     await page.unroute(dashboardRoute, stateRoute);
 
-    await page.locator('#ean13').fill(leadingZeroEan13);
-    await page.locator('#name').fill('Article Dashboard');
-    await page.locator('#priceHtCents').fill('1000');
-    await page.locator('#dlc').fill('2030-01-15');
-    await page.locator('#consumptionModes').getByLabel('À emporter').check();
-    await page.getByRole('button', { name: 'Créer l’Article' }).click();
-    await expect(page.getByRole('heading', { name: 'Article Dashboard' })).toBeVisible();
+    await createFoodArticle(page, {
+      ean13: leadingZeroEan13,
+      name: 'Article Dashboard',
+      modes: ['takeaway'],
+      dlc: '2030-01-15',
+      priceHtCents: 1000,
+    });
 
     await page.getByRole('button', { name: 'Réessayer', exact: true }).click();
     await expect(dashboardState).toContainText('Article suivi');

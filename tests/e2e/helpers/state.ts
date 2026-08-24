@@ -5,11 +5,9 @@
  * daily-flow time data so test fixtures do not grow in the production assembly.
  */
 import { expect, type APIResponse, type Page } from '@playwright/test';
-import type {
-  ArticleResponse,
-  ConsumptionMode,
-  Packaging,
-} from '../../../src/web/app/article-api.service';
+import type { Article } from '../../../src/web/features/catalogue/domain/article';
+import type { Packaging } from '../../../src/web/features/catalogue/domain/packaging';
+import type { ConsumptionMode } from '../../../src/web/shared-kernel/consumption-mode';
 import type { InventoryResponse } from '../../../src/web/app/inventory-api.service';
 import type { SaleResponse } from '../../../src/web/app/sales-api.service';
 import type { BulkSupplyResponse, SupplyResponse } from '../../../src/web/app/stock-api.service';
@@ -34,7 +32,7 @@ export const createFoodArticle = async (
     ean13?: string;
     name?: string;
   },
-): Promise<ArticleResponse> => {
+): Promise<Article> => {
   const ean13 = options.ean13 ?? defaultFoodEan13;
   return expectOkJson(await page.request.post(`${apiBaseUrl}/api/articles`, {
     data: {
@@ -56,7 +54,7 @@ export const createNonFoodArticle = async (
     ean13?: string;
     name?: string;
   },
-): Promise<ArticleResponse> => {
+): Promise<Article> => {
   const ean13 = options.ean13 ?? defaultNonFoodEan13;
   return expectOkJson(await page.request.post(`${apiBaseUrl}/api/articles`, {
     data: {
@@ -80,10 +78,10 @@ export const supplyBulk = async (
   { data: { lines } },
 ));
 
-export const archive = async (page: Page, ean13: string): Promise<ArticleResponse> =>
+export const archive = async (page: Page, ean13: string): Promise<Article> =>
   expectOkJson(await page.request.post(`${apiBaseUrl}/api/articles/${encodeURIComponent(ean13)}/archive`));
 
-export const reactivate = async (page: Page, ean13: string): Promise<ArticleResponse> =>
+export const reactivate = async (page: Page, ean13: string): Promise<Article> =>
   expectOkJson(await page.request.post(`${apiBaseUrl}/api/articles/${encodeURIComponent(ean13)}/reactivate`));
 
 export const sell = async (

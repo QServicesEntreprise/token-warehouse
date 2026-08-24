@@ -1,0 +1,75 @@
+<main>
+  <header class="page-header">
+    <p class="eyebrow">Vue opérationnelle</p>
+    <h1 id="catalog-title" tabindex="-1">Catalogue</h1>
+    <p>Retrouvez les références actives, archivées ou l’ensemble du catalogue par nom, EAN-13 et classification.</p>
+    <a class="primary-link" routerLink="/catalogue/nouveau">Créer un Article</a>
+  </header>
+
+  <section class="panel" aria-labelledby="catalog-title">
+    <form class="catalog-filters" (submit)="onSubmit($event)">
+      <label>Recherche
+        <input id="catalog-search" autocomplete="off" placeholder="Nom ou EAN-13" [value]="search()" (input)="setSearch($event)" />
+      </label>
+      <label>Statut
+        <select id="catalog-status" [value]="status()" (change)="setStatus($event)">
+          <option value="active">Actifs</option><option value="archived">Archivés</option><option value="all">Tous</option>
+        </select>
+      </label>
+      <label>Type
+        <select id="catalog-type" [value]="type()" (change)="setType($event)">
+          <option value="all">Tous les types</option><option value="food">Alimentaire</option><option value="nonFood">Non alimentaire</option>
+        </select>
+      </label>
+      @if (type() !== 'nonFood') {
+        <label>Mode de consommation
+          <select id="catalog-mode" [value]="mode()" (change)="setMode($event)">
+            <option value="">Tous les modes</option><option value="takeaway">À emporter</option><option value="onsite">Sur place</option>
+          </select>
+        </label>
+      }
+      @if (type() !== 'food') {
+        <label>Packaging
+          <select id="catalog-packaging" [value]="packaging()" (change)="setPackaging($event)">
+            <option value="">Tous les Packaging</option><option value="new">Neuf</option><option value="refurbished">Reconditionné</option><option value="unsellable">Invendable</option>
+          </select>
+        </label>
+      }
+      <button type="submit">Rechercher</button>
+    </form>
+
+    <div id="catalog-state" class="catalog-state" aria-live="polite" role="status">
+      @switch (store.state()) {
+        @case ('loading') { <p>Chargement du Catalogue…</p> }
+        @case ('ready') { <p>{{ store.articles().length }} Article{{ store.articles().length > 1 ? 's' : '' }} trouvé{{ store.articles().length > 1 ? 's' : '' }}.</p> }
+        @case ('empty') { <p>Aucun Article ne correspond à ces critères.</p> }
+        @case ('error') { <p class="form-error" role="alert">{{ store.error() }}</p><button type="button" class="secondary-button" (click)="load()">Réessayer</button> }
+      }
+    </div>
+    <p id="catalog-lifecycle-status" tabindex="-1" aria-live="polite" role="status">{{ store.lifecycleMessage() }}</p>
+    @if (store.stale()) {
+      <p id="catalog-stale" class="stale-result">Les lignes affichées proviennent d’une recherche précédente et ne sont plus à jour.</p>
+    }
+
+    @if (store.articles().length > 0) {
+      <div class="table-wrap"><table>
+        <caption class="sr-only">Résultats du Catalogue</caption>
+        <thead><tr><th scope="col">Article</th><th scope="col">EAN-13</th><th scope="col">Type</th><th scope="col">Statut</th><th scope="col">Classification</th><th scope="col">Prix HT</th><th scope="col"><span class="sr-only">Action</span></th></tr></thead>
+        <tbody>
+          @for (article of store.articles(); track article.ean13) {
+            <tr>
+              <th scope="row">{{ article.name }}</th><td>{{ article.ean13 }}</td><td>{{ article.type === 'food' ? 'Alimentaire' : 'Non alimentaire' }}</td><td>{{ isActive(article) ? 'Actif' : 'Archivé' }}</td>
+              <td>{{ article.type === 'food' ? formatModes(article.consumptionModes) : formatPackaging(article.packaging) }}</td><td>{{ article.priceHtCents }} centimes</td>
+              <td>
+                <button type="button" class="table-action link-button" [attr.aria-label]="'Consulter ' + article.name" [routerLink]="['/catalogue', article.ean13]">Détail</button>
+                <button type="button" class="table-action" [disabled]="!!store.transitioningEan()" [attr.aria-label]="(isActive(article) ? 'Archiver ' : 'Réactiver ') + article.name" (click)="toggleLifecycle(article)">
+                  {{ store.transitioningEan() === article.ean13 ? 'Traitement…' : (isActive(article) ? 'Archiver' : 'Réactiver') }}
+                </button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table></div>
+    }
+  </section>
+</main>

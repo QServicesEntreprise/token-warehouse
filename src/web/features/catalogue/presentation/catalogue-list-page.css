@@ -1,0 +1,3 @@
+.primary-link, .link-button { color: #173b70; font-weight: 700; }
+.link-button { display: inline-block; margin-right: .4rem; padding: .55rem .7rem; }
+.stale-result { border-left: .25rem solid #d9822b; color: #7a4215; padding-left: .75rem; }

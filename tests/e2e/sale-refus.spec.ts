@@ -62,7 +62,7 @@ test.describe('Sale refusal invariants', () => {
     await expect(saleSearch).toBeOK();
     await expect(saleSearch.json()).resolves.toEqual([]);
 
-    await page.goto('/');
+    await page.goto('/catalogue');
     await page.locator('#catalog-status').selectOption('archived');
     await page.locator('#catalog-search').fill(ean13);
     await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
@@ -107,7 +107,7 @@ test.describe('Sale refusal invariants', () => {
     await supply(page, ean13, 4);
     const before = await readStockAndHistory(page, ean13);
     const salePanel = page.locator('#sale-panel');
-    await page.goto('/');
+    await page.goto('/ventes');
     await salePanel.locator('#sale-search').fill(ean13);
     await salePanel.locator('#sale-search-form').getByRole('button', { name: 'Rechercher un Article', exact: true }).click();
     await salePanel.getByRole('row', { name: new RegExp(ean13) })
@@ -164,7 +164,7 @@ test.describe('Sale refusal invariants', () => {
       }),
     ]);
     const salePanel = page.locator('#sale-panel');
-    await page.goto('/');
+    await page.goto('/ventes');
     await salePanel.locator('#sale-search').fill(ean13);
     await salePanel.locator('#sale-search-form').getByRole('button', { name: 'Rechercher un Article', exact: true }).click();
     const row = salePanel.getByRole('row', { name: new RegExp(ean13) });

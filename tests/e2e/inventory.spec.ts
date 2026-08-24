@@ -41,7 +41,7 @@ const expectReceipt = async (
 };
 
 const openInventory = async (page: Page) => {
-  await page.goto('/');
+  await page.goto('/stock/inventaires');
   await expect(page.locator('#stock-table')).toBeVisible();
   await expect(
     page.locator('#stock-table').getByRole('row', { name: /Alimentaire aux deux modes/ }),
