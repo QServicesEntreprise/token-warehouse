@@ -34,6 +34,17 @@ const openCounterMovement = async (page: import('@playwright/test').Page) => {
   return page.locator('#counter-movement-source');
 };
 
+test('keeps the correction source selectable through a pointer click', async ({ page }) => {
+  const source = await supply(page, canonicalEan, 1);
+  await page.goto('/stock/corrections');
+  const sourceSelect = await openCounterMovement(page);
+
+  await sourceSelect.click({ timeout: 1000 });
+  await expect(sourceSelect).toBeFocused();
+  await sourceSelect.selectOption(source.operation.id);
+  await expect(sourceSelect).toHaveValue(source.operation.id);
+});
+
 const correctSource = async (
   page: import('@playwright/test').Page,
   sourceId: string,

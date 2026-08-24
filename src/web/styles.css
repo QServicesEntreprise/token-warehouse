@@ -178,6 +178,10 @@ button {
   padding: 0.55rem 0.7rem;
 }
 
+select {
+  min-width: 0;
+}
+
 button {
   background: #173b70;
   color: #fff;
