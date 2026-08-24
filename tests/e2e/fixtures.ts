@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { test as base } from '@playwright/test';
@@ -8,7 +8,10 @@ import { test as base } from '@playwright/test';
 export const apiUrl = `http://127.0.0.1:${process.env['TOKEN_WAREHOUSE_API_PORT'] ?? '5100'}`;
 const playwrightArtifactsPath = path.resolve('artifacts/playwright');
 const repositoryRoot = path.resolve(playwrightArtifactsPath, '../..');
+const apiProjectPath = path.join(repositoryRoot, 'src/backend/TokenWarehouse.Api/TokenWarehouse.Api.csproj');
 const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+execFileSync('dotnet', ['build', apiProjectPath], { cwd: repositoryRoot, stdio: 'inherit' });
 
 const waitForApi = async (server: ChildProcess): Promise<void> => {
   const deadline = Date.now() + 120_000;
@@ -117,7 +120,8 @@ export const test = base.extend<Fixtures>({
       [
         'run',
         '--project',
-        path.join(repositoryRoot, 'src/backend/TokenWarehouse.Api/TokenWarehouse.Api.csproj'),
+        apiProjectPath,
+        '--no-build',
         '--no-launch-profile',
         '--urls',
         apiUrl,

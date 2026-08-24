@@ -41,6 +41,14 @@ export interface InventoryPositionResponse {
   reason: 'ARCHIVED' | 'DLC_EXPIRED' | 'UNSELLABLE_PACKAGING' | null;
 }
 
+export interface InventoryCurrentStockResponse {
+  ean13: string;
+  physicalQuantity: number;
+  sellableQuantity: number;
+  availability: InventoryPositionResponse['availability'];
+  reason: InventoryPositionResponse['reason'];
+}
+
 export interface InventoryResponse {
   operation: InventoryOperationResponse;
   position: InventoryPositionResponse;
@@ -76,5 +84,9 @@ export class InventoryApiService {
 
   getById(id: string): Observable<InventoryOperationResponse> {
     return this.http.get<InventoryOperationResponse>(`/api/inventories/${encodeURIComponent(id)}`);
+  }
+
+  getStockByEan13(ean13: string): Observable<InventoryCurrentStockResponse> {
+    return this.http.get<InventoryCurrentStockResponse>(`/api/stock/${encodeURIComponent(ean13)}`);
   }
 }

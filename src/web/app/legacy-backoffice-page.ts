@@ -14,14 +14,6 @@ import { NavigationEnd, Router } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { firstValueFrom } from 'rxjs';
 import { ConsumptionMode } from '../shared-kernel/consumption-mode';
-import {
-  StockApiService,
-  StockAvailability,
-  StockPositionResponse,
-  StockReason,
-  BulkSupplyPayload,
-  SupplyPayload,
-} from './stock-api.service';
 import { DashboardComponent } from './dashboard.component';
 import {
   InventoryApiService,
@@ -48,16 +40,6 @@ interface ProblemDetails {
   code?: string;
   errors?: Record<string, string[]>;
   title?: string;
-}
-
-interface SupplyFormModel {
-  ean13: string;
-  quantity: string;
-}
-
-interface SupplyLineFormModel {
-  ean13: string;
-  quantity: string;
 }
 
 interface InventoryFormModel {
@@ -98,7 +80,6 @@ const initialInventoryModel: InventoryFormModel = {
 const lastInventoryIdStorageKey = 'token-warehouse.last-inventory-id';
 const routeSectionTargetIds: Record<string, string> = {
   dashboard: 'dashboard-title',
-  approvisionnements: 'supply-title',
   inventaires: 'inventory-title',
   corrections: 'counter-movement-title',
   historique: 'history-title',
@@ -219,68 +200,6 @@ const routeSectionTargetIds: Record<string, string> = {
             }
           </div>
         }
-      </section>
-
-      <section id="supply-panel" class="panel" aria-labelledby="supply-title">
-        <div>
-          <p class="eyebrow">Mouvement immédiat</p>
-          <h2 id="supply-title">Enregistrer un Approvisionnement</h2>
-        </div>
-        <p>La position visible est remplacée par le résultat engagé par le serveur après la réception.</p>
-
-        <form id="supply-form" class="supply-form" novalidate (submit)="onSupplySubmit($event)">
-          @for (line of supplyLines(); track $index; let lineIndex = $index) {
-            <fieldset class="supply-line" [attr.aria-labelledby]="supplyLineTitleId(lineIndex)">
-              <legend [id]="supplyLineTitleId(lineIndex)">Ligne {{ lineIndex + 1 }}</legend>
-              <label [attr.for]="supplyInputId('ean13', lineIndex)">
-                Référence EAN-13
-                <input
-                  [id]="supplyInputId('ean13', lineIndex)"
-                  autocomplete="off"
-                  inputmode="numeric"
-                  pattern="[0-9]{13}"
-                  [value]="line.ean13"
-                  [attr.aria-invalid]="supplyLineFieldError(lineIndex, 'ean13') ? 'true' : null"
-                  [attr.aria-describedby]="supplyErrorId('ean13', lineIndex)"
-                  (input)="setSupplyLineField(lineIndex, 'ean13', $event)"
-                  />
-                <span [id]="supplyErrorId('ean13', lineIndex)" class="field-error">{{ supplyLineFieldError(lineIndex, 'ean13') }}</span>
-              </label>
-
-              <label [attr.for]="supplyInputId('quantity', lineIndex)">
-                Quantité entière positive
-                <input
-                  [id]="supplyInputId('quantity', lineIndex)"
-                  type="number"
-                  min="1"
-                  step="1"
-                  inputmode="numeric"
-                  [value]="line.quantity"
-                  [attr.aria-invalid]="supplyLineFieldError(lineIndex, 'quantity') ? 'true' : null"
-                  [attr.aria-describedby]="supplyErrorId('quantity', lineIndex)"
-                  (input)="setSupplyLineField(lineIndex, 'quantity', $event)"
-                  />
-                <span [id]="supplyErrorId('quantity', lineIndex)" class="field-error">{{ supplyLineFieldError(lineIndex, 'quantity') }}</span>
-              </label>
-
-              @if (supplyLines().length > 1) {
-                <button
-                  type="button"
-                  class="secondary-button"
-                  [attr.aria-label]="'Retirer la ligne ' + (lineIndex + 1)"
-                  (click)="removeSupplyLine(lineIndex)">
-                  Retirer
-                </button>
-              }
-            </fieldset>
-          }
-
-          <button type="button" class="secondary-button" (click)="addSupplyLine()">Ajouter une ligne</button>
-          <button type="submit" [disabled]="supplySubmitting()">
-            {{ supplySubmitting() ? 'Réception…' : 'Enregistrer l’Approvisionnement' }}
-          </button>
-        </form>
-        <p id="supply-status" role="status" aria-live="assertive" tabindex="-1">{{ supplyMessage() }}</p>
       </section>
 
       <section class="panel" aria-labelledby="inventory-title">
@@ -519,7 +438,6 @@ const routeSectionTargetIds: Record<string, string> = {
 export class LegacyBackofficePage implements AfterViewInit, OnInit {
   private readonly router = inject(Router, { optional: true });
 
-  private readonly stockApi = inject(StockApiService);
   private readonly inventoryApi = inject(InventoryApiService);
   private readonly counterMovementApi = inject(CounterMovementApiService);
   private readonly historyApi = inject(HistoryApiService);
@@ -531,9 +449,6 @@ export class LegacyBackofficePage implements AfterViewInit, OnInit {
       }
     });
   }
-
-  readonly supplyModel = signal<SupplyFormModel>({ ean13: '', quantity: '' });
-  readonly supplyLines = signal<SupplyLineFormModel[]>([{ ean13: '', quantity: '' }]);
 
   readonly inventoryModel = signal<InventoryFormModel>({ ...initialInventoryModel });
   readonly inventoryForm = form(this.inventoryModel, (schemaPath) => {
@@ -565,9 +480,6 @@ export class LegacyBackofficePage implements AfterViewInit, OnInit {
     pattern(schemaPath.justification, /\S/, { message: 'La justification ne peut pas être vide.' });
   });
 
-  readonly supplyFieldErrors = signal<Record<string, string>>({});
-  readonly supplyMessage = signal('');
-  readonly supplySubmitting = signal(false);
   readonly inventoryError = signal('');
   readonly inventoryReceipt = signal<InventoryReceiptResponse | null>(null);
   readonly inventorySubmitting = signal(false);
@@ -587,7 +499,6 @@ export class LegacyBackofficePage implements AfterViewInit, OnInit {
   readonly historyError = signal('');
   readonly historyFilterEan = signal('');
   readonly historyLoaded = signal(false);
-  private supplyRequestId = 0;
   private inventoryRestoreRequestId = 0;
   private counterMovementRequestId = 0;
   private historyRequestId = 0;
@@ -931,130 +842,7 @@ export class LegacyBackofficePage implements AfterViewInit, OnInit {
     return this.inventoryLineError(index, field) ? this.inventoryErrorId(field, index) : null;
   }
 
-  supplyFieldError(field: string): string {
-    return field === 'ean13' || field === 'quantity'
-      ? this.supplyLineFieldError(0, field)
-      : this.supplyFieldErrors()[field] ?? '';
-  }
-
-  supplyLineFieldError(index: number, field: 'ean13' | 'quantity'): string {
-    const errors = this.supplyFieldErrors();
-    return errors[`lines[${index}].${field}`]
-      ?? errors[`lines[${index}]`]
-      ?? (index === 0 ? errors[field] : '')
-      ?? '';
-  }
-
-  supplyInputId(field: 'ean13' | 'quantity', index: number): string {
-    const base = field === 'ean13' ? 'supplyEan13' : 'supplyQuantity';
-    return index === 0 ? base : `${base}-${index}`;
-  }
-
-  supplyErrorId(field: 'ean13' | 'quantity', index: number): string {
-    const base = field === 'ean13' ? 'supply-ean13-error' : 'supply-quantity-error';
-    return index === 0 ? base : `supply-${field}-${index}-error`;
-  }
-
-  supplyLineTitleId(index: number): string {
-    return `supply-line-${index}-title`;
-  }
-
-  setSupplyLineField(index: number, field: 'ean13' | 'quantity', event: Event): void {
-    const value = (event.target as HTMLInputElement).value;
-    this.supplyLines.update((lines) => lines.map((line, lineIndex) =>
-      lineIndex === index ? { ...line, [field]: value } : line));
-    if (index === 0) {
-      this.supplyModel.update((line) => ({ ...line, [field]: value }));
-    }
-  }
-
-  addSupplyLine(): void {
-    this.supplyLines.update((lines) => [...lines, { ean13: '', quantity: '' }]);
-  }
-
-  removeSupplyLine(index: number): void {
-    const lines = this.supplyLines();
-    if (lines.length <= 1 || !lines[index]) {
-      return;
-    }
-
-    const remaining = lines.filter((_, lineIndex) => lineIndex !== index);
-    this.supplyLines.set(remaining);
-    this.supplyModel.set({ ...remaining[0] });
-    this.supplyFieldErrors.update((errors) => Object.entries(errors).reduce<Record<string, string>>(
-      (rebased, [field, message]) => {
-        const match = field.match(/^lines\[(\d+)\](.*)$/);
-        if (!match) {
-          rebased[field] = message;
-          return rebased;
-        }
-
-        const lineIndex = Number(match[1]);
-        if (lineIndex === index) {
-          return rebased;
-        }
-
-        const nextIndex = lineIndex > index ? lineIndex - 1 : lineIndex;
-        rebased[`lines[${nextIndex}]${match[2]}`] = message;
-        return rebased;
-      },
-      {},
-    ));
-  }
-
-  async onSupplySubmit(event: Event): Promise<void> {
-    event.preventDefault();
-    const requestId = ++this.supplyRequestId;
-    this.supplyFieldErrors.set({});
-    this.supplyMessage.set('');
-    this.supplySubmitting.set(true);
-
-    const draftLines = this.supplyLinesForSubmit();
-    const payloadLines: SupplyPayload[] = draftLines.map((line) => ({
-      ean13: line.ean13.trim(),
-      quantity: this.toSupplyQuantity(line.quantity),
-    }));
-
-    try {
-      let operation: { id: string; occurredAt: string };
-      if (payloadLines.length === 1) {
-        const response = await firstValueFrom(this.stockApi.recordSupply(payloadLines[0]));
-        operation = response.operation;
-      } else {
-        const payload: BulkSupplyPayload = { lines: payloadLines };
-        const response = await firstValueFrom(this.stockApi.recordBulkSupply(payload));
-        operation = response.operation;
-      }
-      if (requestId !== this.supplyRequestId) {
-        return;
-      }
-
-      this.supplyMessage.set(
-        `Approvisionnement ${operation.id} enregistré le ${operation.occurredAt}.`,
-      );
-      this.refreshHistoryAfterChange();
-      setTimeout(() => document.getElementById('supply-status')?.focus());
-    } catch (error) {
-      if (requestId !== this.supplyRequestId) {
-        return;
-      }
-
-      const problem = this.problemDetails(error, 'L’Approvisionnement n’a pas pu être enregistré.');
-      this.supplyFieldErrors.set(
-        Object.fromEntries(
-          Object.entries(problem.errors ?? {}).map(([field, messages]) => [field, messages[0] ?? ''])
-        )
-      );
-      this.supplyMessage.set(problem.title ?? 'L’Approvisionnement n’a pas pu être enregistré.');
-      this.focusSupplyError();
-    } finally {
-      if (requestId === this.supplyRequestId) {
-        this.supplySubmitting.set(false);
-      }
-    }
-  }
-
-  formatStockAvailability(availability: StockAvailability): string {
+  formatStockAvailability(availability: CounterMovementAvailability): string {
     return availability === 'AVAILABLE'
       ? 'Disponible'
       : availability === 'OUT_OF_STOCK'
@@ -1062,7 +850,7 @@ export class LegacyBackofficePage implements AfterViewInit, OnInit {
         : 'Non vendable';
   }
 
-  formatStockReason(reason: StockReason | null): string {
+  formatStockReason(reason: CounterMovementReason | null): string {
     return reason === 'ARCHIVED'
       ? 'Article archivé'
       : reason === 'DLC_EXPIRED'
@@ -1146,7 +934,7 @@ export class LegacyBackofficePage implements AfterViewInit, OnInit {
         resultingPhysicalStock: operation.resultingPhysicalStock,
       }];
       const lines = await Promise.all(operationLines.map(async (line) => {
-        const position = await firstValueFrom(this.stockApi.getByEan13(line.ean13));
+        const position = await firstValueFrom(this.inventoryApi.getStockByEan13(line.ean13));
         return {
           ...line,
           position: {
@@ -1246,26 +1034,6 @@ export class LegacyBackofficePage implements AfterViewInit, OnInit {
     );
   }
 
-  private supplyLinesForSubmit(): SupplyLineFormModel[] {
-    const lines = this.supplyLines().map((line) => ({ ...line }));
-    const legacyLine = this.supplyModel();
-    if (!lines[0]
-      || lines[0].ean13 !== legacyLine.ean13
-      || lines[0].quantity !== legacyLine.quantity) {
-      lines[0] = { ...legacyLine };
-    }
-    return lines;
-  }
-
-  private toSupplyQuantity(value: string): number | string | null {
-    const trimmed = value.trim();
-    if (trimmed === '') {
-      return null;
-    }
-
-    return /^\d+$/.test(trimmed) ? Number(trimmed) : trimmed;
-  }
-
   private inventoryFieldFor(field: string): FieldTree<unknown> | undefined {
     switch (field) {
       case 'ean13':
@@ -1306,20 +1074,6 @@ export class LegacyBackofficePage implements AfterViewInit, OnInit {
   private problemMessage(error: unknown, fallback: string): string {
     const problem = this.problemDetails(error, fallback);
     return problem.title ?? fallback;
-  }
-
-  private focusSupplyError(): void {
-    const field = Object.keys(this.supplyFieldErrors())[0] ?? '';
-    const lineField = field.match(/^lines\[(\d+)\]\.(ean13|quantity)$/);
-    const lineError = field.match(/^lines\[(\d+)\]$/);
-    const line = lineField ? Number(lineField[1]) : lineError ? Number(lineError[1]) : 0;
-    const fieldName = lineField?.[2] ?? (lineError ? 'ean13' : field);
-    const target = fieldName === 'ean13'
-      ? document.getElementById(this.supplyInputId('ean13', line))
-      : fieldName === 'quantity'
-        ? document.getElementById(this.supplyInputId('quantity', line))
-        : document.getElementById('supply-status');
-    target?.focus();
   }
 
   private focusCounterMovementError(): void {

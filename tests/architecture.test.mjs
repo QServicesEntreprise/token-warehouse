@@ -218,14 +218,13 @@ test('Stock positions are an autonomous lazy context and no longer live in legac
   const stockDirectory = join(root, 'src/web/features/stock');
   const routes = await readFile(join(appDirectory, 'app.routes.ts'), 'utf8');
   const legacy = await readFile(join(appDirectory, 'legacy-backoffice-page.ts'), 'utf8');
-  const legacyStockApi = await readFile(join(appDirectory, 'stock-api.service.ts'), 'utf8');
   const store = await readFile(join(stockDirectory, 'application/stock-position-store.ts'), 'utf8');
   const page = await readFile(join(stockDirectory, 'presentation/stock-page.ts'), 'utf8');
 
   assert.match(routes, /features\/stock\/presentation\/stock-page/);
   assert.match(routes, /provide:\s*STOCK_GATEWAY,\s*useExisting:\s*HttpStockGateway/);
   assert.doesNotMatch(legacy, /stock-panel|stockPositions|stockState|openStockPosition|loadStock/);
-  assert.doesNotMatch(legacyStockApi, /get<StockPositionResponse\[\]>\('\/api\/stock'/);
+  await assert.rejects(readFile(join(appDirectory, 'stock-api.service.ts'), 'utf8'));
   assert.doesNotMatch(store, /HttpClient|\b\w+(Dto|Payload|Response)\b/);
   assert.match(store, /inject\(STOCK_GATEWAY\)/);
   assert.match(store, /switchMap/);
@@ -246,6 +245,26 @@ test('Stock positions are an autonomous lazy context and no longer live in legac
   for (const source of await layerSources('presentation')) {
     assert.doesNotMatch(source, /HttpClient|\b\w+(Dto|Payload|Response)\b/);
   }
+});
+
+test('Stock Approvisionnements are route-scoped and no longer live in legacy', async () => {
+  const appDirectory = join(root, 'src/web/app');
+  const stockDirectory = join(root, 'src/web/features/stock');
+  const routes = await readFile(join(appDirectory, 'app.routes.ts'), 'utf8');
+  const legacy = await readFile(join(appDirectory, 'legacy-backoffice-page.ts'), 'utf8');
+  const gateway = await readFile(join(stockDirectory, 'application/stock-gateway.ts'), 'utf8');
+  const store = await readFile(join(stockDirectory, 'application/supply-store.ts'), 'utf8');
+  const page = await readFile(join(stockDirectory, 'presentation/supply-page.ts'), 'utf8');
+
+  assert.match(routes, /path: 'approvisionnements'[\s\S]*providers:[\s\S]*SupplyStore[\s\S]*STOCK_GATEWAY[\s\S]*HttpStockGateway[\s\S]*loadComponent:[\s\S]*features\/stock\/presentation\/supply-page/);
+  assert.match(gateway, /recordSupply/);
+  assert.match(gateway, /recordBulkSupply/);
+  assert.match(store, /inject\(STOCK_GATEWAY\)/);
+  assert.doesNotMatch(store, /HttpClient|\b\w+(Dto|Payload|Response)\b/);
+  assert.match(page, /@angular\/forms\/signals/);
+  assert.match(page, /SupplyStore/);
+  assert.doesNotMatch(page, /HttpClient|\b\w+(Dto|Payload|Response)\b|\.\.\/infrastructure/);
+  assert.doesNotMatch(legacy, /supply-panel|StockApiService|supplyModel|supplyLines|onSupplySubmit|recordBulkSupply/);
 });
 
 test('the Sales context is autonomous and route-scoped', async () => {

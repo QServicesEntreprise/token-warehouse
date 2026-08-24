@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { Observable, of } from 'rxjs';
+import { Observable, of, throwError } from 'rxjs';
 import { describe, expect, it } from 'vitest';
 import { STOCK_GATEWAY } from '../application/stock-gateway-token';
 import { StockGateway } from '../application/stock-gateway';
@@ -24,6 +24,14 @@ class FakeStockGateway implements StockGateway {
 
   getByEan13(): Observable<StockPosition> {
     return of(blockedPosition);
+  }
+
+  recordSupply(): Observable<never> {
+    return throwError(() => new Error('Approvisionnement inattendu'));
+  }
+
+  recordBulkSupply(): Observable<never> {
+    return throwError(() => new Error('Approvisionnement inattendu'));
   }
 }
 
