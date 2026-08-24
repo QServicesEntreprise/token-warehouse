@@ -1,0 +1,29 @@
+:host {
+  display: block;
+}
+
+.main-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin: 0 auto;
+  max-width: 72rem;
+  padding: 1rem 2rem 0;
+}
+
+.main-nav a {
+  border-radius: 0.35rem;
+  color: #173b70;
+  font-weight: 700;
+  padding: 0.25rem 0.35rem;
+}
+
+.main-nav a.is-active {
+  background: #173b70;
+  color: #fff;
+}
+
+.main-nav a:focus-visible {
+  outline: 0.2rem solid #e09b00;
+  outline-offset: 0.15rem;
+}

@@ -3,18 +3,18 @@ import { provideHttpClientTesting, HttpTestingController } from '@angular/common
 import { By } from '@angular/platform-browser';
 import { TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it } from 'vitest';
-import { AppComponent } from './app.component';
+import { LegacyBackofficePage } from './legacy-backoffice-page';
 import { DashboardComponent } from './dashboard.component';
 import { ArticleResponse } from './article-api.service';
 
-describe('AppComponent', () => {
+describe('LegacyBackofficePage', () => {
   afterEach(() => sessionStorage.clear());
 
   it('renders the two allowed contexts and sends only the selected context', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
@@ -138,9 +138,9 @@ describe('AppComponent', () => {
 
   it('searches Articles on the server and renders only the committed sale result', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
@@ -218,9 +218,9 @@ describe('AppComponent', () => {
   it('ignores a delayed previous sale restore after a newer sale commits', async () => {
     sessionStorage.setItem('token-warehouse.last-sale-id', 'old-sale');
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
@@ -297,9 +297,9 @@ describe('AppComponent', () => {
 
   it('ignores an in-flight sale after a newer Article selection', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
@@ -398,9 +398,9 @@ describe('AppComponent', () => {
 
   it('keeps the sale draft and exposes a conflict after a server rejection', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
@@ -448,9 +448,9 @@ describe('AppComponent', () => {
 
   it('renders immutable sale and counter-movement financial facts in history', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
@@ -566,9 +566,9 @@ describe('AppComponent', () => {
 
   it('submits an inventory and renders the server reconciliation receipt', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
@@ -614,9 +614,9 @@ describe('AppComponent', () => {
 
   it('submits several lines to the bulk endpoint and renders every server result', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
@@ -689,9 +689,9 @@ describe('AppComponent', () => {
 
   it('keeps every bulk line and focuses the first server error after rejection', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
@@ -731,9 +731,9 @@ describe('AppComponent', () => {
 
   it('keeps inventory input and maps a server error to the accessible form', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
@@ -761,9 +761,9 @@ describe('AppComponent', () => {
 
   it('announces Stock loading, empty and error states and retries the request', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
@@ -812,9 +812,9 @@ describe('AppComponent', () => {
 
   it('renders the server Stock contract and opens its keyboard-usable detail', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
@@ -900,9 +900,9 @@ describe('AppComponent', () => {
 
   it('renders the current Dashboard contract with aligned quantities and alerts', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
@@ -1014,9 +1014,9 @@ describe('AppComponent', () => {
 
   it('announces Dashboard loading, empty and error states and retries the read', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     const dashboardComponent = fixture.debugElement.query(By.directive(DashboardComponent)).componentInstance as DashboardComponent;
@@ -1080,9 +1080,9 @@ describe('AppComponent', () => {
 
   it('uses the warehouse calendar, serializes selected dimensions and keeps them after a server error', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
@@ -1153,9 +1153,9 @@ describe('AppComponent', () => {
 
   it('keeps non-applicable dimensions as an AND filter instead of silently neutralizing them', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
@@ -1217,9 +1217,9 @@ describe('AppComponent', () => {
 
   it('keeps the newest Dashboard response when reads complete out of order', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
@@ -1300,9 +1300,9 @@ describe('AppComponent', () => {
 
   it('associates Dashboard validation errors with keyboard-accessible controls and announcements', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
@@ -1352,9 +1352,9 @@ describe('AppComponent', () => {
 
   it('keeps Dashboard controls visible when the calendar bootstrap fails', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
@@ -1377,9 +1377,9 @@ describe('AppComponent', () => {
 
   it('engages the supply response without optimistic stock and keeps drafts on error', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
@@ -1439,9 +1439,9 @@ describe('AppComponent', () => {
 
   it('refreshes the open Article detail from the committed supply position', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
@@ -1491,9 +1491,9 @@ describe('AppComponent', () => {
 
   it('submits multiple supply lines and maps a rejected line without losing drafts', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
@@ -1588,9 +1588,9 @@ describe('AppComponent', () => {
 
   it('shows only the fields applicable to the selected classification', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
@@ -1612,9 +1612,9 @@ describe('AppComponent', () => {
 
   it('maps a server conflict to the EAN field and live error region', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
@@ -1654,9 +1654,9 @@ describe('AppComponent', () => {
 
   it('loads the catalogue and serializes every selected filter', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     const initial = http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles');
@@ -1699,9 +1699,9 @@ describe('AppComponent', () => {
 
   it('marks a previous catalogue result as stale after an error and ignores an older response', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     const initial = http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles');
@@ -1763,9 +1763,9 @@ describe('AppComponent', () => {
 
   it('archives a catalogue row through the API and reloads the active view', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     const initial = http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles');
@@ -1815,9 +1815,9 @@ describe('AppComponent', () => {
 
   it('actualise après un succès obsolète sans remplacer le message le plus récent', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     const initial = http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles');
@@ -1942,9 +1942,9 @@ describe('AppComponent', () => {
 
   it('réconcilie le détail après un succès obsolète du même EAN', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     const initial = http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles');
@@ -2021,9 +2021,9 @@ describe('AppComponent', () => {
 
   it('shows two server quotes and submits only the editable HT price', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
@@ -2061,9 +2061,9 @@ describe('AppComponent', () => {
 
   it('maps a price update conflict to the HT field and live error region', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
@@ -2101,9 +2101,9 @@ describe('AppComponent', () => {
 
   it('edits food attributes through the PATCH seam and engages the server response', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
@@ -2149,9 +2149,9 @@ describe('AppComponent', () => {
 
   it('renders only non-food attribute controls and maps a server field error', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
@@ -2204,9 +2204,9 @@ describe('AppComponent', () => {
 
   it('ignores a stale attribute response after navigating to another detail', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
@@ -2254,9 +2254,9 @@ describe('AppComponent', () => {
 
   it('loads correctable sources only on request and keeps their opaque ids', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
@@ -2286,9 +2286,9 @@ describe('AppComponent', () => {
 
   it('renders only the committed counter-movement receipt and preserves zero effects', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
@@ -2360,9 +2360,9 @@ describe('AppComponent', () => {
 
   it('renders the historical sale snapshot and the signed committed reversal', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
@@ -2454,9 +2454,9 @@ describe('AppComponent', () => {
 
   it('renders literal positive, negative and zero Inventory fields and lifecycle changes', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
@@ -2608,9 +2608,9 @@ describe('AppComponent', () => {
 
   it('returns from a filtered history to global and renders server inverse effects', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);
@@ -2770,9 +2770,9 @@ describe('AppComponent', () => {
 
   it('announces loading, empty and error states for global history', async () => {
     const fixture = TestBed.configureTestingModule({
-      imports: [AppComponent],
+      imports: [LegacyBackofficePage],
       providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(AppComponent);
+    }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     http.expectOne((request) => request.method === 'GET' && request.url === '/api/articles').flush([]);

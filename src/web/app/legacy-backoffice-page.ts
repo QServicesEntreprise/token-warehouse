@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
 import {
   FieldTree,
   FormField,
@@ -12,6 +12,8 @@ import {
   required,
   submit,
 } from '@angular/forms/signals';
+import { NavigationEnd, Router } from '@angular/router';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { firstValueFrom } from 'rxjs';
 import {
   ArticleApiService,
@@ -134,9 +136,19 @@ const initialInventoryModel: InventoryFormModel = {
 
 const lastInventoryIdStorageKey = 'token-warehouse.last-inventory-id';
 const lastSaleIdStorageKey = 'token-warehouse.last-sale-id';
+const routeSectionTargetIds: Record<string, string> = {
+  dashboard: 'dashboard-title',
+  catalogue: 'catalog-title',
+  stock: 'stock-title',
+  approvisionnements: 'supply-title',
+  inventaires: 'inventory-title',
+  corrections: 'counter-movement-title',
+  historique: 'history-title',
+  ventes: 'sale-title',
+};
 
 @Component({
-  selector: 'app-root',
+  selector: 'app-legacy-backoffice-page',
   standalone: true,
   imports: [DashboardComponent, FormField, FormRoot],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -147,17 +159,6 @@ const lastSaleIdStorageKey = 'token-warehouse.last-sale-id';
         <h1 id="page-title">Créer et consulter un Article</h1>
         <p>Une référence EAN-13, un Prix HT en centimes et les attributs de sa classification.</p>
       </header>
-
-      <nav class="main-nav" aria-label="Navigation principale">
-        <a href="#dashboard-panel">Dashboard</a>
-        <a href="#stock-panel">Stock</a>
-        <a href="#sale-panel">Vente</a>
-        <a href="#supply-panel">Approvisionnement</a>
-        <a href="#inventory-title">Inventaire</a>
-        <a href="#counter-movement-panel">Contre-mouvement</a>
-        <a href="#history-panel">Historique</a>
-        <a href="#catalog-title">Catalogue</a>
-      </nav>
 
       <app-dashboard />
 
@@ -1280,13 +1281,23 @@ const lastSaleIdStorageKey = 'token-warehouse.last-sale-id';
     </main>
   `,
 })
-export class AppComponent implements OnInit {
+export class LegacyBackofficePage implements AfterViewInit, OnInit {
+  private readonly router = inject(Router, { optional: true });
+
   private readonly api = inject(ArticleApiService);
   private readonly stockApi = inject(StockApiService);
   private readonly inventoryApi = inject(InventoryApiService);
   private readonly counterMovementApi = inject(CounterMovementApiService);
   private readonly salesApi = inject(SalesApiService);
   private readonly historyApi = inject(HistoryApiService);
+
+  constructor() {
+    this.router?.events.pipe(takeUntilDestroyed()).subscribe((event) => {
+      if (event instanceof NavigationEnd) {
+        this.openCurrentRouteSection();
+      }
+    });
+  }
 
   readonly model = signal<ArticleFormModel>({ ...initialModel, consumptionModes: [] });
   readonly supplyModel = signal<SupplyFormModel>({ ean13: '', quantity: '' });
@@ -1420,6 +1431,27 @@ export class AppComponent implements OnInit {
     void this.loadStock();
     void this.loadLastInventory();
     void this.loadLastSale();
+  }
+
+  ngAfterViewInit(): void {
+    this.openCurrentRouteSection();
+  }
+
+  private openCurrentRouteSection(): void {
+    const target = document.getElementById(routeSectionTargetIds[this.currentRouteSection() ?? '']);
+    if (target) {
+      target.tabIndex = -1;
+      target.focus({ preventScroll: true });
+      target.scrollIntoView();
+    }
+  }
+
+  private currentRouteSection(): string | undefined {
+    let route = this.router?.routerState.root;
+    while (route?.firstChild) {
+      route = route.firstChild;
+    }
+    return route?.snapshot.data['section'] as string | undefined;
   }
   readonly priceHtDraft = signal('');
   readonly priceHtFieldError = signal('');
