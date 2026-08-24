@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { RecordBulkSupplyResponseDto } from './dto/record-bulk-supply-response.dto';
 import { mapRecordBulkSupplyResponse } from './map-record-bulk-supply-response';
 
 describe('mapRecordBulkSupplyResponse', () => {
   it('keeps every committed line and server position in the submitted order', () => {
-    expect(mapRecordBulkSupplyResponse({
+    const dto: RecordBulkSupplyResponseDto = {
       operation: {
         id: 'bulk-1',
         type: 'supply',
@@ -23,7 +24,11 @@ describe('mapRecordBulkSupplyResponse', () => {
           physicalQuantity: 7, sellableQuantity: 0, availability: 'NOT_SELLABLE', reason: 'UNSELLABLE_PACKAGING',
         },
       ],
-    })).toMatchObject({
+    };
+
+    const result = mapRecordBulkSupplyResponse(dto);
+
+    expect(result).toMatchObject({
       operation: {
         id: 'bulk-1',
         lines: [
@@ -36,5 +41,6 @@ describe('mapRecordBulkSupplyResponse', () => {
         { ean13: '5901234123457', physicalQuantity: 7, sellableQuantity: 0 },
       ],
     });
+    expect(result.operation.lines[0]).not.toBe(dto.operation.lines[0]);
   });
 });

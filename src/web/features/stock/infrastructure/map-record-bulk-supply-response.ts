@@ -6,7 +6,11 @@ export const mapRecordBulkSupplyResponse = (dto: RecordBulkSupplyResponseDto): S
   operation: {
     id: dto.operation.id,
     occurredAt: dto.operation.occurredAt,
-    lines: dto.operation.lines,
+    lines: dto.operation.lines.map((line) => ({
+      lineNumber: line.lineNumber,
+      ean13: line.ean13,
+      quantity: line.quantity,
+    })),
   },
   positions: dto.positions.map(mapStockPositionDto),
 });

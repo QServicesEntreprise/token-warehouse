@@ -1,6 +1,6 @@
 import { DestroyRef, Injectable, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { Observable, firstValueFrom } from 'rxjs';
+import { Observable, Subject, catchError, map, of, switchMap, tap } from 'rxjs';
 import { RecordBulkSupplyCommand } from '../domain/record-bulk-supply-command';
 import { RecordSupplyCommand } from '../domain/record-supply-command';
 import { SupplyResult } from '../domain/supply-result';
@@ -14,7 +14,11 @@ export class SupplyStore {
   private readonly fieldErrorsState = signal<Record<string, string>>({});
   private readonly statusMessageState = signal('');
   private readonly submittingState = signal(false);
-  private submissionVersion = 0;
+  private readonly submissions = new Subject<{
+    request: Observable<SupplyResult>;
+    resolve: (succeeded: boolean) => void;
+  }>();
+  private activeSubmission: { resolve: (succeeded: boolean) => void } | null = null;
 
   readonly result = this.resultState.asReadonly();
   readonly fieldErrors = this.fieldErrorsState.asReadonly();
@@ -22,7 +26,44 @@ export class SupplyStore {
   readonly submitting = this.submittingState.asReadonly();
 
   constructor() {
-    this.destroyRef.onDestroy(() => { this.submissionVersion += 1; });
+    this.submissions.pipe(
+      tap((submission) => {
+        this.activeSubmission = submission;
+        this.submittingState.set(true);
+        this.resultState.set(null);
+        this.fieldErrorsState.set({});
+        this.statusMessageState.set('Réception de l’Approvisionnement…');
+      }),
+      switchMap((submission) => submission.request.pipe(
+        map((result) => ({ submission, result, error: null })),
+        catchError((error: unknown) => of({ submission, result: null, error })),
+      )),
+      takeUntilDestroyed(),
+    ).subscribe(({ submission, result, error }) => {
+      if (this.activeSubmission !== submission) return;
+
+      if (result !== null) {
+        this.resultState.set(result);
+        this.statusMessageState.set(
+          `Approvisionnement ${result.operation.id} enregistré le ${result.operation.occurredAt}.`,
+        );
+      } else {
+        const failure = this.failureFrom(error);
+        this.fieldErrorsState.set(Object.fromEntries(
+          Object.entries(failure.fieldErrors).map(([field, messages]) => [field, messages[0] ?? 'Valeur invalide.']),
+        ));
+        this.statusMessageState.set(failure.title);
+      }
+
+      this.activeSubmission = null;
+      this.submittingState.set(false);
+      submission.resolve(result !== null);
+    });
+
+    this.destroyRef.onDestroy(() => {
+      this.activeSubmission?.resolve(false);
+      this.activeSubmission = null;
+    });
   }
 
   async recordSupply(command: RecordSupplyCommand): Promise<boolean> {
@@ -33,47 +74,10 @@ export class SupplyStore {
     return this.record(() => this.gateway.recordBulkSupply(command));
   }
 
-  rebaseFieldErrorsAfterLineRemoval(removedIndex: number): void {
-    this.fieldErrorsState.update((errors) => Object.fromEntries(
-      Object.entries(errors).flatMap(([field, message]) => {
-        const match = field.match(/^lines\[(\d+)\](.*)$/);
-        if (!match) return [[field, message]];
-        const lineIndex = Number(match[1]);
-        if (lineIndex === removedIndex) return [];
-        return [[`lines[${lineIndex > removedIndex ? lineIndex - 1 : lineIndex}]${match[2]}`, message]];
-      }),
-    ));
-  }
+  private record(request: () => Observable<SupplyResult>): Promise<boolean> {
+    if (this.submittingState()) return Promise.resolve(false);
 
-  private async record(request: () => Observable<SupplyResult>): Promise<boolean> {
-    if (this.submittingState()) return false;
-
-    const version = ++this.submissionVersion;
-    this.submittingState.set(true);
-    this.resultState.set(null);
-    this.fieldErrorsState.set({});
-    this.statusMessageState.set('Réception de l’Approvisionnement…');
-    try {
-      const result = await firstValueFrom(
-        request().pipe(takeUntilDestroyed(this.destroyRef)),
-      );
-      if (version !== this.submissionVersion) return false;
-      this.resultState.set(result);
-      this.statusMessageState.set(
-        `Approvisionnement ${result.operation.id} enregistré le ${result.operation.occurredAt}.`,
-      );
-      return true;
-    } catch (error) {
-      if (version !== this.submissionVersion) return false;
-      const failure = this.failureFrom(error);
-      this.fieldErrorsState.set(Object.fromEntries(
-        Object.entries(failure.fieldErrors).map(([field, messages]) => [field, messages[0] ?? 'Valeur invalide.']),
-      ));
-      this.statusMessageState.set(failure.title);
-      return false;
-    } finally {
-      if (version === this.submissionVersion) this.submittingState.set(false);
-    }
+    return new Promise((resolve) => this.submissions.next({ request: request(), resolve }));
   }
 
   private failureFrom(error: unknown): { title: string; fieldErrors: Record<string, string[]> } {

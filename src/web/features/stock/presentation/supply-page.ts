@@ -1,4 +1,4 @@
-import { AfterViewInit, ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { FormField, FormRoot, applyEach, form, required, submit } from '@angular/forms/signals';
 import { SupplyStore } from '../application/supply-store';
 import { RecordSupplyCommand } from '../domain/record-supply-command';
@@ -23,8 +23,11 @@ interface SupplyFormModel {
 })
 export class SupplyPage implements AfterViewInit {
   readonly store = inject(SupplyStore);
+  private readonly destroyRef = inject(DestroyRef);
   private readonly modelState = signal<SupplyFormModel>({ lines: [{ ean13: '', quantity: '' }] });
   private readonly clientMessageState = signal('');
+  private readonly serverFieldErrorsState = signal<Record<string, string>>({});
+  private destroyed = false;
   readonly model = this.modelState.asReadonly();
   readonly statusMessage = computed(() => this.clientMessageState() || this.store.statusMessage());
   readonly supplyForm = form(this.modelState, (path) => {
@@ -33,6 +36,10 @@ export class SupplyPage implements AfterViewInit {
       required(line.quantity, { message: 'La quantité est requise.' });
     });
   });
+
+  constructor() {
+    this.destroyRef.onDestroy(() => { this.destroyed = true; });
+  }
 
   ngAfterViewInit(): void {
     document.getElementById('supply-title')?.focus();
@@ -46,7 +53,15 @@ export class SupplyPage implements AfterViewInit {
 
   removeLine(index: number): void {
     if (this.model().lines.length <= 1) return;
-    this.store.rebaseFieldErrorsAfterLineRemoval(index);
+    this.serverFieldErrorsState.update((errors) => Object.fromEntries(
+      Object.entries(errors).flatMap(([field, message]) => {
+        const match = field.match(/^lines\[(\d+)\](.*)$/);
+        if (!match) return [[field, message]];
+        const lineIndex = Number(match[1]);
+        if (lineIndex === index) return [];
+        return [[`lines[${lineIndex > index ? lineIndex - 1 : lineIndex}]${match[2]}`, message]];
+      }),
+    ));
     this.modelState.update((model) => ({
       lines: model.lines.filter((_, lineIndex) => lineIndex !== index),
     }));
@@ -55,6 +70,7 @@ export class SupplyPage implements AfterViewInit {
   async onSubmit(event: Event): Promise<void> {
     event.preventDefault();
     this.clientMessageState.set('');
+    this.serverFieldErrorsState.set({});
     let succeeded = false;
     await submit(this.supplyForm, {
       action: async () => {
@@ -65,17 +81,20 @@ export class SupplyPage implements AfterViewInit {
         succeeded = lines.length === 1
           ? await this.store.recordSupply(lines[0])
           : await this.store.recordBulkSupply({ lines });
+        this.serverFieldErrorsState.set(this.store.fieldErrors());
         return undefined;
       },
       onInvalid: () => this.clientMessageState.set('Corrigez l’Approvisionnement avant de continuer.'),
     });
-    setTimeout(() => (succeeded
-      ? document.getElementById('supply-status')
-      : this.errorTarget())?.focus());
+    if (this.destroyed) return;
+    setTimeout(() => {
+      if (this.destroyed) return;
+      (succeeded ? document.getElementById('supply-status') : this.errorTarget())?.focus();
+    });
   }
 
   fieldError(index: number, field: 'ean13' | 'quantity'): string {
-    const errors = this.store.fieldErrors();
+    const errors = this.serverFieldErrorsState();
     const serverError = errors[`lines[${index}].${field}`]
       ?? errors[`lines[${index}]`]
       ?? (index === 0 ? errors[field] : undefined);
@@ -107,7 +126,7 @@ export class SupplyPage implements AfterViewInit {
   }
 
   private errorTarget(): HTMLElement | null {
-    const serverField = Object.keys(this.store.fieldErrors())[0] ?? '';
+    const serverField = Object.keys(this.serverFieldErrorsState())[0] ?? '';
     const match = serverField.match(/^lines\[(\d+)\]\.(ean13|quantity)$/);
     if (match) return document.getElementById(this.inputId(match[2] as 'ean13' | 'quantity', Number(match[1])));
     if (serverField === 'ean13' || serverField === 'quantity') return document.getElementById(this.inputId(serverField, 0));

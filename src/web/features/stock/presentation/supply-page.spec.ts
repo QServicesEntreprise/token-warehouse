@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { ComponentFixture } from '@angular/core/testing';
-import { of, throwError } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { STOCK_GATEWAY } from '../application/stock-gateway-token';
 import { SupplyStore } from '../application/supply-store';
@@ -55,6 +55,29 @@ describe('SupplyPage', () => {
     expect(fixture.nativeElement.querySelector('#supply-result').textContent).toContain('11 unités');
     expect(fixture.nativeElement.querySelector('#supply-result').textContent).toContain('7 unités');
     expect(fixture.nativeElement.querySelector('#supply-status')).toBe(document.activeElement);
+  });
+
+  it('does not focus a replacement route after the page is destroyed', async () => {
+    const pending = new Subject<SupplyResult>();
+    recordSupply.mockReturnValue(pending);
+    const fixture = TestBed.createComponent(SupplyPage);
+    fixture.detectChanges();
+    fill(fixture, '#supplyEan13', '0123456789012');
+    fill(fixture, '#supplyQuantity', '3');
+    const submission = fixture.componentInstance.onSubmit(new Event('submit'));
+    fixture.nativeElement.querySelector('#supply-status').id = 'old-supply-status';
+    fixture.destroy();
+    const replacementStatus = document.createElement('button');
+    replacementStatus.id = 'supply-status';
+    document.body.append(replacementStatus);
+
+    pending.next(unitResult);
+    pending.complete();
+    await submission;
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(document.activeElement).not.toBe(replacementStatus);
+    replacementStatus.remove();
   });
 
   it('keeps and focuses every bulk draft after rejection, then presents every accepted line', async () => {
