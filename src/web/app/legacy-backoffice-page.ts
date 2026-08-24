@@ -686,6 +686,7 @@ export class LegacyBackofficePage implements AfterViewInit, OnInit {
   private inventoryRestoreRequestId = 0;
   private counterMovementRequestId = 0;
   private historyRequestId = 0;
+  private openedRouteSection = '';
 
   ngOnInit(): void {
     void this.loadStock();
@@ -698,6 +699,10 @@ export class LegacyBackofficePage implements AfterViewInit, OnInit {
 
   private openCurrentRouteSection(): void {
     const section = this.currentRouteSection() ?? '';
+    if (section === 'stock' && this.openedRouteSection && this.openedRouteSection !== section) {
+      void this.loadStock();
+    }
+    this.openedRouteSection = section;
     if (section === 'historique' && this.historyLoaded()) {
       void this.loadHistory();
     }
