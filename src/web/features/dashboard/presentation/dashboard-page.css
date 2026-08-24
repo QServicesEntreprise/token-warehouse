@@ -1,0 +1,52 @@
+.dashboard-filters {
+  align-items: end;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+}
+
+.dashboard-filters button {
+  margin-top: 0;
+}
+
+.dashboard-calendar-note {
+  color: #53627b;
+  font-size: 0.9rem;
+  grid-column: 1 / -1;
+}
+
+.dashboard-kpis,
+.dashboard-financial-kpis,
+.dashboard-alerts {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+}
+
+.dashboard-kpi,
+.dashboard-alerts section {
+  border: 1px solid #d8e0ec;
+  border-radius: 0.75rem;
+  padding: 1rem;
+}
+
+.dashboard-kpi h3,
+.dashboard-kpi h4,
+.dashboard-alerts h3 {
+  margin: 0;
+}
+
+.dashboard-kpi p {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-top: 0.5rem;
+}
+
+.dashboard-alerts ul {
+  margin: 0.75rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.dashboard-alerts p {
+  margin-top: 0.75rem;
+}

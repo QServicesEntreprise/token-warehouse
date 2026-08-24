@@ -1,10 +1,8 @@
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting, HttpTestingController } from '@angular/common/http/testing';
-import { By } from '@angular/platform-browser';
 import { TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import { LegacyBackofficePage } from './legacy-backoffice-page';
-import { DashboardComponent } from './dashboard.component';
 
 describe('LegacyBackofficePage', () => {
   afterEach(() => sessionStorage.clear());
@@ -120,7 +118,6 @@ describe('LegacyBackofficePage', () => {
     expect(articleCounterHistory).toContain('100 centimes');
     expect(articleHistory).toContain('Contexte historiqueÀ emporter');
     expect(articleHistory).toContain('Taux de TVA historique11/200');
-    flushUnusedDashboardRequest(http);
     http.verify();
   });
 
@@ -165,7 +162,6 @@ describe('LegacyBackofficePage', () => {
     expect(component.inventoryReceipt()?.operation.inventoryDifference).toBe(3);
     expect(fixture.nativeElement.querySelector('#inventory-result').textContent).toContain('+3');
     expect(fixture.nativeElement.querySelector('#inventory-result').textContent).toContain('11');
-    await flushUnusedDashboardRequest(http);
     http.verify();
   });
 
@@ -237,7 +233,6 @@ describe('LegacyBackofficePage', () => {
     expect(fixture.nativeElement.querySelector('#inventory-result').textContent).toContain('-3');
     expect(fixture.nativeElement.querySelector('#inventory-result').textContent).toContain('Écart d’inventaire0');
     expect(component.inventoryReceipt()?.operation.id).toBe('operation-bulk-1');
-    await flushUnusedDashboardRequest(http);
     http.verify();
   });
 
@@ -277,7 +272,6 @@ describe('LegacyBackofficePage', () => {
     expect(fixture.nativeElement.querySelector('#inventory-countedQuantity-1-error').textContent).toContain('Quantité invalide');
     expect(fixture.nativeElement.querySelector('#inventory-ean13')).toBe(document.activeElement);
     expect(component.inventoryReceipt()).toBeNull();
-    await flushUnusedDashboardRequest(http);
     http.verify();
   });
 
@@ -305,470 +299,6 @@ describe('LegacyBackofficePage', () => {
     expect(component.inventoryModel().countedQuantity).toBe('5');
     expect(fixture.nativeElement.querySelector('#inventory-error').textContent).toContain('position');
     expect(fixture.nativeElement.querySelector('#inventory-countedQuantity')).toBe(document.activeElement);
-    await flushUnusedDashboardRequest(http);
-    http.verify();
-  });
-
-  it('renders the current Dashboard contract with aligned quantities and alerts', async () => {
-    const fixture = TestBed.configureTestingModule({
-      imports: [LegacyBackofficePage],
-      providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(LegacyBackofficePage);
-    fixture.detectChanges();
-    const http = TestBed.inject(HttpTestingController);
-    http.expectOne('/health').flush({
-      status: 'ok',
-      provider: 'test',
-      warehouseDate: '2030-01-15',
-      currentMonth: { from: '2030-01-01', to: '2030-01-31' },
-    });
-    await fixture.whenStable();
-    const dashboard = expectDashboardRequest(http);
-    dashboard.flush({
-      kpis: { physicalStock: 27, sellableStock: 13, nonSellableStock: 14 },
-      alerts: {
-        outOfStock: [{
-          ean13: '5678901234562',
-          name: 'Article actif sans position',
-          articleType: 'food',
-          lifecycleStatus: 'ACTIVE',
-          physicalStock: 0,
-          sellableStock: 0,
-          nonSellableStock: 0,
-          availability: 'OUT_OF_STOCK',
-          reason: null,
-        }],
-        notSellable: [{
-          ean13: '2345678901234',
-          name: 'Article archivé',
-          articleType: 'nonFood',
-          lifecycleStatus: 'ARCHIVED',
-          physicalStock: 4,
-          sellableStock: 0,
-          nonSellableStock: 4,
-          availability: 'NOT_SELLABLE',
-          reason: 'ARCHIVED',
-        }],
-      },
-      stockByArticle: [{
-        ean13: '0123456789012',
-        name: 'Alimentaire vendable',
-        articleType: 'food',
-        lifecycleStatus: 'ACTIVE',
-        physicalStock: 5,
-        sellableStock: 5,
-        nonSellableStock: 0,
-        availability: 'AVAILABLE',
-        reason: null,
-      }, {
-        ean13: '2345678901234',
-        name: 'Article archivé',
-        articleType: 'nonFood',
-        lifecycleStatus: 'ARCHIVED',
-        physicalStock: 4,
-        sellableStock: 0,
-        nonSellableStock: 4,
-        availability: 'NOT_SELLABLE',
-          reason: 'ARCHIVED',
-        }],
-      flowsByDay: [
-        { date: '2030-01-01', supplies: 3, sales: 1 },
-        { date: '2030-01-02', supplies: 0, sales: 0 },
-      ],
-      financial: {
-        revenueHtCents: 2000,
-        revenueTtcCents: 2255,
-        vatCollectedCents: 255,
-        byTaxRate: [
-          { taxRate: { code: 'takeaway', ratio: '11/200', numerator: 11, denominator: 200 }, amountHtCents: 1000, vatCents: 55, amountTtcCents: 1055 },
-          { taxRate: { code: 'onsite', ratio: '1/10', numerator: 1, denominator: 10 }, amountHtCents: 0, vatCents: 0, amountTtcCents: 0 },
-          { taxRate: { code: 'nonFood', ratio: '1/5', numerator: 1, denominator: 5 }, amountHtCents: 1000, vatCents: 200, amountTtcCents: 1200 },
-        ],
-      },
-    });
-    await fixture.whenStable();
-    fixture.detectChanges();
-    const dashboardComponent = fixture.debugElement.query(By.directive(DashboardComponent)).componentInstance as DashboardComponent;
-
-    expect(dashboardComponent.dashboardState()).toBe('ready');
-    expect(fixture.nativeElement.querySelector('#dashboard-kpi-physical').textContent).toContain('27');
-    expect(fixture.nativeElement.querySelector('#dashboard-kpi-sellable').textContent).toContain('13');
-    expect(fixture.nativeElement.querySelector('#dashboard-kpi-non-sellable').textContent).toContain('14');
-    expect(fixture.nativeElement.querySelector('#dashboard-alert-out-of-stock').textContent)
-      .toContain('Article actif sans position');
-    expect(fixture.nativeElement.querySelector('#dashboard-alert-not-sellable').textContent)
-      .toContain('Article archivé');
-    expect(fixture.nativeElement.querySelector('#dashboard-table').textContent)
-      .toContain('Stock non vendable');
-    expect(fixture.nativeElement.querySelector('#dashboard-table').textContent)
-      .toContain('4 unités');
-    expect(fixture.nativeElement.querySelector('#dashboard-flows-table').textContent)
-      .toContain('2030-01-02');
-    expect(fixture.nativeElement.querySelector('#dashboard-flows-table').textContent)
-      .toContain('3 unités');
-    expect(fixture.nativeElement.querySelector('#dashboard-flows-table').textContent)
-      .toContain('1 unité');
-    expect(fixture.nativeElement.querySelector('#dashboard-financial-revenue-ht').textContent)
-      .toContain('20,00');
-    expect(fixture.nativeElement.querySelector('#dashboard-financial-revenue-ttc').textContent)
-      .toContain('22,55');
-    expect(fixture.nativeElement.querySelector('#dashboard-financial-table tbody').children)
-      .toHaveLength(3);
-    expect(fixture.nativeElement.querySelector('#dashboard-financial-table').textContent)
-      .toContain('5,5 %');
-    expect(fixture.nativeElement.querySelector('#dashboard-financial-table').textContent)
-      .toContain('20 %');
-    http.verify();
-  });
-
-  it('announces Dashboard loading, empty and error states and retries the read', async () => {
-    const fixture = TestBed.configureTestingModule({
-      imports: [LegacyBackofficePage],
-      providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(LegacyBackofficePage);
-    fixture.detectChanges();
-    const http = TestBed.inject(HttpTestingController);
-    const dashboardComponent = fixture.debugElement.query(By.directive(DashboardComponent)).componentInstance as DashboardComponent;
-    http.expectOne('/health').flush({
-      status: 'ok',
-      provider: 'test',
-      warehouseDate: '2030-01-15',
-      currentMonth: { from: '2030-01-01', to: '2030-01-31' },
-    });
-    await fixture.whenStable();
-    const initial = expectDashboardRequest(http);
-    expect(dashboardComponent.dashboardState()).toBe('loading');
-    expect(fixture.nativeElement.querySelector('#dashboard-state').textContent).toContain('Chargement du Dashboard');
-    initial.flush({
-      kpis: { physicalStock: 0, sellableStock: 0, nonSellableStock: 0 },
-      alerts: { outOfStock: [], notSellable: [] },
-      stockByArticle: [],
-      flowsByDay: [],
-    });
-    await fixture.whenStable();
-    fixture.detectChanges();
-    expect(dashboardComponent.dashboardState()).toBe('empty');
-    expect(fixture.nativeElement.querySelector('#dashboard-state').textContent).toContain('Aucun Article');
-
-    dashboardComponent.retryDashboard();
-    const failed = expectDashboardRequest(http);
-    failed.flush({ title: 'Le Dashboard est indisponible.' }, { status: 500, statusText: 'Server Error' });
-    await fixture.whenStable();
-    fixture.detectChanges();
-    expect(dashboardComponent.dashboardState()).toBe('error');
-    expect(fixture.nativeElement.querySelector('#dashboard-state [role="alert"]').textContent)
-      .toContain('indisponible');
-    expect(fixture.nativeElement.querySelector('#dashboard-table')).toBeNull();
-
-    dashboardComponent.retryDashboard();
-    const retry = expectDashboardRequest(http);
-    retry.flush({
-      kpis: { physicalStock: 1, sellableStock: 1, nonSellableStock: 0 },
-      alerts: { outOfStock: [], notSellable: [] },
-      stockByArticle: [{
-        ean13: '0123456789012',
-        name: 'Article retrouvé',
-        articleType: 'food',
-        lifecycleStatus: 'ACTIVE',
-        physicalStock: 1,
-        sellableStock: 1,
-        nonSellableStock: 0,
-        availability: 'AVAILABLE',
-        reason: null,
-      }],
-      flowsByDay: [],
-    });
-    await fixture.whenStable();
-    fixture.detectChanges();
-    expect(dashboardComponent.dashboardState()).toBe('ready');
-    expect(fixture.nativeElement.querySelector('#dashboard-table').textContent).toContain('Article retrouvé');
-    http.verify();
-  });
-
-  it('uses the warehouse calendar, serializes selected dimensions and keeps them after a server error', async () => {
-    const fixture = TestBed.configureTestingModule({
-      imports: [LegacyBackofficePage],
-      providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(LegacyBackofficePage);
-    fixture.detectChanges();
-    const http = TestBed.inject(HttpTestingController);
-    http.expectOne('/health').flush({
-      status: 'ok',
-      provider: 'test',
-      warehouseDate: '2030-03-15',
-      currentMonth: { from: '2030-03-01', to: '2030-03-31' },
-    });
-    await fixture.whenStable();
-    fixture.detectChanges();
-
-    const initial = http.expectOne((request) =>
-      request.url === '/api/dashboard'
-        && request.params.get('from') === '2030-03-01'
-        && request.params.get('to') === '2030-03-31');
-    expect((fixture.nativeElement.querySelector('#dashboard-from') as HTMLInputElement).value).toBe('2030-03-01');
-    expect((fixture.nativeElement.querySelector('#dashboard-to') as HTMLInputElement).value).toBe('2030-03-31');
-    initial.flush({
-      kpis: { physicalStock: 0, sellableStock: 0, nonSellableStock: 0 },
-      alerts: { outOfStock: [], notSellable: [] },
-      stockByArticle: [],
-      flowsByDay: [],
-    });
-    await fixture.whenStable();
-
-    const setValue = (selector: string, value: string) => {
-      const control = fixture.nativeElement.querySelector(selector) as HTMLInputElement | HTMLSelectElement;
-      control.value = value;
-      control.dispatchEvent(new Event('change'));
-    };
-    setValue('#dashboard-from', '2030-03-05');
-    setValue('#dashboard-to', '2030-03-10');
-    setValue('#dashboard-type', 'food');
-    setValue('#dashboard-mode', 'onsite');
-    fixture.detectChanges();
-    (fixture.nativeElement.querySelector('#dashboard-submit') as HTMLButtonElement).click();
-
-    const filtered = http.expectOne((request) =>
-      request.url === '/api/dashboard'
-        && request.params.get('from') === '2030-03-05'
-        && request.params.get('to') === '2030-03-10'
-        && request.params.get('type') === 'food'
-        && request.params.get('mode') === 'onsite'
-        && request.params.get('packaging') === null);
-    filtered.flush(
-      {
-        title: 'La période est invalide.',
-        code: 'dashboard.reversed_period',
-        errors: { from: ['La date de début est invalide.'], to: ['La date de fin est invalide.'] },
-      },
-      { status: 400, statusText: 'Bad Request' });
-    await fixture.whenStable();
-    fixture.detectChanges();
-
-    expect(fixture.nativeElement.querySelector('#dashboard-state [role="alert"]').textContent)
-      .toContain('période est invalide');
-    expect((fixture.nativeElement.querySelector('#dashboard-from') as HTMLInputElement).value).toBe('2030-03-05');
-    expect((fixture.nativeElement.querySelector('#dashboard-to') as HTMLInputElement).value).toBe('2030-03-10');
-    expect((fixture.nativeElement.querySelector('#dashboard-type') as HTMLSelectElement).value).toBe('food');
-    expect((fixture.nativeElement.querySelector('#dashboard-mode') as HTMLSelectElement).value).toBe('onsite');
-    expect((fixture.nativeElement.querySelector('#dashboard-packaging') as HTMLSelectElement).disabled).toBe(false);
-    expect(fixture.nativeElement.querySelector('#dashboard-from-error').textContent)
-      .toContain('date de début est invalide');
-    http.verify();
-  });
-
-  it('keeps non-applicable dimensions as an AND filter instead of silently neutralizing them', async () => {
-    const fixture = TestBed.configureTestingModule({
-      imports: [LegacyBackofficePage],
-      providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(LegacyBackofficePage);
-    fixture.detectChanges();
-    const http = TestBed.inject(HttpTestingController);
-    http.expectOne('/health').flush({
-      status: 'ok',
-      provider: 'test',
-      warehouseDate: '2030-03-15',
-      currentMonth: { from: '2030-03-01', to: '2030-03-31' },
-    });
-    await fixture.whenStable();
-    fixture.detectChanges();
-    const initial = http.expectOne((request) =>
-      request.url === '/api/dashboard'
-        && request.params.get('from') === '2030-03-01'
-        && request.params.get('to') === '2030-03-31');
-    initial.flush({
-      kpis: { physicalStock: 0, sellableStock: 0, nonSellableStock: 0 },
-      alerts: { outOfStock: [], notSellable: [] },
-      stockByArticle: [],
-      flowsByDay: [],
-      financial: null,
-    });
-    await fixture.whenStable();
-
-    const setValue = (selector: string, value: string) => {
-      const control = fixture.nativeElement.querySelector(selector) as HTMLSelectElement;
-      control.value = value;
-      control.dispatchEvent(new Event('change', { bubbles: true }));
-    };
-    setValue('#dashboard-packaging', 'new');
-    setValue('#dashboard-type', 'food');
-    setValue('#dashboard-mode', 'onsite');
-    fixture.detectChanges();
-
-    const packaging = fixture.nativeElement.querySelector('#dashboard-packaging') as HTMLSelectElement;
-    expect(packaging.value).toBe('new');
-    expect(packaging.disabled).toBe(false);
-
-    (fixture.nativeElement.querySelector('#dashboard-submit') as HTMLButtonElement).click();
-    const filtered = http.expectOne((request) =>
-      request.url === '/api/dashboard'
-        && request.params.get('type') === 'food'
-        && request.params.get('mode') === 'onsite'
-        && request.params.get('packaging') === 'new');
-    filtered.flush({
-      kpis: { physicalStock: 0, sellableStock: 0, nonSellableStock: 0 },
-      alerts: { outOfStock: [], notSellable: [] },
-      stockByArticle: [],
-      flowsByDay: [],
-      financial: null,
-    });
-    await fixture.whenStable();
-    fixture.detectChanges();
-
-    expect(fixture.nativeElement.querySelector('#dashboard-state').textContent).toContain('Aucun Article');
-    http.verify();
-  });
-
-  it('keeps the newest Dashboard response when reads complete out of order', async () => {
-    const fixture = TestBed.configureTestingModule({
-      imports: [LegacyBackofficePage],
-      providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(LegacyBackofficePage);
-    fixture.detectChanges();
-    const http = TestBed.inject(HttpTestingController);
-    http.expectOne('/health').flush({
-      status: 'ok',
-      provider: 'test',
-      warehouseDate: '2030-03-15',
-      currentMonth: { from: '2030-03-01', to: '2030-03-31' },
-    });
-    await fixture.whenStable();
-
-    const initial = http.expectOne((request) => request.url === '/api/dashboard');
-    initial.flush({
-      kpis: { physicalStock: 0, sellableStock: 0, nonSellableStock: 0 },
-      alerts: { outOfStock: [], notSellable: [] },
-      stockByArticle: [],
-      flowsByDay: [],
-    });
-    await fixture.whenStable();
-
-    const form = fixture.nativeElement.querySelector('#dashboard-filters') as HTMLFormElement;
-    const setControl = (id: string, value: string) => {
-      const control = fixture.nativeElement.querySelector(`#${id}`) as HTMLInputElement | HTMLSelectElement;
-      control.value = value;
-      control.dispatchEvent(new Event('change', { bubbles: true }));
-    };
-    setControl('dashboard-type', 'food');
-    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    setControl('dashboard-type', 'nonFood');
-    setControl('dashboard-packaging', 'new');
-    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    const [older, newer] = http.match((request) => request.url === '/api/dashboard');
-    expect(older.request.params.get('type')).toBe('food');
-    expect(newer.request.params.get('type')).toBe('nonFood');
-    newer.flush({
-      kpis: { physicalStock: 8, sellableStock: 8, nonSellableStock: 0 },
-      alerts: { outOfStock: [], notSellable: [] },
-      stockByArticle: [{
-        ean13: '4567890123456',
-        name: 'Article le plus récent',
-        articleType: 'nonFood',
-        lifecycleStatus: 'ACTIVE',
-        physicalStock: 8,
-        sellableStock: 8,
-        nonSellableStock: 0,
-        availability: 'AVAILABLE',
-        reason: null,
-      }],
-      flowsByDay: [],
-    });
-    await fixture.whenStable();
-    older.flush({
-      kpis: { physicalStock: 5, sellableStock: 5, nonSellableStock: 0 },
-      alerts: { outOfStock: [], notSellable: [] },
-      stockByArticle: [{
-        ean13: '0123456789012',
-        name: 'Réponse ancienne',
-        articleType: 'food',
-        lifecycleStatus: 'ACTIVE',
-        physicalStock: 5,
-        sellableStock: 5,
-        nonSellableStock: 0,
-        availability: 'AVAILABLE',
-        reason: null,
-      }],
-      flowsByDay: [],
-    });
-    await fixture.whenStable();
-    fixture.detectChanges();
-
-    expect(fixture.nativeElement.querySelector('#dashboard-table').textContent)
-      .toContain('Article le plus récent');
-    expect(fixture.nativeElement.querySelector('#dashboard-table').textContent)
-      .not.toContain('Réponse ancienne');
-    http.verify();
-  });
-
-  it('associates Dashboard validation errors with keyboard-accessible controls and announcements', async () => {
-    const fixture = TestBed.configureTestingModule({
-      imports: [LegacyBackofficePage],
-      providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(LegacyBackofficePage);
-    fixture.detectChanges();
-    const http = TestBed.inject(HttpTestingController);
-    http.expectOne('/health').flush({
-      status: 'ok',
-      provider: 'test',
-      warehouseDate: '2030-03-15',
-      currentMonth: { from: '2030-03-01', to: '2030-03-31' },
-    });
-    await fixture.whenStable();
-    const initial = http.expectOne((request) =>
-      request.url === '/api/dashboard'
-        && request.params.get('from') === '2030-03-01'
-        && request.params.get('to') === '2030-03-31');
-    initial.flush({
-      kpis: { physicalStock: 0, sellableStock: 0, nonSellableStock: 0 },
-      alerts: { outOfStock: [], notSellable: [] },
-      stockByArticle: [],
-      flowsByDay: [],
-    });
-    await fixture.whenStable();
-    fixture.detectChanges();
-
-    for (const id of ['dashboard-from', 'dashboard-to', 'dashboard-type', 'dashboard-mode', 'dashboard-packaging']) {
-      expect(fixture.nativeElement.querySelector(`label[for="${id}"]`)).not.toBeNull();
-    }
-    const state = fixture.nativeElement.querySelector('#dashboard-state');
-    expect(state.getAttribute('role')).toBe('status');
-    expect(state.getAttribute('aria-live')).toBe('polite');
-
-    const fromControl = fixture.nativeElement.querySelector('#dashboard-from') as HTMLInputElement;
-    fromControl.value = '';
-    fromControl.dispatchEvent(new Event('change'));
-    (fixture.nativeElement.querySelector('#dashboard-filters') as HTMLFormElement)
-      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    fixture.detectChanges();
-
-    const from = fixture.nativeElement.querySelector('#dashboard-from') as HTMLInputElement;
-    expect(from.getAttribute('aria-invalid')).toBe('true');
-    expect(from.getAttribute('aria-describedby')).toBe('dashboard-from-error');
-    expect(fixture.nativeElement.querySelector('#dashboard-from-error')).not.toBeNull();
-    expect(fixture.nativeElement.querySelector('#dashboard-state [role="alert"]')).not.toBeNull();
-    expect(from).toBe(document.activeElement);
-    http.verify();
-  });
-
-  it('keeps Dashboard controls visible when the calendar bootstrap fails', async () => {
-    const fixture = TestBed.configureTestingModule({
-      imports: [LegacyBackofficePage],
-      providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(LegacyBackofficePage);
-    fixture.detectChanges();
-    const http = TestBed.inject(HttpTestingController);
-    http.expectOne('/health').flush(
-      { title: 'Persistence unavailable' },
-      { status: 503, statusText: 'Service Unavailable' });
-    await fixture.whenStable();
-    fixture.detectChanges();
-
-    expect(fixture.nativeElement.querySelector('#dashboard-state [role="alert"]').textContent)
-      .toContain('Persistence unavailable');
-    expect(fixture.nativeElement.querySelector('#dashboard-filters')).not.toBeNull();
-    expect(fixture.nativeElement.querySelector('#dashboard-from')).not.toBeNull();
-    expect(fixture.nativeElement.querySelector('#dashboard-to')).not.toBeNull();
-    expect(fixture.nativeElement.querySelector('.dashboard-calendar-note').textContent)
-      .toContain('indisponible');
     http.verify();
   });
 
@@ -798,7 +328,6 @@ describe('LegacyBackofficePage', () => {
     expect(component.counterMovementSources()[0].id).toBe('server-source-01');
     expect(fixture.nativeElement.querySelector('#counter-movement-source option[value="server-source-01"]')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('#counter-movement-source-title')).toBeNull();
-    await flushUnusedDashboardRequest(http);
     http.verify();
   });
 
@@ -869,7 +398,6 @@ describe('LegacyBackofficePage', () => {
     expect(result).toContain('Effet inverse0');
     expect(result).toContain('10 unités');
     expect(component.counterMovementSourceId()).toBe('');
-    await flushUnusedDashboardRequest(http);
     http.verify();
   });
 
@@ -960,7 +488,6 @@ describe('LegacyBackofficePage', () => {
     expect(result).toContain('-3000 centimes');
     expect(result).toContain('-165 centimes');
     expect(result).toContain('-3165 centimes');
-    await flushUnusedDashboardRequest(http);
     http.verify();
   });
 
@@ -1111,7 +638,6 @@ describe('LegacyBackofficePage', () => {
     expect(articleHistoryText).toContain('Archivage Catalogue');
     expect(articleHistoryText).toContain('active');
     expect(articleHistoryText).toContain('archived');
-    flushUnusedDashboardRequest(http);
     http.verify();
   });
 
@@ -1270,7 +796,6 @@ describe('LegacyBackofficePage', () => {
     expect(articleText).toContain('effet inverse 0');
     const articleCounterText = fixture.nativeElement.querySelector('[aria-labelledby="history-entry-counter-01"]').textContent as string;
     expect(articleCounterText).not.toContain('précédent');
-    flushUnusedDashboardRequest(http);
     http.verify();
   });
 
@@ -1301,7 +826,6 @@ describe('LegacyBackofficePage', () => {
     await error;
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('#history-state').textContent).toContain('Historique indisponible');
-    flushUnusedDashboardRequest(http);
     http.verify();
   });
 });
@@ -1340,32 +864,3 @@ function foodArticle(
   };
 }
 
-function expectDashboardRequest(http: HttpTestingController) {
-  return http.expectOne((request) =>
-    request.method === 'GET'
-      && request.url === '/api/dashboard'
-      && request.params.get('from') === '2030-01-01'
-      && request.params.get('to') === '2030-01-31');
-}
-
-async function flushUnusedDashboardRequest(http: HttpTestingController): Promise<void> {
-  for (const request of http.match('/health')) {
-    request.flush({
-      status: 'ok',
-      provider: 'test',
-      warehouseDate: '2030-01-15',
-      currentMonth: { from: '2030-01-01', to: '2030-01-31' },
-    });
-  }
-  for (let attempt = 0; attempt < 10; attempt++) {
-    await Promise.resolve();
-  }
-  for (const request of http.match((request) => request.url === '/api/dashboard')) {
-    request.flush({
-      kpis: { physicalStock: 0, sellableStock: 0, nonSellableStock: 0 },
-      alerts: { outOfStock: [], notSellable: [] },
-      stockByArticle: [],
-      flowsByDay: [],
-    });
-  }
-}
