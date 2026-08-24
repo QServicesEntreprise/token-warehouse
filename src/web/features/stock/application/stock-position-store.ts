@@ -3,6 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Subject, catchError, map, of, switchMap, tap } from 'rxjs';
 import { StockPosition } from '../domain/stock-position';
 import { STOCK_GATEWAY } from './stock-gateway-token';
+import { StockFailure } from './stock-failure';
 import { StockPositionDetailState } from './stock-position-detail-state';
 import { StockPositionLoadState } from './stock-position-load-state';
 
@@ -73,6 +74,13 @@ export class StockPositionStore {
   }
 
   private errorMessage(error: unknown, fallback: string): string {
-    return error instanceof Error && error.message ? error.message : fallback;
+    return this.isStockFailure(error) ? error.title : fallback;
+  }
+
+  private isStockFailure(error: unknown): error is StockFailure {
+    return typeof error === 'object'
+      && error !== null
+      && 'title' in error
+      && typeof error.title === 'string';
   }
 }

@@ -20,9 +20,9 @@ describe('mapStockPositionDto', () => {
       name: 'Article bloqué',
       physicalQuantity: 7,
       sellableQuantity: 0,
-      blockedQuantity: 7,
+      nonSellableQuantity: 7,
       availability: 'notSellable',
-      blockReason: 'dlcExpired',
+      nonSellableReason: 'dlcExpired',
     });
   });
 
@@ -38,5 +38,19 @@ describe('mapStockPositionDto', () => {
       availability: 'UNKNOWN' as 'AVAILABLE',
       reason: null,
     })).toThrow('Disponibilité Stock inconnue');
+  });
+
+  it('rejects an unknown non-sellability reason at the HTTP boundary', () => {
+    expect(() => mapStockPositionDto({
+      ean13: '0123456789012',
+      name: 'Article inconnu',
+      type: 'food',
+      isActive: true,
+      status: 'active',
+      physicalQuantity: 1,
+      sellableQuantity: 0,
+      availability: 'NOT_SELLABLE',
+      reason: 'UNKNOWN' as 'ARCHIVED',
+    })).toThrow('Raison de non-vendabilité inconnue');
   });
 });

@@ -12,9 +12,9 @@ const blockedPosition: StockPosition = {
   name: 'Article bloqué',
   physicalQuantity: 7,
   sellableQuantity: 0,
-  blockedQuantity: 7,
+  nonSellableQuantity: 7,
   availability: 'notSellable',
-  blockReason: 'dlcExpired',
+  nonSellableReason: 'dlcExpired',
 };
 
 class FakeStockGateway implements StockGateway {
@@ -43,7 +43,7 @@ describe('StockPage', () => {
     const stockPanel = fixture.nativeElement.querySelector('#stock-panel') as HTMLElement;
     expect(stockPanel.querySelector('#stock-state')?.textContent).toContain('1 Article trouvé');
     expect(stockPanel.querySelector('#stock-table')?.textContent).toContain('DLC dépassée');
-    expect(stockPanel.querySelector('#stock-table')?.textContent).toContain('Stock bloqué');
+    expect(stockPanel.querySelector('#stock-table')?.textContent).toContain('Stock non vendable');
 
     (stockPanel.querySelector('.table-action') as HTMLButtonElement).click();
     fixture.detectChanges();
@@ -52,7 +52,7 @@ describe('StockPage', () => {
 
     const detail = stockPanel.querySelector('#stock-detail') as HTMLElement;
     expect(detail.textContent).toContain('7 unités');
-    expect(detail.textContent).toContain('Stock bloqué');
+    expect(detail.textContent).toContain('Stock non vendable');
     expect(detail).toBe(document.activeElement);
   });
 });

@@ -11,9 +11,9 @@ const position = (ean13: string, name: string): StockPosition => ({
   name,
   physicalQuantity: 5,
   sellableQuantity: 5,
-  blockedQuantity: 0,
+  nonSellableQuantity: 0,
   availability: 'available',
-  blockReason: null,
+  nonSellableReason: null,
 });
 
 class FakeStockGateway implements StockGateway {
@@ -69,7 +69,7 @@ describe('StockPositionStore', () => {
   it('distinguishes empty and error states without stale positions', () => {
     gateway.listResponses.push(
       of([]),
-      throwError(() => new Error('Le Stock est indisponible.')),
+      throwError(() => ({ title: 'Le Stock est indisponible.', fieldErrors: {} })),
     );
 
     store.load();

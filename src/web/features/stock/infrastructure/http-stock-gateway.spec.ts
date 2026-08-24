@@ -39,19 +39,24 @@ describe('HttpStockGateway', () => {
       name: 'Article disponible',
       physicalQuantity: 4,
       sellableQuantity: 4,
-      blockedQuantity: 0,
+      nonSellableQuantity: 0,
       availability: 'available',
-      blockReason: null,
+      nonSellableReason: null,
     }]);
   });
 
   it('keeps the Problem Details title for an accessible error', async () => {
     const result = firstValueFrom(gateway.getByEan13('0123456789012'));
     http.expectOne('/api/stock/0123456789012').flush(
-      { title: 'Le détail du Stock est indisponible.' },
+      { title: 'Le détail du Stock est indisponible.', code: 'STOCK_UNAVAILABLE' },
       { status: 500, statusText: 'Server Error' },
     );
 
-    await expect(result).rejects.toThrow('Le détail du Stock est indisponible.');
+    await expect(result).rejects.toEqual({
+      code: 'STOCK_UNAVAILABLE',
+      fieldErrors: {},
+      status: 500,
+      title: 'Le détail du Stock est indisponible.',
+    });
   });
 });

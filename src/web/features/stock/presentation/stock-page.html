@@ -42,7 +42,7 @@
               <th scope="col">EAN-13</th>
               <th scope="col">Stock physique</th>
               <th scope="col">Stock vendable</th>
-              <th scope="col">Stock bloqué</th>
+              <th scope="col">Stock non vendable</th>
               <th scope="col">Disponibilité</th>
               <th scope="col">Raison</th>
               <th scope="col"><span class="sr-only">Action</span></th>
@@ -55,9 +55,9 @@
                 <td>{{ position.ean13 }}</td>
                 <td>{{ position.physicalQuantity }} unités</td>
                 <td>{{ position.sellableQuantity }} unités</td>
-                <td>{{ position.blockedQuantity }} unités</td>
+                <td>{{ position.nonSellableQuantity }} unités</td>
                 <td>{{ availabilityLabel(position.availability) }}</td>
-                <td>{{ reasonLabel(position.blockReason) }}</td>
+                <td>{{ reasonLabel(position.nonSellableReason) }}</td>
                 <td>
                   <button
                     type="button"
@@ -83,9 +83,9 @@
             <div><dt>EAN-13</dt><dd>{{ detailState.position.ean13 }}</dd></div>
             <div><dt>Stock physique</dt><dd>{{ detailState.position.physicalQuantity }} unités</dd></div>
             <div><dt>Stock vendable</dt><dd>{{ detailState.position.sellableQuantity }} unités</dd></div>
-            <div><dt>Stock bloqué</dt><dd>{{ detailState.position.blockedQuantity }} unités</dd></div>
+            <div><dt>Stock non vendable</dt><dd>{{ detailState.position.nonSellableQuantity }} unités</dd></div>
             <div><dt>Disponibilité</dt><dd>{{ availabilityLabel(detailState.position.availability) }}</dd></div>
-            <div><dt>Raison</dt><dd>{{ reasonLabel(detailState.position.blockReason) }}</dd></div>
+            <div><dt>Raison</dt><dd>{{ reasonLabel(detailState.position.nonSellableReason) }}</dd></div>
           </dl>
           <button type="button" class="secondary-button" (click)="store.closeDetail()">Fermer le détail du Stock</button>
         </article>
