@@ -3,7 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Subject, catchError, map, of, switchMap, tap } from 'rxjs';
 import { StockPosition } from '../domain/stock-position';
 import { STOCK_GATEWAY } from './stock-gateway-token';
-import { StockFailure } from './stock-failure';
+import { stockFailureMessage } from './stock-failure-message';
 import { StockPositionDetailState } from './stock-position-detail-state';
 import { StockPositionLoadState } from './stock-position-load-state';
 
@@ -29,7 +29,7 @@ export class StockPositionStore {
         catchError((error: unknown) => of<StockPositionLoadState>({
           status: 'error',
           positions: [],
-          message: this.errorMessage(error, 'Le Stock ne peut pas être chargé. Réessayez.'),
+          message: stockFailureMessage(error, 'Le Stock ne peut pas être chargé. Réessayez.'),
         })),
       )),
       takeUntilDestroyed(),
@@ -45,7 +45,7 @@ export class StockPositionStore {
           map((position): StockPositionDetailState => ({ status: 'ready', position })),
           catchError((error: unknown) => of<StockPositionDetailState>({
             status: 'error',
-            message: this.errorMessage(error, 'Le détail du Stock ne peut pas être chargé.'),
+            message: stockFailureMessage(error, 'Le détail du Stock ne peut pas être chargé.'),
           })),
         )),
       takeUntilDestroyed(),
@@ -71,16 +71,5 @@ export class StockPositionStore {
       ? positions
       : positions.filter((position) => position.ean13.includes(normalizedFilter)
         || position.name.toLocaleLowerCase('fr-FR').includes(normalizedFilter));
-  }
-
-  private errorMessage(error: unknown, fallback: string): string {
-    return this.isStockFailure(error) ? error.title : fallback;
-  }
-
-  private isStockFailure(error: unknown): error is StockFailure {
-    return typeof error === 'object'
-      && error !== null
-      && 'title' in error
-      && typeof error.title === 'string';
   }
 }

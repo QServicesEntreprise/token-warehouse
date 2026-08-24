@@ -45,6 +45,10 @@ class FakeStockGateway implements StockGateway {
       title: 'Le Contre-mouvement est refusé.',
     }));
   }
+
+  history(): Observable<never> {
+    return throwError(() => new Error('Historique inattendu'));
+  }
 }
 
 describe('CounterMovementPage', () => {

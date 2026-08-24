@@ -1,0 +1,133 @@
+<main>
+  <section id="history-panel" class="panel" aria-labelledby="history-title">
+    <div>
+      <p class="eyebrow">Lecture immuable</p>
+      <h1 id="history-title" tabindex="-1">Historique</h1>
+    </div>
+    <p>Les faits engagés sont présentés du plus récent au plus ancien, sans recalculer le Stock courant.</p>
+
+    <form id="history-filter-form" class="lookup" (submit)="submit($event)">
+      <label for="history-ean13">Filtrer par EAN-13</label>
+      <input
+        id="history-ean13"
+        autocomplete="off"
+        inputmode="numeric"
+        pattern="[0-9]{13}"
+        [value]="filter()"
+        (input)="setFilter($event)">
+      <button type="submit" [disabled]="store.state().status === 'loading'">Filtrer l’Historique</button>
+      <button type="button" class="secondary-button" (click)="loadGlobal()">Historique global</button>
+    </form>
+
+    @let state = store.state();
+    <div id="history-state" class="catalog-state" role="status" aria-live="polite">
+      @switch (state.status) {
+        @case ('idle') { <p>Consultez l’Historique global ou filtrez par Article.</p> }
+        @case ('loading') { <p>Chargement de l’Historique…</p> }
+        @case ('ready') { <p>{{ state.entries.length }} fait{{ state.entries.length > 1 ? 's' : '' }} trouvé{{ state.entries.length > 1 ? 's' : '' }}.</p> }
+        @case ('empty') { <p>Aucun fait historique ne correspond à cette requête.</p> }
+        @case ('error') {
+          <p class="form-error" role="alert">{{ state.message }}</p>
+          <button type="button" class="secondary-button" (click)="store.retry()">Réessayer</button>
+        }
+      }
+    </div>
+
+    @if (state.entries.length > 0) {
+      <div id="history-list" class="history-list">
+        @for (entry of state.entries; track entry.id) {
+          <article class="history-entry" [attr.aria-labelledby]="'history-entry-' + entry.id">
+            <h3 [id]="'history-entry-' + entry.id">{{ typeLabel(entry.type) }} — {{ entry.timestampUtc }}</h3>
+            <dl>
+              <div><dt>Identifiant</dt><dd><code>{{ entry.id }}</code></dd></div>
+              <div>
+                <dt>Article(s)</dt>
+                <dd>
+                  @for (ean13 of entry.articles; track ean13; let last = $last) {
+                    <a [routerLink]="['/catalogue', ean13]">{{ ean13 }}</a>{{ last ? '' : ', ' }}
+                  }
+                </dd>
+              </div>
+              @switch (entry.type) {
+                @case ('supply') {
+                  @if (entry.quantity !== undefined) { <div><dt>Quantité utile</dt><dd>{{ entry.quantity }} unités</dd></div> }
+                  @if (entry.stockEffect !== undefined) { <div><dt>Effet Stock</dt><dd>{{ effectLabel(entry.stockEffect) }}</dd></div> }
+                  @if (entry.previousPhysicalStock !== undefined) { <div><dt>Stock physique précédent</dt><dd>{{ entry.previousPhysicalStock }} unités</dd></div> }
+                  @if (entry.resultingPhysicalStock !== undefined) { <div><dt>Stock physique résultant</dt><dd>{{ entry.resultingPhysicalStock }} unités</dd></div> }
+                }
+                @case ('inventory') {
+                  @if (entry.previousPhysicalStock !== undefined) { <div><dt>Stock physique précédent</dt><dd>{{ entry.previousPhysicalStock }} unités</dd></div> }
+                  @if (entry.countedQuantity !== undefined) { <div><dt>Quantité comptée</dt><dd>{{ entry.countedQuantity }} unités</dd></div> }
+                  @if (entry.difference !== undefined) { <div><dt>Écart</dt><dd>{{ effectLabel(entry.difference) }}</dd></div> }
+                  @if (entry.resultingPhysicalStock !== undefined) { <div><dt>Stock physique résultant</dt><dd>{{ entry.resultingPhysicalStock }} unités</dd></div> }
+                }
+                @case ('saleStock') {
+                  @if (entry.quantity !== undefined) { <div><dt>Quantité utile</dt><dd>{{ entry.quantity }} unités</dd></div> }
+                  @if (entry.stockEffect !== undefined) { <div><dt>Effet Stock</dt><dd>{{ effectLabel(entry.stockEffect) }}</dd></div> }
+                  @if (entry.previousPhysicalStock !== undefined) { <div><dt>Stock physique précédent</dt><dd>{{ entry.previousPhysicalStock }} unités</dd></div> }
+                  @if (entry.resultingPhysicalStock !== undefined) { <div><dt>Stock physique résultant</dt><dd>{{ entry.resultingPhysicalStock }} unités</dd></div> }
+                  @if (entry.financial; as financial) {
+                    <div><dt>Prix HT unitaire historique</dt><dd>{{ financial.unitPriceHtCents }} centimes</dd></div>
+                    <div><dt>Contexte historique</dt><dd>{{ financialContextLabel(financial.context) }}</dd></div>
+                    <div><dt>Taux de TVA historique</dt><dd>{{ financial.taxRate.ratio }}</dd></div>
+                    <div><dt>Montant HT historique</dt><dd>{{ financial.amountHtCents }} centimes</dd></div>
+                    <div><dt>TVA historique</dt><dd>{{ financial.vatCents }} centimes</dd></div>
+                    <div><dt>Montant TTC historique</dt><dd>{{ financial.amountTtcCents }} centimes</dd></div>
+                  }
+                }
+                @case ('counterMovement') {
+                  @if (entry.quantity !== undefined) { <div><dt>Quantité utile</dt><dd>{{ entry.quantity }} unités</dd></div> }
+                  @if (entry.stockEffect !== undefined) { <div><dt>Effet Stock</dt><dd>{{ effectLabel(entry.stockEffect) }}</dd></div> }
+                  @if (entry.resultingPhysicalStock !== undefined) { <div><dt>Stock physique résultant</dt><dd>{{ entry.resultingPhysicalStock }} unités</dd></div> }
+                  @if (entry.sourceOperationId) { <div><dt>Source</dt><dd><code>{{ entry.sourceOperationId }}</code> — {{ entry.sourceOperationType }}</dd></div> }
+                  @if (entry.justification) { <div><dt>Justification</dt><dd>{{ entry.justification }}</dd></div> }
+                  @if (entry.financialReversal; as reversal) {
+                    <div><dt>Prix HT unitaire historique</dt><dd>{{ reversal.unitPriceHtCents }} centimes</dd></div>
+                    <div><dt>Contexte historique</dt><dd>{{ financialContextLabel(reversal.context) }}</dd></div>
+                    <div><dt>Taux de TVA historique</dt><dd>{{ reversal.taxRate.ratio }}</dd></div>
+                    <div><dt>Inversion financière HT</dt><dd>{{ effectLabel(reversal.amountHtCents) }} centimes</dd></div>
+                    <div><dt>Inversion financière TVA</dt><dd>{{ effectLabel(reversal.vatCents) }} centimes</dd></div>
+                    <div><dt>Inversion financière TTC</dt><dd>{{ effectLabel(reversal.amountTtcCents) }} centimes</dd></div>
+                  }
+                }
+                @case ('catalogArchive') {
+                  @if (entry.previousStatus || entry.nextStatus) { <div><dt>Cycle de vie</dt><dd>{{ entry.previousStatus }} → {{ entry.nextStatus }}</dd></div> }
+                }
+                @case ('catalogReactivate') {
+                  @if (entry.previousStatus || entry.nextStatus) { <div><dt>Cycle de vie</dt><dd>{{ entry.previousStatus }} → {{ entry.nextStatus }}</dd></div> }
+                }
+              }
+              @if (entry.correctionOperationId) { <div><dt>Correction</dt><dd><code>{{ entry.correctionOperationId }}</code></dd></div> }
+              @if (entry.correctedByOperationId) { <div><dt>Corrigé par</dt><dd><code>{{ entry.correctedByOperationId }}</code></dd></div> }
+            </dl>
+
+            @if (catalogChanges(entry); as changes) {
+              <ul aria-label="Valeurs modifiées">
+                @for (change of changes; track change.field) {
+                  <li>{{ change.field }} : {{ change.before ?? '—' }} → {{ change.after ?? '—' }}</li>
+                }
+              </ul>
+            }
+
+            @if (entry.lines.length > 0) {
+              <h4>Lignes</h4>
+              <ul aria-label="Lignes de l’opération">
+                @for (line of entry.lines; track line.lineNumber) {
+                  <li>
+                    Ligne {{ line.lineNumber }} — <a [routerLink]="['/catalogue', line.ean13]">{{ line.ean13 }}</a>
+                    @if (line.quantity !== undefined) { · {{ line.quantity }} unités }
+                    @if (line.stockEffect !== undefined) { · effet {{ effectLabel(line.stockEffect) }} }
+                    @if (line.inverseEffect !== undefined) { · effet inverse {{ effectLabel(line.inverseEffect) }} }
+                    @if (line.countedQuantity !== undefined) { · comptée {{ line.countedQuantity }} }
+                    @if (line.difference !== undefined) { · écart {{ effectLabel(line.difference) }} }
+                    @if (line.resultingPhysicalStock !== undefined) { · résultat {{ line.resultingPhysicalStock }} }
+                  </li>
+                }
+              </ul>
+            }
+          </article>
+        }
+      </div>
+    }
+  </section>
+</main>

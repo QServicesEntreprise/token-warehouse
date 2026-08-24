@@ -1,0 +1,9 @@
+.history-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.history-entry {
+  border-top: 1px solid #d8e0ec;
+  padding-top: 1rem;
+}
