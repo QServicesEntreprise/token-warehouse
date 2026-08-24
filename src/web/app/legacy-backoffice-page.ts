@@ -86,7 +86,6 @@ interface InventoryDisplayLine {
   position: NonNullable<InventoryOperationLineResponse['position']>;
 }
 
-type StockState = 'loading' | 'ready' | 'empty' | 'error';
 type InventoryRestoreState = 'loading' | 'ready' | 'empty' | 'error';
 type CounterMovementSourcesState = 'idle' | 'loading' | 'ready' | 'empty' | 'error';
 type HistoryState = 'idle' | 'loading' | 'ready' | 'empty' | 'error';
@@ -99,7 +98,6 @@ const initialInventoryModel: InventoryFormModel = {
 const lastInventoryIdStorageKey = 'token-warehouse.last-inventory-id';
 const routeSectionTargetIds: Record<string, string> = {
   dashboard: 'dashboard-title',
-  stock: 'stock-title',
   approvisionnements: 'supply-title',
   inventaires: 'inventory-title',
   corrections: 'counter-movement-title',
@@ -120,91 +118,6 @@ const routeSectionTargetIds: Record<string, string> = {
       </header>
 
       <app-dashboard />
-
-      <section id="stock-panel" class="panel" aria-labelledby="stock-title">
-        <div>
-          <p class="eyebrow">Vue opérationnelle</p>
-          <h2 id="stock-title">Stock courant</h2>
-        </div>
-        <p>Le Stock vendable est calculé par le serveur à partir du Stock physique et des règles courantes de l’Article.</p>
-
-        <div id="stock-state" class="catalog-state" aria-live="polite" role="status">
-          @switch (stockState()) {
-            @case ('loading') {
-              <p>Chargement du Stock…</p>
-            }
-            @case ('ready') {
-              <p>{{ stockPositions().length }} Article{{ stockPositions().length > 1 ? 's' : '' }} trouvé{{ stockPositions().length > 1 ? 's' : '' }}.</p>
-            }
-            @case ('empty') {
-              <p>Aucun Article n’est présent dans le Catalogue.</p>
-            }
-            @case ('error') {
-              <p class="form-error" role="alert">{{ stockError() }}</p>
-              <button type="button" class="secondary-button" (click)="retryStock()">Réessayer</button>
-            }
-          }
-        </div>
-
-        @if (stockPositions().length > 0) {
-          <div class="table-wrap">
-            <table id="stock-table">
-              <caption class="sr-only">Positions courantes du Stock</caption>
-              <thead>
-                <tr>
-                  <th scope="col">Article</th>
-                  <th scope="col">EAN-13</th>
-                  <th scope="col">Stock physique</th>
-                  <th scope="col">Stock vendable</th>
-                  <th scope="col">Disponibilité</th>
-                  <th scope="col">Raison</th>
-                  <th scope="col"><span class="sr-only">Action</span></th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (position of stockPositions(); track position.ean13) {
-                  <tr>
-                    <th scope="row">{{ position.name }}</th>
-                    <td>{{ position.ean13 }}</td>
-                    <td>{{ position.physicalQuantity }} unités</td>
-                    <td>{{ position.sellableQuantity }} unités</td>
-                    <td>{{ formatStockAvailability(position.availability) }}</td>
-                    <td>{{ formatStockReason(position.reason) }}</td>
-                    <td>
-                      <button
-                        type="button"
-                        class="table-action"
-                        [disabled]="stockDetailLoading()"
-                        [attr.aria-label]="'Consulter le détail du Stock de ' + position.name"
-                        (click)="openStockPosition(position)">
-                        {{ stockDetailLoading() ? 'Chargement…' : 'Détail' }}
-                      </button>
-                    </td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          </div>
-        }
-
-        @if (stockDetail(); as position) {
-          <article id="stock-detail" class="stock-detail" role="region" aria-labelledby="stock-detail-title" tabindex="-1">
-            <h3 id="stock-detail-title">Détail du Stock — {{ position.name }}</h3>
-            <dl>
-              <div><dt>EAN-13</dt><dd>{{ position.ean13 }}</dd></div>
-              <div><dt>Stock physique</dt><dd>{{ position.physicalQuantity }} unités</dd></div>
-              <div><dt>Stock vendable</dt><dd>{{ position.sellableQuantity }} unités</dd></div>
-              <div><dt>Disponibilité</dt><dd>{{ formatStockAvailability(position.availability) }}</dd></div>
-              <div><dt>Raison</dt><dd>{{ formatStockReason(position.reason) }}</dd></div>
-            </dl>
-            <button type="button" class="secondary-button" (click)="closeStockDetail()">Fermer le détail du Stock</button>
-          </article>
-        }
-
-        @if (stockDetailError()) {
-          <p id="stock-detail-error" class="form-error" role="alert" aria-live="assertive">{{ stockDetailError() }}</p>
-        }
-      </section>
 
       <section id="history-panel" class="panel" aria-labelledby="history-title">
         <div>
@@ -652,12 +565,6 @@ export class LegacyBackofficePage implements AfterViewInit, OnInit {
     pattern(schemaPath.justification, /\S/, { message: 'La justification ne peut pas être vide.' });
   });
 
-  readonly stockPositions = signal<StockPositionResponse[]>([]);
-  readonly stockState = signal<StockState>('loading');
-  readonly stockError = signal('');
-  readonly stockDetail = signal<StockPositionResponse | null>(null);
-  readonly stockDetailError = signal('');
-  readonly stockDetailLoading = signal(false);
   readonly supplyFieldErrors = signal<Record<string, string>>({});
   readonly supplyMessage = signal('');
   readonly supplySubmitting = signal(false);
@@ -680,8 +587,6 @@ export class LegacyBackofficePage implements AfterViewInit, OnInit {
   readonly historyError = signal('');
   readonly historyFilterEan = signal('');
   readonly historyLoaded = signal(false);
-  private stockRequestId = 0;
-  private stockDetailRequestId = 0;
   private supplyRequestId = 0;
   private inventoryRestoreRequestId = 0;
   private counterMovementRequestId = 0;
@@ -689,7 +594,6 @@ export class LegacyBackofficePage implements AfterViewInit, OnInit {
   private openedRouteSection = '';
 
   ngOnInit(): void {
-    void this.loadStock();
     void this.loadLastInventory();
   }
 
@@ -699,9 +603,6 @@ export class LegacyBackofficePage implements AfterViewInit, OnInit {
 
   private openCurrentRouteSection(): void {
     const section = this.currentRouteSection() ?? '';
-    if (section === 'stock' && this.openedRouteSection && this.openedRouteSection !== section) {
-      void this.loadStock();
-    }
     this.openedRouteSection = section;
     if (section === 'historique' && this.historyLoaded()) {
       void this.loadHistory();
@@ -721,10 +622,6 @@ export class LegacyBackofficePage implements AfterViewInit, OnInit {
     }
     return route?.snapshot.data['section'] as string | undefined;
   }
-  retryStock(): void {
-    void this.loadStock();
-  }
-
   setHistoryFilter(event: Event): void {
     this.historyFilterEan.set((event.target as HTMLInputElement).value);
   }
@@ -916,7 +813,6 @@ export class LegacyBackofficePage implements AfterViewInit, OnInit {
       this.counterMovementSources.update((sources) => sources.filter((source) => source.id !== receipt.counterMovement.sourceOperationId));
       this.counterMovementModel.update((model) => ({ ...model, sourceOperationId: '' }));
       this.counterMovementSourcesState.set(this.counterMovementSources().length > 0 ? 'ready' : 'empty');
-      await this.loadStock();
       this.refreshHistoryAfterChange();
       setTimeout(() => document.getElementById('counter-movement-result')?.focus());
       return true;
@@ -1035,35 +931,6 @@ export class LegacyBackofficePage implements AfterViewInit, OnInit {
     return this.inventoryLineError(index, field) ? this.inventoryErrorId(field, index) : null;
   }
 
-  async openStockPosition(position: StockPositionResponse): Promise<void> {
-    const requestId = ++this.stockDetailRequestId;
-    this.stockDetail.set(null);
-    this.stockDetailError.set('');
-    this.stockDetailLoading.set(true);
-    try {
-      const detail = await firstValueFrom(this.stockApi.getByEan13(position.ean13));
-      if (requestId === this.stockDetailRequestId) {
-        this.stockDetail.set(detail);
-        setTimeout(() => document.getElementById('stock-detail')?.focus());
-      }
-    } catch (error) {
-      if (requestId === this.stockDetailRequestId) {
-        this.stockDetailError.set(this.problemMessage(error, 'Le détail du Stock ne peut pas être chargé.'));
-      }
-    } finally {
-      if (requestId === this.stockDetailRequestId) {
-        this.stockDetailLoading.set(false);
-      }
-    }
-  }
-
-  closeStockDetail(): void {
-    this.stockDetailRequestId += 1;
-    this.stockDetailLoading.set(false);
-    this.stockDetail.set(null);
-    this.stockDetailError.set('');
-  }
-
   supplyFieldError(field: string): string {
     return field === 'ean13' || field === 'quantity'
       ? this.supplyLineFieldError(0, field)
@@ -1150,22 +1017,18 @@ export class LegacyBackofficePage implements AfterViewInit, OnInit {
 
     try {
       let operation: { id: string; occurredAt: string };
-      let positions: StockPositionResponse[];
       if (payloadLines.length === 1) {
         const response = await firstValueFrom(this.stockApi.recordSupply(payloadLines[0]));
         operation = response.operation;
-        positions = [response.position];
       } else {
         const payload: BulkSupplyPayload = { lines: payloadLines };
         const response = await firstValueFrom(this.stockApi.recordBulkSupply(payload));
         operation = response.operation;
-        positions = response.positions;
       }
       if (requestId !== this.supplyRequestId) {
         return;
       }
 
-      this.replaceStockPositions(positions);
       this.supplyMessage.set(
         `Approvisionnement ${operation.id} enregistré le ${operation.occurredAt}.`,
       );
@@ -1252,7 +1115,6 @@ export class LegacyBackofficePage implements AfterViewInit, OnInit {
       this.inventoryRestoreState.set('ready');
       sessionStorage.setItem(lastInventoryIdStorageKey, receipt.operation.id);
       setTimeout(() => document.getElementById('inventory-result')?.focus());
-      void this.loadStock();
       this.refreshHistoryAfterChange();
       return true;
     } catch (error) {
@@ -1382,47 +1244,6 @@ export class LegacyBackofficePage implements AfterViewInit, OnInit {
         }),
       ),
     );
-  }
-
-  private async loadStock(): Promise<void> {
-    const requestId = ++this.stockRequestId;
-    this.stockState.set('loading');
-    this.stockError.set('');
-    this.stockPositions.set([]);
-    this.closeStockDetail();
-
-    try {
-      const positions = await firstValueFrom(this.stockApi.list());
-      if (requestId !== this.stockRequestId) {
-        return;
-      }
-
-      this.stockPositions.set(positions);
-      this.stockState.set(positions.length > 0 ? 'ready' : 'empty');
-    } catch (error) {
-      if (requestId !== this.stockRequestId) {
-        return;
-      }
-
-      this.stockState.set('error');
-      this.stockError.set(this.problemMessage(error, 'Le Stock ne peut pas être chargé. Réessayez.'));
-    }
-  }
-
-  private replaceStockPosition(position: StockPositionResponse): void {
-    this.stockRequestId += 1;
-    const positions = this.stockPositions().filter((current) => current.ean13 !== position.ean13);
-    positions.push(position);
-    positions.sort((left, right) => left.ean13.localeCompare(right.ean13));
-    this.stockPositions.set(positions);
-    this.stockState.set(positions.length > 0 ? 'ready' : 'empty');
-    if (this.stockDetail()?.ean13 === position.ean13) {
-      this.stockDetail.set(position);
-    }
-  }
-
-  private replaceStockPositions(positions: readonly StockPositionResponse[]): void {
-    positions.forEach((position) => this.replaceStockPosition(position));
   }
 
   private supplyLinesForSubmit(): SupplyLineFormModel[] {

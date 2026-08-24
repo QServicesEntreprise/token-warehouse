@@ -48,8 +48,9 @@ const correctSource = async (
 };
 
 test('corrects a committed supply through the real Stock journey', async ({ page }) => {
-  await page.goto('/stock/corrections');
+  await page.goto('/stock');
   await expect(page.locator('#stock-table').getByRole('row', { name: /Alimentaire aux deux modes/ })).toContainText('5 unités');
+  await page.goto('/stock/approvisionnements');
 
   const supplyResponsePromise = waitForRequest(page, 'POST', '/api/supplies');
   await page.locator('#supplyEan13').fill(canonicalEan);
@@ -167,7 +168,7 @@ test('corrects a Sale from its historical snapshot after the Article price and l
 });
 
 test('corrects an inventory after a later movement and keeps the source unchanged', async ({ page }) => {
-  await page.goto('/stock/corrections');
+  await page.goto('/stock/inventaires');
   await page.locator('#inventory-ean13').fill(canonicalEan);
   await page.locator('#inventory-countedQuantity').fill('11');
   const inventoryResponsePromise = waitForRequest(page, 'POST', '/api/inventories');
@@ -201,7 +202,7 @@ test('corrects an inventory after a later movement and keeps the source unchange
     countedQuantity: 11,
     inventoryDifference: 6,
   });
-  await page.reload();
+  await page.goto('/stock');
   await expect(page.locator('#stock-table').getByRole('row', { name: /Alimentaire aux deux modes/ })).toContainText('7 unités');
 });
 

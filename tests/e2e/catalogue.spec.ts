@@ -154,7 +154,7 @@ test('crée les trois formes d’Article et initialise leurs Stocks à zéro', a
   await page.goto('/stock');
   const stockRow = page.locator('#stock-panel').getByRole('row', { name: /Chocolat noir/ });
   await expect(stockRow).toBeVisible();
-  await expect(stockRow.getByRole('cell', { name: '0 unités', exact: true })).toHaveCount(2);
+  await expect(stockRow.getByRole('cell', { name: '0 unités', exact: true })).toHaveCount(3);
 
   await page.goto('/catalogue/nouveau');
   await page.locator('#ean13').fill(singleFoodEan);

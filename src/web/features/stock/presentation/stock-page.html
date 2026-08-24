@@ -1,0 +1,98 @@
+<main>
+  <section id="stock-panel" class="panel" aria-labelledby="stock-title">
+    <div>
+      <p class="eyebrow">Vue opérationnelle</p>
+      <h1 id="stock-title" tabindex="-1">Stock courant</h1>
+    </div>
+    <p>Le Stock vendable est calculé par le serveur à partir du Stock physique et des règles courantes de l’Article.</p>
+
+    <label class="stock-filter" for="stock-filter">
+      Filtrer par Article ou EAN-13
+      <input id="stock-filter" type="search" autocomplete="off" (input)="filter($event)">
+    </label>
+
+    @let state = store.state();
+    @let detailState = store.detailState();
+
+    <div id="stock-state" class="catalog-state" aria-live="polite" role="status">
+      @switch (state.status) {
+        @case ('loading') {
+          <p>Chargement du Stock…</p>
+        }
+        @case ('ready') {
+          <p>{{ state.positions.length }} Article{{ state.positions.length > 1 ? 's' : '' }} trouvé{{ state.positions.length > 1 ? 's' : '' }}.</p>
+        }
+        @case ('empty') {
+          <p>Aucun Article n’est présent dans le Catalogue.</p>
+        }
+        @case ('error') {
+          <p class="form-error" role="alert">{{ state.message }}</p>
+          <button type="button" class="secondary-button" (click)="retry()">Réessayer</button>
+        }
+      }
+    </div>
+
+    @if (state.positions.length > 0) {
+      <div class="table-wrap">
+        <table id="stock-table">
+          <caption class="sr-only">Positions courantes du Stock</caption>
+          <thead>
+            <tr>
+              <th scope="col">Article</th>
+              <th scope="col">EAN-13</th>
+              <th scope="col">Stock physique</th>
+              <th scope="col">Stock vendable</th>
+              <th scope="col">Stock non vendable</th>
+              <th scope="col">Disponibilité</th>
+              <th scope="col">Raison</th>
+              <th scope="col"><span class="sr-only">Action</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (position of state.positions; track position.ean13) {
+              <tr>
+                <th scope="row">{{ position.name }}</th>
+                <td>{{ position.ean13 }}</td>
+                <td>{{ position.physicalQuantity }} unités</td>
+                <td>{{ position.sellableQuantity }} unités</td>
+                <td>{{ position.nonSellableQuantity }} unités</td>
+                <td>{{ availabilityLabel(position.availability) }}</td>
+                <td>{{ reasonLabel(position.nonSellableReason) }}</td>
+                <td>
+                  <button
+                    type="button"
+                    class="table-action"
+                    [disabled]="detailState.status === 'loading'"
+                    [attr.aria-label]="'Consulter le détail du Stock de ' + position.name"
+                    (click)="store.openDetail(position.ean13)">
+                    {{ detailState.status === 'loading' ? 'Chargement…' : 'Détail' }}
+                  </button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+
+    @switch (detailState.status) {
+      @case ('ready') {
+        <article id="stock-detail" class="stock-detail" role="region" aria-labelledby="stock-detail-title" tabindex="-1">
+          <h2 id="stock-detail-title">Détail du Stock — {{ detailState.position.name }}</h2>
+          <dl>
+            <div><dt>EAN-13</dt><dd>{{ detailState.position.ean13 }}</dd></div>
+            <div><dt>Stock physique</dt><dd>{{ detailState.position.physicalQuantity }} unités</dd></div>
+            <div><dt>Stock vendable</dt><dd>{{ detailState.position.sellableQuantity }} unités</dd></div>
+            <div><dt>Stock non vendable</dt><dd>{{ detailState.position.nonSellableQuantity }} unités</dd></div>
+            <div><dt>Disponibilité</dt><dd>{{ availabilityLabel(detailState.position.availability) }}</dd></div>
+            <div><dt>Raison</dt><dd>{{ reasonLabel(detailState.position.nonSellableReason) }}</dd></div>
+          </dl>
+          <button type="button" class="secondary-button" (click)="store.closeDetail()">Fermer le détail du Stock</button>
+        </article>
+      }
+      @case ('error') {
+        <p id="stock-detail-error" class="form-error" role="alert" aria-live="assertive">{{ detailState.message }}</p>
+      }
+    }
+  </section>
+</main>
