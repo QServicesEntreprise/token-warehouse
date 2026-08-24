@@ -1,4 +1,7 @@
 import { ActivatedRouteSnapshot, DetachedRouteHandle, RouteReuseStrategy, Routes } from '@angular/router';
+import { STOCK_GATEWAY } from '../features/stock/application/stock-gateway-token';
+import { StockPositionStore } from '../features/stock/application/stock-position-store';
+import { HttpStockGateway } from '../features/stock/infrastructure/http-stock-gateway';
 import { LAST_SALE_STORAGE } from './features/sales/application/last-sale-storage.token';
 import { SaleStore } from './features/sales/application/sale-store';
 import { SALES_GATEWAY } from './features/sales/application/sales-gateway.token';
@@ -56,8 +59,12 @@ export const routes: Routes = [
       {
         path: '',
         pathMatch: 'full',
-        data: { section: 'stock' },
-        loadComponent: loadLegacy,
+        providers: [
+          HttpStockGateway,
+          StockPositionStore,
+          { provide: STOCK_GATEWAY, useExisting: HttpStockGateway },
+        ],
+        loadComponent: () => import('../features/stock/presentation/stock-page').then((module) => module.StockPage),
       },
       {
         path: 'approvisionnements',

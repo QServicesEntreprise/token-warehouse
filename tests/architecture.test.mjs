@@ -213,6 +213,41 @@ test('Catalogue is an autonomous lazy context and no longer lives in legacy', as
   }
 });
 
+test('Stock positions are an autonomous lazy context and no longer live in legacy', async () => {
+  const appDirectory = join(root, 'src/web/app');
+  const stockDirectory = join(root, 'src/web/features/stock');
+  const routes = await readFile(join(appDirectory, 'app.routes.ts'), 'utf8');
+  const legacy = await readFile(join(appDirectory, 'legacy-backoffice-page.ts'), 'utf8');
+  const legacyStockApi = await readFile(join(appDirectory, 'stock-api.service.ts'), 'utf8');
+  const store = await readFile(join(stockDirectory, 'application/stock-position-store.ts'), 'utf8');
+  const page = await readFile(join(stockDirectory, 'presentation/stock-page.ts'), 'utf8');
+
+  assert.match(routes, /features\/stock\/presentation\/stock-page/);
+  assert.match(routes, /provide:\s*STOCK_GATEWAY,\s*useExisting:\s*HttpStockGateway/);
+  assert.doesNotMatch(legacy, /stock-panel|stockPositions|stockState|openStockPosition|loadStock/);
+  assert.doesNotMatch(legacyStockApi, /get<StockPositionResponse\[\]>\('\/api\/stock'/);
+  assert.doesNotMatch(store, /HttpClient|\b\w+(Dto|Payload|Response)\b/);
+  assert.match(store, /inject\(STOCK_GATEWAY\)/);
+  assert.match(store, /switchMap/);
+  assert.doesNotMatch(page, /HttpClient|\b\w+(Dto|Payload|Response)\b|\.\.\/domain|\.\.\/infrastructure/);
+  assert.match(page, /StockPositionStore/);
+
+  const layerSources = async (layer) => Promise.all(
+    (await readdir(join(stockDirectory, layer), { recursive: true }))
+      .filter((entry) => entry.endsWith('.ts') && !entry.endsWith('.spec.ts'))
+      .map((entry) => readFile(join(stockDirectory, layer, entry), 'utf8')),
+  );
+  for (const source of await layerSources('domain')) {
+    assert.doesNotMatch(source, /@angular|rxjs|HttpClient|Router|document\.|sessionStorage/);
+  }
+  for (const source of await layerSources('application')) {
+    assert.doesNotMatch(source, /HttpClient|Router|sessionStorage|\b\w+(Dto|Payload|Response)\b/);
+  }
+  for (const source of await layerSources('presentation')) {
+    assert.doesNotMatch(source, /HttpClient|\b\w+(Dto|Payload|Response)\b/);
+  }
+});
+
 test('the Sales context is autonomous and route-scoped', async () => {
   const appDirectory = join(root, 'src/web/app');
   const salesDirectory = join(appDirectory, 'features/sales');

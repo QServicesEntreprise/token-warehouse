@@ -16,7 +16,6 @@ describe('LegacyBackofficePage', () => {
     }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
-    http.expectOne('/api/stock').flush([]);
     await fixture.whenStable();
 
     const component = fixture.componentInstance;
@@ -132,7 +131,6 @@ describe('LegacyBackofficePage', () => {
     }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
-    http.expectOne('/api/stock').flush([]);
     await fixture.whenStable();
 
     const component = fixture.componentInstance;
@@ -161,7 +159,6 @@ describe('LegacyBackofficePage', () => {
       },
     });
     await submission;
-    http.expectOne('/api/stock').flush([]);
     await fixture.whenStable();
     fixture.detectChanges();
 
@@ -179,7 +176,6 @@ describe('LegacyBackofficePage', () => {
     }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
-    http.expectOne('/api/stock').flush([]);
     await fixture.whenStable();
 
     const component = fixture.componentInstance;
@@ -234,7 +230,6 @@ describe('LegacyBackofficePage', () => {
       },
     });
     await submission;
-    http.expectOne('/api/stock').flush([]);
     await fixture.whenStable();
     fixture.detectChanges();
 
@@ -253,7 +248,6 @@ describe('LegacyBackofficePage', () => {
     }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
-    http.expectOne('/api/stock').flush([]);
     await fixture.whenStable();
 
     const component = fixture.componentInstance;
@@ -294,7 +288,6 @@ describe('LegacyBackofficePage', () => {
     }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
-    http.expectOne('/api/stock').flush([]);
     await fixture.whenStable();
 
     const component = fixture.componentInstance;
@@ -316,143 +309,6 @@ describe('LegacyBackofficePage', () => {
     http.verify();
   });
 
-  it('announces Stock loading, empty and error states and retries the request', async () => {
-    const fixture = TestBed.configureTestingModule({
-      imports: [LegacyBackofficePage],
-      providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(LegacyBackofficePage);
-    fixture.detectChanges();
-    const http = TestBed.inject(HttpTestingController);
-    const initialStock = http.expectOne('/api/stock');
-    expect(fixture.componentInstance.stockState()).toBe('loading');
-    expect(fixture.nativeElement.querySelector('#stock-state').textContent).toContain('Chargement du Stock');
-    initialStock.flush([]);
-    await fixture.whenStable();
-    fixture.detectChanges();
-
-    expect(fixture.componentInstance.stockState()).toBe('empty');
-    expect(fixture.nativeElement.querySelector('#stock-state').textContent).toContain('Aucun Article');
-
-    fixture.componentInstance.retryStock();
-    const failedStock = http.expectOne('/api/stock');
-    failedStock.flush({ title: 'Le Stock est indisponible.' }, { status: 500, statusText: 'Server Error' });
-    await fixture.whenStable();
-    fixture.detectChanges();
-
-    expect(fixture.componentInstance.stockState()).toBe('error');
-    expect(fixture.nativeElement.querySelector('#stock-state [role="alert"]').textContent).toContain('indisponible');
-
-    fixture.componentInstance.retryStock();
-    const retry = http.expectOne('/api/stock');
-    retry.flush([
-      {
-        ean13: '0123456789012',
-        name: 'Article retrouvé',
-        type: 'food',
-        isActive: true,
-        status: 'active',
-        physicalQuantity: 0,
-        sellableQuantity: 0,
-        availability: 'OUT_OF_STOCK',
-        reason: null,
-      },
-    ]);
-    await fixture.whenStable();
-    fixture.detectChanges();
-
-    expect(fixture.componentInstance.stockState()).toBe('ready');
-    expect(fixture.nativeElement.querySelector('#stock-table').textContent).toContain('Rupture');
-    await flushUnusedDashboardRequest(http);
-    http.verify();
-  });
-
-  it('renders the server Stock contract and opens its keyboard-usable detail', async () => {
-    const fixture = TestBed.configureTestingModule({
-      imports: [LegacyBackofficePage],
-      providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).createComponent(LegacyBackofficePage);
-    fixture.detectChanges();
-    const http = TestBed.inject(HttpTestingController);
-    const stock = http.expectOne('/api/stock');
-    stock.flush([
-      {
-        ean13: '0123456789012',
-        name: 'Alimentaire double mode',
-        type: 'food',
-        isActive: true,
-        status: 'active',
-        physicalQuantity: 5,
-        sellableQuantity: 5,
-        availability: 'AVAILABLE',
-        reason: null,
-        dlc: '2030-01-15',
-        consumptionModes: ['takeaway', 'onsite'],
-      },
-      {
-        ean13: '4006381333931',
-        name: 'Alimentaire expiré',
-        type: 'food',
-        isActive: true,
-        status: 'active',
-        physicalQuantity: 7,
-        sellableQuantity: 0,
-        availability: 'NOT_SELLABLE',
-        reason: 'DLC_EXPIRED',
-        dlc: '2030-01-14',
-        consumptionModes: ['takeaway'],
-      },
-    ]);
-    await fixture.whenStable();
-    fixture.detectChanges();
-
-    const component = fixture.componentInstance;
-    expect(component.stockState()).toBe('ready');
-    expect(fixture.nativeElement.querySelector('#stock-state').textContent).toContain('2 Articles trouvés');
-    expect(fixture.nativeElement.querySelector('#stock-table').textContent).toContain('5');
-    expect(fixture.nativeElement.querySelector('#stock-table').textContent).toContain('7');
-    expect(fixture.nativeElement.querySelector('#stock-table').textContent).toContain('DLC dépassée');
-
-    const detailPromise = component.openStockPosition(component.stockPositions()[0]);
-    const detailRequest = http.expectOne('/api/stock/0123456789012');
-    expect(detailRequest.request.method).toBe('GET');
-    detailRequest.flush({
-      ean13: '0123456789012',
-      name: 'Alimentaire double mode',
-      type: 'food',
-      isActive: true,
-      status: 'active',
-      physicalQuantity: 5,
-      sellableQuantity: 5,
-      availability: 'AVAILABLE',
-      reason: null,
-      dlc: '2030-01-15',
-      consumptionModes: ['takeaway', 'onsite'],
-    });
-    await detailPromise;
-    fixture.detectChanges();
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
-
-    expect(component.stockDetail()?.ean13).toBe('0123456789012');
-    expect(fixture.nativeElement.querySelector('#stock-detail').textContent).toContain('Stock physique');
-    expect(fixture.nativeElement.querySelector('#stock-detail').textContent).toContain('Stock vendable');
-    expect(fixture.nativeElement.querySelector('#stock-detail button, #stock-detail a')).not.toBeNull();
-    expect(fixture.nativeElement.querySelector('#stock-detail')).toBe(document.activeElement);
-
-    const failedDetailPromise = component.openStockPosition(component.stockPositions()[1]);
-    const failedDetailRequest = http.expectOne('/api/stock/4006381333931');
-    failedDetailRequest.flush(
-      { title: 'Le détail du Stock est indisponible.' },
-      { status: 500, statusText: 'Server Error' },
-    );
-    await failedDetailPromise;
-    fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('#stock-detail-error').textContent)
-      .toContain('indisponible');
-
-    await flushUnusedStockRequest(http);
-    http.verify();
-  });
-
   it('renders the current Dashboard contract with aligned quantities and alerts', async () => {
     const fixture = TestBed.configureTestingModule({
       imports: [LegacyBackofficePage],
@@ -460,7 +316,6 @@ describe('LegacyBackofficePage', () => {
     }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
-    http.expectOne('/api/stock').flush([]);
     http.expectOne('/health').flush({
       status: 'ok',
       provider: 'test',
@@ -574,7 +429,6 @@ describe('LegacyBackofficePage', () => {
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     const dashboardComponent = fixture.debugElement.query(By.directive(DashboardComponent)).componentInstance as DashboardComponent;
-    http.expectOne('/api/stock').flush([]);
     http.expectOne('/health').flush({
       status: 'ok',
       provider: 'test',
@@ -638,7 +492,6 @@ describe('LegacyBackofficePage', () => {
     }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
-    http.expectOne('/api/stock').flush([]);
     http.expectOne('/health').flush({
       status: 'ok',
       provider: 'test',
@@ -710,7 +563,6 @@ describe('LegacyBackofficePage', () => {
     }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
-    http.expectOne('/api/stock').flush([]);
     http.expectOne('/health').flush({
       status: 'ok',
       provider: 'test',
@@ -773,7 +625,6 @@ describe('LegacyBackofficePage', () => {
     }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
-    http.expectOne('/api/stock').flush([]);
     http.expectOne('/health').flush({
       status: 'ok',
       provider: 'test',
@@ -855,7 +706,6 @@ describe('LegacyBackofficePage', () => {
     }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
-    http.expectOne('/api/stock').flush([]);
     http.expectOne('/health').flush({
       status: 'ok',
       provider: 'test',
@@ -906,7 +756,6 @@ describe('LegacyBackofficePage', () => {
     }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
-    http.expectOne('/api/stock').flush([]);
     http.expectOne('/health').flush(
       { title: 'Persistence unavailable' },
       { status: 503, statusText: 'Service Unavailable' });
@@ -930,7 +779,6 @@ describe('LegacyBackofficePage', () => {
     }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
-    http.expectOne('/api/stock').flush([]);
     await fixture.whenStable();
 
     const component = fixture.componentInstance;
@@ -939,7 +787,6 @@ describe('LegacyBackofficePage', () => {
     const request = http.expectOne('/api/supplies');
     expect(request.request.method).toBe('POST');
     expect(request.request.body).toEqual({ ean13: '0123456789012', quantity: 3 });
-    expect(component.stockPositions()).toEqual([]);
     request.flush({
       operation: {
         id: 'server-operation-1',
@@ -963,7 +810,6 @@ describe('LegacyBackofficePage', () => {
     await submission;
     fixture.detectChanges();
 
-    expect(component.stockPositions()[0]?.physicalQuantity).toBe(3);
     expect(fixture.nativeElement.querySelector('#supply-status').textContent).toContain('server-operation-1');
 
     component.supplyModel.update((model) => ({ ...model, quantity: '0' }));
@@ -992,7 +838,6 @@ describe('LegacyBackofficePage', () => {
     }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
-    http.expectOne('/api/stock').flush([]);
     await fixture.whenStable();
 
     const valueEvent = (value: string) => ({ target: { value } } as unknown as Event);
@@ -1011,7 +856,6 @@ describe('LegacyBackofficePage', () => {
         { ean13: '5901234123457', quantity: 2 },
       ],
     });
-    expect(component.stockPositions()).toEqual([]);
     request.flush({
       operation: {
         id: 'bulk-operation-1',
@@ -1050,7 +894,6 @@ describe('LegacyBackofficePage', () => {
     await submission;
     fixture.detectChanges();
 
-    expect(component.stockPositions().map((position) => position.physicalQuantity)).toEqual([11, 7]);
     expect(fixture.nativeElement.querySelector('#supply-status').textContent).toContain('bulk-operation-1');
 
     component.setSupplyLineField(1, 'quantity', valueEvent('0'));
@@ -1071,7 +914,6 @@ describe('LegacyBackofficePage', () => {
     expect(component.supplyLines()[1]).toEqual({ ean13: '5901234123457', quantity: '0' });
     expect(fixture.nativeElement.querySelector('#supply-quantity-1-error').textContent).toContain('invalide');
     expect(fixture.nativeElement.querySelector('#supplyQuantity-1')).toBe(document.activeElement);
-    expect(component.stockPositions().map((position) => position.physicalQuantity)).toEqual([11, 7]);
 
     component.removeSupplyLine(0);
     fixture.detectChanges();
@@ -1089,7 +931,6 @@ describe('LegacyBackofficePage', () => {
     }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
-    http.expectOne('/api/stock').flush([]);
     await fixture.whenStable();
 
     const component = fixture.componentInstance;
@@ -1120,7 +961,6 @@ describe('LegacyBackofficePage', () => {
     }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
-    http.expectOne('/api/stock').flush([]);
     await fixture.whenStable();
 
     const component = fixture.componentInstance;
@@ -1170,7 +1010,6 @@ describe('LegacyBackofficePage', () => {
       }],
     });
     await Promise.resolve();
-    http.expectOne('/api/stock').flush([]);
     await submission;
     fixture.detectChanges();
 
@@ -1193,7 +1032,6 @@ describe('LegacyBackofficePage', () => {
     }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
-    http.expectOne('/api/stock').flush([]);
     await fixture.whenStable();
 
     const component = fixture.componentInstance;
@@ -1267,7 +1105,6 @@ describe('LegacyBackofficePage', () => {
       }],
     });
     await Promise.resolve();
-    http.expectOne('/api/stock').flush([]);
     await submission;
     fixture.detectChanges();
 
@@ -1286,7 +1123,6 @@ describe('LegacyBackofficePage', () => {
     }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
-    http.expectOne('/api/stock').flush([]);
     await fixture.whenStable();
 
     const component = fixture.componentInstance;
@@ -1438,7 +1274,6 @@ describe('LegacyBackofficePage', () => {
     }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
-    http.expectOne('/api/stock').flush([]);
     await fixture.whenStable();
 
     const component = fixture.componentInstance;
@@ -1598,7 +1433,6 @@ describe('LegacyBackofficePage', () => {
     }).createComponent(LegacyBackofficePage);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
-    http.expectOne('/api/stock').flush([]);
     await fixture.whenStable();
 
     const component = fixture.componentInstance;
@@ -1664,13 +1498,6 @@ function expectDashboardRequest(http: HttpTestingController) {
       && request.url === '/api/dashboard'
       && request.params.get('from') === '2030-01-01'
       && request.params.get('to') === '2030-01-31');
-}
-
-async function flushUnusedStockRequest(http: HttpTestingController): Promise<void> {
-  for (const request of http.match('/api/stock')) {
-    request.flush([]);
-  }
-  await flushUnusedDashboardRequest(http);
 }
 
 async function flushUnusedDashboardRequest(http: HttpTestingController): Promise<void> {

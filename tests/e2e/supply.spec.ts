@@ -25,9 +25,10 @@ const readStock = async (page: Page, ean13: string): Promise<StockPositionRespon
 
 test('records a unit Approvisionnement and returns the committed Stock physique and Stock vendable', async ({ page }) => {
   const supplyPanel = page.locator('#supply-panel');
+  await page.goto('/stock');
+  await expect(stockRow(page, activeEan13)).toContainText('8 unités');
   await page.goto('/stock/approvisionnements');
   await expect(supplyPanel.getByRole('heading', { name: 'Enregistrer un Approvisionnement' })).toBeVisible();
-  await expect(stockRow(page, activeEan13)).toContainText('8 unités');
 
   await supplyPanel.locator('#supplyEan13').fill(activeEan13);
   await supplyPanel.locator('#supplyQuantity').fill('5');
@@ -53,6 +54,7 @@ test('records a unit Approvisionnement and returns the committed Stock physique 
     `Approvisionnement ${body.operation.id} enregistré le ${body.operation.occurredAt}.`,
   );
   await expect(supplyPanel.locator('#supply-status')).toBeFocused();
+  await page.goto('/stock');
   await expect(stockRow(page, activeEan13)).toContainText('13 unités');
   await expect(stockRow(page, activeEan13)).toContainText('Disponible');
 });
@@ -66,6 +68,7 @@ test('keeps a committed unit Approvisionnement after a full reload', async ({ pa
   await supplyPanel.getByRole('button', { name: 'Enregistrer l’Approvisionnement' }).click();
   expect((await responsePromise).status()).toBe(201);
 
+  await page.goto('/stock');
   const reloadStockResponsePromise = waitForRequest(page, 'GET', '/api/stock');
   await page.reload();
   expect((await reloadStockResponsePromise).status()).toBe(200);
@@ -97,10 +100,6 @@ test('persists Stock physique that remains non vendable by policy', async ({ pag
       reason: 'DLC_EXPIRED',
     },
   });
-  await expect(stockRow(page, expiredEan13)).toContainText('9 unités');
-  await expect(stockRow(page, expiredEan13)).toContainText('0 unités');
-  await expect(stockRow(page, expiredEan13)).toContainText('DLC dépassée');
-
   await supplyPanel.locator('#supplyEan13').fill(unsellableEan13);
   await supplyPanel.locator('#supplyQuantity').fill('2');
   const unsellableResponsePromise = waitForRequest(page, 'POST', '/api/supplies');
@@ -117,6 +116,10 @@ test('persists Stock physique that remains non vendable by policy', async ({ pag
       reason: 'UNSELLABLE_PACKAGING',
     },
   });
+  await page.goto('/stock');
+  await expect(stockRow(page, expiredEan13)).toContainText('9 unités');
+  await expect(stockRow(page, expiredEan13)).toContainText('0 unités');
+  await expect(stockRow(page, expiredEan13)).toContainText('DLC dépassée');
   await expect(stockRow(page, unsellableEan13)).toContainText('5 unités');
   await expect(stockRow(page, unsellableEan13)).toContainText('0 unités');
   await expect(stockRow(page, unsellableEan13)).toContainText('Packaging invendable');
@@ -149,7 +152,7 @@ test('shows a pending Approvisionnement and keeps committed Stock after a server
   await supply(page, activeEan13, 5);
   const supplyPanel = page.locator('#supply-panel');
   await page.goto('/stock/approvisionnements');
-  await expect(stockRow(page, activeEan13)).toContainText('13 unités');
+  await expect(readStock(page, activeEan13)).resolves.toMatchObject({ physicalQuantity: 13 });
 
   let releaseDelayedSupply!: () => void;
   const delayedSupply = new Promise<void>((resolve) => {
@@ -171,13 +174,12 @@ test('shows a pending Approvisionnement and keeps committed Stock after a server
   const delayedResponsePromise = waitForRequest(page, 'POST', '/api/supplies');
   await supplyPanel.locator('#supplyQuantity').press('Enter');
   await delayedRequestPromise;
-  await expect(stockRow(page, activeEan13)).toContainText('13 unités');
-  await expect(stockRow(page, activeEan13)).not.toContainText('14 unités');
+  await expect(readStock(page, activeEan13)).resolves.toMatchObject({ physicalQuantity: 13 });
   await expect(supplyPanel.locator('#supplyQuantity')).toHaveValue('1');
   await expect(supplyPanel.getByRole('button', { name: 'Réception…' })).toBeDisabled();
   releaseDelayedSupply();
   expect((await delayedResponsePromise).status()).toBe(201);
-  await expect(stockRow(page, activeEan13)).toContainText('14 unités');
+  await expect(readStock(page, activeEan13)).resolves.toMatchObject({ physicalQuantity: 14 });
   await expect(supplyPanel.locator('#supply-status')).toContainText('Approvisionnement');
   await expect(supplyPanel.locator('#supply-status')).toBeFocused();
   await page.unroute(supplyRoute, delayedSupplyRoute);
@@ -290,8 +292,8 @@ test('rejects an archived Article with a targeted error and unchanged Stock phys
 
 test('records one ordered Opération en masse and exposes the same order in Historique', async ({ page }) => {
   const supplyPanel = page.locator('#supply-panel');
+  await expect(readStock(page, activeEan13)).resolves.toMatchObject({ physicalQuantity: 8 });
   await page.goto('/stock/approvisionnements');
-  await expect(stockRow(page, activeEan13)).toContainText('8 unités');
   await supplyPanel.locator('#supplyEan13').fill(activeEan13);
   await supplyPanel.locator('#supplyQuantity').fill('3');
   await supplyPanel.getByRole('button', { name: 'Ajouter une ligne' }).click();
@@ -322,6 +324,7 @@ test('records one ordered Opération en masse and exposes the same order in Hist
     expect.objectContaining({ ean13: activeEan13, physicalQuantity: 11, sellableQuantity: 11 }),
     expect.objectContaining({ ean13: secondActiveEan13, physicalQuantity: 5, sellableQuantity: 5 }),
   ]));
+  await page.goto('/stock');
   await expect(stockRow(page, activeEan13)).toContainText('11 unités');
   await expect(stockRow(page, secondActiveEan13)).toContainText('5 unités');
 

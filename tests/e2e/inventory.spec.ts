@@ -41,11 +41,12 @@ const expectReceipt = async (
 };
 
 const openInventory = async (page: Page) => {
-  await page.goto('/stock/inventaires');
+  await page.goto('/stock');
   await expect(page.locator('#stock-table')).toBeVisible();
   await expect(
     page.locator('#stock-table').getByRole('row', { name: /Alimentaire aux deux modes/ }),
   ).toContainText('5 unités');
+  await page.goto('/stock/inventaires');
   await page.locator('#inventory-ean13').focus();
   await page.keyboard.press('Tab');
   await expect(page.locator('#inventory-countedQuantity')).toBeFocused();
@@ -137,7 +138,8 @@ test('reconciles several Articles through one bulk operation and keeps the resul
   await expect(page.locator('#inventory-result')).toContainText('+6');
   await expect(page.locator('#inventory-result')).toContainText('-3');
   await expect(page.locator('#inventory-result')).toContainText('Écart d’inventaire0');
-  await expect(page.locator('#stock-table').getByRole('row', { name: /Alimentaire aux deux modes/ })).toContainText('11 unités');
+  const stock = await page.request.get(`${apiBaseUrl}/api/stock/${canonicalEan}`);
+  await expect(stock.json()).resolves.toMatchObject({ physicalQuantity: 11 });
 
   await page.reload();
   await expect(page.locator('#inventory-result')).toBeVisible();

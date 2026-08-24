@@ -1,5 +1,5 @@
 import { expect, type Route } from '@playwright/test';
-import type { StockPositionResponse } from '../../src/web/app/stock-api.service';
+import type { StockPositionDto } from '../../src/web/features/stock/infrastructure/dto/stock-position.dto';
 import { test } from './fixtures';
 import { ean13ForAttempt, leadingZeroEan13 } from './helpers/ean13';
 import { waitForRequest } from './helpers/http';
@@ -49,10 +49,12 @@ test('consults Stock positions, distinguishes blocked quantities and opens detai
   const stockPanel = page.locator('#stock-panel');
 
   await page.goto('/stock');
+  await expect(page.locator('app-legacy-backoffice-page')).toHaveCount(0);
   await expect(stockPanel.getByText(/Articles trouvés/)).toBeVisible();
   await expect(stockPanel.getByRole('row', { name: /Alimentaire aux deux modes/ })).toContainText(leadingZeroEan13);
   await expect(stockPanel.getByRole('row', { name: /Alimentaire aux deux modes/ })).toContainText('5 unités');
   await expect(stockPanel.getByRole('row', { name: /Alimentaire à DLC dépassée/ })).toContainText('7 unités');
+  await expect(stockPanel.getByRole('row', { name: /Alimentaire à DLC dépassée/ }).getByRole('cell', { name: '7 unités', exact: true })).toHaveCount(2);
   await expect(stockPanel.getByRole('row', { name: /Alimentaire à DLC dépassée/ })).toContainText('DLC dépassée');
   await expect(stockPanel.getByRole('row', { name: /Article archivé/ })).toContainText('4 unités');
   await expect(stockPanel.getByRole('row', { name: /Article archivé/ })).toContainText('Article archivé');
@@ -139,7 +141,7 @@ test.describe('Stock states prepared through public contracts', () => {
 
     await page.goto('/stock');
 
-    const position = ((await (await stockResponse).json()) as StockPositionResponse[])
+    const position = ((await (await stockResponse).json()) as StockPositionDto[])
       .find((candidate) => candidate.ean13 === article.ean13);
     expect(position).toMatchObject({ physicalQuantity: 6, sellableQuantity: 6 });
     expect(position!.physicalQuantity - position!.sellableQuantity).toBe(0);
@@ -159,7 +161,7 @@ test.describe('Stock states prepared through public contracts', () => {
     await page.goto('/stock');
 
     const row = page.locator('#stock-panel').getByRole('row', { name: /Article sans position persistée/ });
-    await expect(row.getByRole('cell', { name: '0 unités', exact: true })).toHaveCount(2);
+    await expect(row.getByRole('cell', { name: '0 unités', exact: true })).toHaveCount(3);
     await expect(row).toContainText('Rupture');
   });
 
@@ -220,14 +222,14 @@ test.describe('Stock states prepared through public contracts', () => {
 
     await page.goto('/stock');
 
-    const listed = ((await (await listResponse).json()) as StockPositionResponse[])
+    const listed = ((await (await listResponse).json()) as StockPositionDto[])
       .find((position) => position.ean13 === article.ean13)!;
     const stockPanel = page.locator('#stock-panel');
     const row = stockPanel.getByRole('row', { name: /Article détaillé/ });
     await expect(row.getByRole('cell', { name: '9 unités', exact: true })).toHaveCount(2);
     const detailResponse = waitForRequest(page, 'GET', `/api/stock/${article.ean13}`);
     await row.getByRole('button', { name: /Consulter le détail/ }).click();
-    const detail = (await (await detailResponse).json()) as StockPositionResponse;
+    const detail = (await (await detailResponse).json()) as StockPositionDto;
     expect([detail.physicalQuantity, detail.sellableQuantity])
       .toEqual([listed.physicalQuantity, listed.sellableQuantity]);
     const detailView = stockPanel.locator('#stock-detail');
