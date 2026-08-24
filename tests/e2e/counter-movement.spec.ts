@@ -270,7 +270,7 @@ test('rejects a bulk counter-movement atomically when one line would go negative
 });
 
 test('corrects an archived Article while keeping its sellable stock at zero', async ({ page }) => {
-  await page.goto('/stock/corrections');
+  await page.goto('/stock/inventaires');
   await page.locator('#inventory-ean13').fill(archivedEan);
   await page.locator('#inventory-countedQuantity').fill('6');
   const inventoryResponsePromise = waitForRequest(page, 'POST', '/api/inventories');
