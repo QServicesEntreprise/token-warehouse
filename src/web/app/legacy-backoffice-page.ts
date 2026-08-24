@@ -39,12 +39,6 @@ import {
   CounterMovementSourceType,
 } from './counter-movement-api.service';
 import {
-  SaleArticleResponse,
-  SalePayload,
-  SaleResponse,
-  SalesApiService,
-} from './sales-api.service';
-import {
   HistoryApiService,
   HistoryEntryResponse,
   HistoryEntryType,
@@ -95,8 +89,6 @@ interface InventoryDisplayLine {
 type StockState = 'loading' | 'ready' | 'empty' | 'error';
 type InventoryRestoreState = 'loading' | 'ready' | 'empty' | 'error';
 type CounterMovementSourcesState = 'idle' | 'loading' | 'ready' | 'empty' | 'error';
-type SaleSearchState = 'idle' | 'loading' | 'ready' | 'empty' | 'error';
-type SaleState = 'ready' | 'loading' | 'validation' | 'conflict' | 'error' | 'success';
 type HistoryState = 'idle' | 'loading' | 'ready' | 'empty' | 'error';
 
 const initialInventoryModel: InventoryFormModel = {
@@ -105,7 +97,6 @@ const initialInventoryModel: InventoryFormModel = {
 };
 
 const lastInventoryIdStorageKey = 'token-warehouse.last-inventory-id';
-const lastSaleIdStorageKey = 'token-warehouse.last-sale-id';
 const routeSectionTargetIds: Record<string, string> = {
   dashboard: 'dashboard-title',
   stock: 'stock-title',
@@ -113,7 +104,6 @@ const routeSectionTargetIds: Record<string, string> = {
   inventaires: 'inventory-title',
   corrections: 'counter-movement-title',
   historique: 'history-title',
-  ventes: 'sale-title',
 };
 
 @Component({
@@ -213,199 +203,6 @@ const routeSectionTargetIds: Record<string, string> = {
 
         @if (stockDetailError()) {
           <p id="stock-detail-error" class="form-error" role="alert" aria-live="assertive">{{ stockDetailError() }}</p>
-        }
-      </section>
-
-      <section id="sale-panel" class="panel" aria-labelledby="sale-title">
-        <div>
-          <p class="eyebrow">Mouvement immédiat</p>
-          <h2 id="sale-title">Enregistrer une Vente</h2>
-        </div>
-        <p>Recherchez un Article actif, vérifiez le Stock vendable, puis validez une quantité entière.</p>
-
-        <form id="sale-search-form" class="catalog-filters" (submit)="onSaleSearchSubmit($event)">
-          <label for="sale-search">Rechercher par nom ou EAN-13</label>
-          <input
-            id="sale-search"
-            autocomplete="off"
-            inputmode="search"
-            placeholder="Nom ou EAN-13"
-            [value]="saleSearch()"
-            (input)="setSaleSearch($event)" />
-          <button type="submit" [disabled]="saleSearchState() === 'loading'">
-            {{ saleSearchState() === 'loading' ? 'Recherche…' : 'Rechercher un Article' }}
-          </button>
-        </form>
-
-        <div id="sale-search-state" class="catalog-state" aria-live="polite" role="status">
-          @switch (saleSearchState()) {
-            @case ('idle') {
-              <p>Saisissez un nom ou un EAN-13 pour sélectionner un Article.</p>
-            }
-            @case ('loading') {
-              <p>Chargement des Articles vendables…</p>
-            }
-            @case ('ready') {
-              <p>{{ saleArticles().length }} Article{{ saleArticles().length > 1 ? 's' : '' }} trouvé{{ saleArticles().length > 1 ? 's' : '' }}.</p>
-            }
-            @case ('empty') {
-              <p>Aucun Article ne correspond à cette recherche.</p>
-            }
-            @case ('error') {
-              <p class="form-error" role="alert">{{ saleSearchError() }}</p>
-              <button type="button" class="secondary-button" (click)="retrySaleSearch()">Réessayer</button>
-            }
-          }
-        </div>
-
-        @if (saleArticles().length > 0) {
-          <div class="table-wrap">
-            <table id="sale-articles-table">
-              <caption class="sr-only">Articles disponibles pour une Vente</caption>
-              <thead>
-                <tr>
-                  <th scope="col">Article</th>
-                  <th scope="col">EAN-13</th>
-                  <th scope="col">Type</th>
-                  <th scope="col">Statut</th>
-                  <th scope="col">Prix HT</th>
-                  <th scope="col">Stock physique</th>
-                  <th scope="col">Stock vendable</th>
-                  <th scope="col">Disponibilité</th>
-                  <th scope="col">Devis TTC</th>
-                  <th scope="col"><span class="sr-only">Action</span></th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (article of saleArticles(); track article.ean13) {
-                  <tr>
-                    <th scope="row">{{ article.name }}</th>
-                    <td>{{ article.ean13 }}</td>
-                    <td>{{ article.type === 'food' ? 'Alimentaire' : 'Non alimentaire' }}</td>
-                    <td>{{ article.isActive ? 'Actif' : 'Archivé' }}</td>
-                    <td>{{ article.priceHtCents }} centimes</td>
-                    <td>{{ article.physicalQuantity }} unités</td>
-                    <td>{{ article.sellableQuantity }} unités</td>
-                    <td>{{ formatStockAvailability(article.availability) }}</td>
-                    <td>
-                      @for (quote of article.priceQuotes ?? []; track quote.saleContext ?? quote.taxRate.code) {
-                        <div>{{ quote.saleContext === 'takeaway' ? 'À emporter' : quote.saleContext === 'onsite' ? 'Sur place' : 'Non alimentaire' }} : {{ quote.priceTtcCents }} centimes</div>
-                      }
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        class="table-action"
-                        [attr.aria-pressed]="selectedSaleArticle()?.ean13 === article.ean13"
-                        [attr.aria-label]="'Sélectionner ' + article.name"
-                        (click)="selectSaleArticle(article)">
-                        {{ selectedSaleArticle()?.ean13 === article.ean13 ? 'Sélectionné' : 'Sélectionner' }}
-                      </button>
-                    </td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          </div>
-        }
-
-        @if (selectedSaleArticle(); as article) {
-          <article id="sale-selection" class="stock-detail" role="region" aria-labelledby="sale-selection-title" tabindex="-1">
-            <h3 id="sale-selection-title">Article sélectionné — {{ article.name }}</h3>
-            <dl>
-              <div><dt>EAN-13</dt><dd>{{ article.ean13 }}</dd></div>
-              <div><dt>Type</dt><dd>{{ article.type === 'food' ? 'Alimentaire' : 'Non alimentaire' }}</dd></div>
-              <div><dt>Statut</dt><dd>{{ article.isActive ? 'Actif' : 'Archivé' }}</dd></div>
-              <div><dt>Prix HT</dt><dd>{{ article.priceHtCents }} centimes</dd></div>
-              <div><dt>Stock physique</dt><dd>{{ article.physicalQuantity }} unités</dd></div>
-              <div><dt>Stock vendable</dt><dd>{{ article.sellableQuantity }} unités</dd></div>
-            </dl>
-
-            @if (article.type === 'food' && (article.consumptionModes?.length ?? 0) > 1) {
-              <fieldset
-                id="sale-context"
-                aria-describedby="sale-context-error"
-                [attr.aria-invalid]="saleFieldError('context') ? 'true' : null">
-                <legend>Contexte de Vente</legend>
-                @for (mode of article.consumptionModes ?? []; track mode) {
-                  <label [attr.for]="'sale-context-' + mode">
-                    <input
-                      [id]="'sale-context-' + mode"
-                      type="radio"
-                      name="sale-context"
-                      [value]="mode"
-                      [checked]="saleContext() === mode"
-                      (change)="setSaleContext($event)" />
-                    {{ mode === 'takeaway' ? 'À emporter' : 'Sur place' }}
-                  </label>
-                }
-                <span id="sale-context-error" class="field-error">{{ saleFieldError('context') }}</span>
-              </fieldset>
-            } @else if (article.type === 'food' && (article.consumptionModes?.length ?? 0) === 1) {
-              <p id="sale-context-derived" role="status">
-                Contexte déduit : {{ article.consumptionModes?.[0] === 'takeaway' ? 'À emporter' : 'Sur place' }}.
-              </p>
-            } @else {
-              <p id="sale-context-none">Aucun Contexte de Vente — TVA non alimentaire.</p>
-            }
-
-            <section id="sale-pricing-preview" aria-labelledby="sale-pricing-preview-title">
-              <h4 id="sale-pricing-preview-title">Devis tarifaire serveur</h4>
-              @for (quote of article.priceQuotes ?? []; track quote.saleContext ?? quote.taxRate.code) {
-                <dl class="price-quote">
-                  @if (quote.saleContext) {
-                    <div>
-                      <dt>Contexte</dt>
-                      <dd>{{ quote.saleContext === 'takeaway' ? 'À emporter' : 'Sur place' }}</dd>
-                    </div>
-                  }
-                  <div><dt>Taux de TVA</dt><dd>{{ quote.taxRate.ratio }}</dd></div>
-                  <div><dt>Prix TTC unitaire</dt><dd>{{ quote.priceTtcCents }} centimes</dd></div>
-                </dl>
-              }
-            </section>
-
-            <form id="sale-form" class="lookup" novalidate (submit)="onSaleSubmit($event)">
-              <label for="sale-quantity">
-                Quantité entière positive
-                <input
-                  id="sale-quantity"
-                  type="number"
-                  min="1"
-                  step="1"
-                  inputmode="numeric"
-                  [value]="saleQuantity()"
-                  [attr.aria-invalid]="saleFieldError('quantity') ? 'true' : null"
-                  aria-describedby="sale-quantity-error"
-                  (input)="setSaleQuantity($event)" />
-                <span id="sale-quantity-error" class="field-error">{{ saleFieldError('quantity') }}</span>
-              </label>
-              <button id="sale-submit" type="submit" [disabled]="saleSubmitting()">
-                {{ saleSubmitting() ? 'Validation…' : 'Enregistrer la Vente' }}
-              </button>
-            </form>
-          </article>
-        }
-
-        <p id="sale-status" role="status" aria-live="assertive" tabindex="-1">{{ saleStatusMessage() }}</p>
-
-        @if (saleReceipt(); as receipt) {
-          <article id="sale-result" class="stock-detail" role="region" aria-labelledby="sale-result-title" tabindex="-1">
-            <h3 id="sale-result-title">Vente engagée</h3>
-            <dl>
-              <div><dt>Identifiant d’opération</dt><dd><code>{{ receipt.operation.id }}</code></dd></div>
-              <div><dt>Horodatage UTC</dt><dd>{{ receipt.operation.occurredAt }}</dd></div>
-              <div><dt>EAN-13</dt><dd>{{ receipt.operation.ean13 }}</dd></div>
-              <div><dt>Quantité</dt><dd>{{ receipt.operation.quantity }} unités</dd></div>
-              <div><dt>Prix HT unitaire</dt><dd>{{ receipt.financial.unitPriceHtCents }} centimes</dd></div>
-              <div><dt>Taux de TVA</dt><dd>{{ receipt.financial.taxRate.ratio }}</dd></div>
-              <div><dt>Montant HT</dt><dd>{{ receipt.financial.amountHtCents }} centimes</dd></div>
-              <div><dt>TVA</dt><dd>{{ receipt.financial.vatCents }} centimes</dd></div>
-              <div><dt>Montant TTC</dt><dd>{{ receipt.financial.amountTtcCents }} centimes</dd></div>
-              <div><dt>Stock physique résultant</dt><dd>{{ receipt.position.physicalQuantity }} unités</dd></div>
-              <div><dt>Stock vendable résultant</dt><dd>{{ receipt.position.sellableQuantity }} unités</dd></div>
-            </dl>
-          </article>
         }
       </section>
 
@@ -812,7 +609,6 @@ export class LegacyBackofficePage implements AfterViewInit, OnInit {
   private readonly stockApi = inject(StockApiService);
   private readonly inventoryApi = inject(InventoryApiService);
   private readonly counterMovementApi = inject(CounterMovementApiService);
-  private readonly salesApi = inject(SalesApiService);
   private readonly historyApi = inject(HistoryApiService);
 
   constructor() {
@@ -862,18 +658,6 @@ export class LegacyBackofficePage implements AfterViewInit, OnInit {
   readonly stockDetail = signal<StockPositionResponse | null>(null);
   readonly stockDetailError = signal('');
   readonly stockDetailLoading = signal(false);
-  readonly saleArticles = signal<SaleArticleResponse[]>([]);
-  readonly saleSearch = signal('');
-  readonly saleSearchState = signal<SaleSearchState>('idle');
-  readonly saleSearchError = signal('');
-  readonly selectedSaleArticle = signal<SaleArticleResponse | null>(null);
-  readonly saleContext = signal<ConsumptionMode | ''>('');
-  readonly saleQuantity = signal('');
-  readonly saleState = signal<SaleState>('ready');
-  readonly saleFieldErrors = signal<Record<string, string>>({});
-  readonly saleStatusMessage = signal('');
-  readonly saleReceipt = signal<SaleResponse | null>(null);
-  readonly saleSubmitting = signal(false);
   readonly supplyFieldErrors = signal<Record<string, string>>({});
   readonly supplyMessage = signal('');
   readonly supplySubmitting = signal(false);
@@ -901,13 +685,12 @@ export class LegacyBackofficePage implements AfterViewInit, OnInit {
   private supplyRequestId = 0;
   private inventoryRestoreRequestId = 0;
   private counterMovementRequestId = 0;
-  private saleRequestId = 0;
   private historyRequestId = 0;
+  private openedRouteSection = '';
 
   ngOnInit(): void {
     void this.loadStock();
     void this.loadLastInventory();
-    void this.loadLastSale();
   }
 
   ngAfterViewInit(): void {
@@ -915,7 +698,15 @@ export class LegacyBackofficePage implements AfterViewInit, OnInit {
   }
 
   private openCurrentRouteSection(): void {
-    const target = document.getElementById(routeSectionTargetIds[this.currentRouteSection() ?? '']);
+    const section = this.currentRouteSection() ?? '';
+    if (section === 'stock' && this.openedRouteSection && this.openedRouteSection !== section) {
+      void this.loadStock();
+    }
+    this.openedRouteSection = section;
+    if (section === 'historique' && this.historyLoaded()) {
+      void this.loadHistory();
+    }
+    const target = document.getElementById(routeSectionTargetIds[section]);
     if (target) {
       target.tabIndex = -1;
       target.focus({ preventScroll: true });
@@ -932,246 +723,6 @@ export class LegacyBackofficePage implements AfterViewInit, OnInit {
   }
   retryStock(): void {
     void this.loadStock();
-  }
-
-  setSaleSearch(event: Event): void {
-    this.saleSearch.set((event.target as HTMLInputElement).value);
-  }
-
-  async onSaleSearchSubmit(event: Event): Promise<void> {
-    event.preventDefault();
-    await this.searchSaleArticles();
-  }
-
-  retrySaleSearch(): void {
-    void this.searchSaleArticles();
-  }
-
-  async searchSaleArticles(): Promise<void> {
-    const requestId = this.nextSaleRequestId();
-    this.saleSearchState.set('loading');
-    this.saleSearchError.set('');
-    this.saleArticles.set([]);
-    this.selectedSaleArticle.set(null);
-    try {
-      const articles = await firstValueFrom(this.salesApi.searchArticles(this.saleSearch()));
-      if (requestId !== this.saleRequestId) {
-        return;
-      }
-
-      this.saleArticles.set(articles);
-      const selected = this.selectedSaleArticle();
-      const refreshedSelection = selected
-        ? articles.find((article) => article.ean13 === selected.ean13) ?? null
-        : null;
-      this.selectedSaleArticle.set(refreshedSelection);
-      if (!refreshedSelection) {
-        this.saleQuantity.set('');
-      }
-      this.saleSearchState.set(articles.length > 0 ? 'ready' : 'empty');
-    } catch (error) {
-      if (requestId !== this.saleRequestId) {
-        return;
-      }
-
-      this.saleSearchState.set('error');
-      this.saleSearchError.set(
-        this.problemMessage(error, 'Les Articles ne peuvent pas être chargés. Réessayez.'),
-      );
-    }
-  }
-
-  selectSaleArticle(article: SaleArticleResponse): void {
-    this.nextSaleRequestId();
-    this.selectedSaleArticle.set(article);
-    this.saleContext.set(
-      article.type === 'food' && article.consumptionModes?.length === 1
-        ? article.consumptionModes[0]
-        : '',
-    );
-    this.saleFieldErrors.set({});
-    this.saleStatusMessage.set('');
-    this.saleState.set('ready');
-  }
-
-  setSaleContext(event: Event): void {
-    const value = (event.target as HTMLInputElement).value;
-    if (value !== 'takeaway' && value !== 'onsite') {
-      return;
-    }
-
-    this.nextSaleRequestId();
-    this.saleContext.set(value);
-    this.saleFieldErrors.update((errors) => {
-      const next = { ...errors };
-      delete next['context'];
-      return next;
-    });
-  }
-
-  setSaleQuantity(event: Event): void {
-    this.saleQuantity.set((event.target as HTMLInputElement).value);
-    this.saleFieldErrors.update((errors) => {
-      const next = { ...errors };
-      delete next['quantity'];
-      return next;
-    });
-  }
-
-  saleFieldError(field: string): string {
-    return this.saleFieldErrors()[field] ?? '';
-  }
-
-  async onSaleSubmit(event: Event): Promise<void> {
-    event.preventDefault();
-    const requestId = this.nextSaleRequestId();
-    const article = this.selectedSaleArticle();
-    const rawQuantity = this.saleQuantity().trim();
-    const quantity = Number(rawQuantity);
-    const modes = article?.consumptionModes ?? [];
-    const context = article?.type === 'food' && modes.length === 1
-      ? modes[0]
-      : this.saleContext();
-    this.saleFieldErrors.set({});
-    this.saleStatusMessage.set('');
-    this.saleReceipt.set(null);
-
-    if (!article) {
-      this.saleState.set('validation');
-      this.saleStatusMessage.set('Sélectionnez un Article avant de valider la Vente.');
-      setTimeout(() => this.focusSaleError());
-      return;
-    }
-
-    if (!/^\d+$/.test(rawQuantity)
-      || !Number.isSafeInteger(quantity)
-      || quantity <= 0
-      || quantity > 2_147_483_647) {
-      this.saleState.set('validation');
-      this.saleFieldErrors.set({ quantity: 'La quantité doit être un entier strictement positif.' });
-      this.saleStatusMessage.set('Corrigez la quantité avant de continuer.');
-      setTimeout(() => this.focusSaleError());
-      return;
-    }
-
-    if (article.type === 'food' && modes.length > 1 && !modes.includes(context as ConsumptionMode)) {
-      this.saleState.set('validation');
-      this.saleFieldErrors.set({ context: 'Choisissez un Contexte de Vente.' });
-      this.saleStatusMessage.set('Choisissez un Contexte de Vente avant de continuer.');
-      setTimeout(() => this.focusSaleError());
-      return;
-    }
-
-    this.saleState.set('loading');
-    this.saleStatusMessage.set('Validation de la Vente…');
-    this.saleSubmitting.set(true);
-    try {
-      const payload: SalePayload = { ean13: article.ean13, quantity };
-      if (article.type === 'food' && context) {
-        payload.context = context;
-      }
-      const receipt = await firstValueFrom(this.salesApi.record(payload));
-      if (requestId !== this.saleRequestId) {
-        return;
-      }
-
-      this.saleReceipt.set(receipt);
-      this.saleContext.set(receipt.financial.context ?? '');
-      this.saleState.set('success');
-      this.saleStatusMessage.set(`Vente ${receipt.operation.id} enregistrée.`);
-      sessionStorage.setItem(lastSaleIdStorageKey, receipt.operation.id);
-      this.selectedSaleArticle.update((current) => current
-        ? { ...current, ...receipt.position }
-        : current);
-      this.replaceStockPosition(receipt.position);
-      this.refreshHistoryAfterChange();
-      setTimeout(() => document.getElementById('sale-result')?.focus());
-    } catch (error) {
-      if (requestId !== this.saleRequestId) {
-        return;
-      }
-
-      const problem = this.problemDetails(error, 'La Vente n’a pas pu être enregistrée.');
-      this.saleFieldErrors.set(
-        Object.fromEntries(
-          Object.entries(problem.errors ?? {}).map(([field, messages]) => [field, messages[0] ?? 'Valeur invalide.']),
-        ),
-      );
-      const status = error instanceof HttpErrorResponse ? error.status : 0;
-      this.saleState.set(status === 400 ? 'validation' : status === 409 ? 'conflict' : 'error');
-      this.saleStatusMessage.set(problem.title ?? 'La Vente n’a pas pu être enregistrée.');
-      setTimeout(() => this.focusSaleError());
-    } finally {
-      if (requestId === this.saleRequestId) {
-        this.saleSubmitting.set(false);
-      }
-    }
-  }
-
-  private async loadLastSale(): Promise<void> {
-    const requestId = this.nextSaleRequestId();
-    const operationId = sessionStorage.getItem(lastSaleIdStorageKey);
-    if (!operationId) {
-      return;
-    }
-
-    this.saleState.set('loading');
-    this.saleStatusMessage.set('Rechargement de la dernière Vente…');
-    try {
-      const receipt = await firstValueFrom(this.salesApi.getById(operationId));
-      if (requestId !== this.saleRequestId) {
-        return;
-      }
-
-      let selectedArticle = this.saleArticleFromReceipt(receipt);
-      try {
-        const articles = await firstValueFrom(this.salesApi.searchArticles(receipt.position.ean13));
-        if (requestId === this.saleRequestId) {
-          selectedArticle = articles.find((article) => article.ean13 === receipt.position.ean13) ?? selectedArticle;
-        }
-      } catch {
-        // The committed receipt remains usable when the optional quote refresh fails.
-      }
-      if (requestId !== this.saleRequestId) {
-        return;
-      }
-
-      this.saleReceipt.set(receipt);
-      this.selectedSaleArticle.set(selectedArticle);
-      this.saleContext.set(receipt.financial.context ?? '');
-      this.saleQuantity.set(String(receipt.operation.quantity));
-      this.saleState.set('success');
-      this.saleStatusMessage.set(`Vente ${receipt.operation.id} rechargée.`);
-      this.replaceStockPosition(receipt.position);
-    } catch (error) {
-      if (requestId === this.saleRequestId) {
-        this.saleState.set('error');
-        this.saleStatusMessage.set(this.problemMessage(error, 'La Vente enregistrée ne peut pas être relue.'));
-      }
-    }
-  }
-
-  private nextSaleRequestId(): number {
-    this.saleSubmitting.set(false);
-    return ++this.saleRequestId;
-  }
-
-  private saleArticleFromReceipt(receipt: SaleResponse): SaleArticleResponse {
-    return {
-      ean13: receipt.position.ean13,
-      name: receipt.position.name,
-      type: receipt.position.type,
-      isActive: receipt.position.isActive,
-      status: receipt.position.status,
-      priceHtCents: receipt.financial.unitPriceHtCents,
-      physicalQuantity: receipt.position.physicalQuantity,
-      sellableQuantity: receipt.position.sellableQuantity,
-      availability: receipt.position.availability,
-      reason: receipt.position.reason,
-      dlc: receipt.position.dlc,
-      consumptionModes: receipt.position.consumptionModes,
-      packaging: receipt.position.packaging,
-    };
   }
 
   setHistoryFilter(event: Event): void {
@@ -1947,16 +1498,6 @@ export class LegacyBackofficePage implements AfterViewInit, OnInit {
       : fieldName === 'quantity'
         ? document.getElementById(this.supplyInputId('quantity', line))
         : document.getElementById('supply-status');
-    target?.focus();
-  }
-
-  private focusSaleError(): void {
-    const field = Object.keys(this.saleFieldErrors())[0];
-    const target = field === 'quantity'
-      ? document.getElementById('sale-quantity')
-      : field === 'context'
-        ? document.querySelector<HTMLElement>('#sale-context input')
-        : document.getElementById('sale-status');
     target?.focus();
   }
 

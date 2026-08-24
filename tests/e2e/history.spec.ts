@@ -417,9 +417,6 @@ test('keeps a committed Sale and its financial correction separately in History'
   await page.locator('#sale-quantity').fill('2');
 
   const saleResponsePromise = waitForRequest(page, 'POST', '/api/sales');
-  const saleHistoryRefreshPromise = waitForRequest(page, 'GET', '/api/history', (url) => (
-    !url.search
-  ));
   await page.locator('#sale-submit').click();
   const saleResponse = await saleResponsePromise;
   expect(saleResponse.status()).toBe(201);
@@ -428,8 +425,11 @@ test('keeps a committed Sale and its financial correction separately in History'
     financial: { amountHtCents: number; vatCents: number; amountTtcCents: number };
   };
   expect(sale.financial).toMatchObject({ amountHtCents: 200, vatCents: 11, amountTtcCents: 211 });
-  const saleHistoryRefresh = await saleHistoryRefreshPromise;
-  expect(saleHistoryRefresh.status()).toBe(200);
+  const saleHistoryRefreshPromise = waitForRequest(page, 'GET', '/api/history', (url) => (
+    !url.search
+  ));
+  await page.getByRole('link', { name: 'Historique' }).click();
+  expect((await saleHistoryRefreshPromise).status()).toBe(200);
   await expect(page.locator('#history-list')).toContainText(sale.operation.id);
 
   await page.getByRole('link', { name: 'Contre-mouvement' }).click();

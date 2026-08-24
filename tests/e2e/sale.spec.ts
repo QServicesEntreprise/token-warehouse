@@ -1,6 +1,6 @@
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
-import type { SaleResponse } from '../../src/web/app/sales-api.service';
+import type { SaleResult } from '../../src/web/app/features/sales/domain/sale-result';
 import { ean13ForAttempt, leadingZeroEan13 } from './helpers/ean13';
 import { waitForRequest } from './helpers/http';
 import {
@@ -13,9 +13,13 @@ import {
   supply,
 } from './helpers/state';
 
-test('searches, rejects an excessive quantity, commits a sale and reloads its result', async ({ page }) => {
+test('searches, rejects an excessive quantity, commits a sale and refreshes Stock', async ({ page }) => {
   const salePanel = page.locator('#sale-panel');
-  await page.goto('/ventes');
+  const stockPanel = page.locator('#stock-panel');
+  await page.goto('/stock');
+  await expect(stockPanel.getByRole('row', { name: /Article actif vendable/ })
+    .getByRole('cell', { name: '8 unités', exact: true })).toHaveCount(2);
+  await page.getByRole('link', { name: 'Vente', exact: true }).click();
 
   await salePanel.locator('#sale-search').fill('Article actif vendable');
   await salePanel.locator('#sale-search-form').getByRole('button', { name: 'Rechercher un Article', exact: true }).click();
@@ -52,6 +56,13 @@ test('searches, rejects an excessive quantity, commits a sale and reloads its re
   expect(receipt.position.sellableQuantity).toBe(5);
   await expect(salePanel.locator('#sale-result')).toContainText('360');
 
+  const refreshedStock = waitForRequest(page, 'GET', '/api/stock');
+  await page.getByRole('link', { name: 'Stock', exact: true }).click();
+  expect((await refreshedStock).status()).toBe(200);
+  await expect(stockPanel.getByRole('row', { name: /Article actif vendable/ })
+    .getByRole('cell', { name: '5 unités', exact: true })).toHaveCount(2);
+
+  await page.getByRole('link', { name: 'Vente', exact: true }).click();
   await page.reload();
   await expect(page.locator('#sale-result')).toContainText(receipt.operation.id);
   await expect(page.locator('#sale-result')).toContainText('360');
@@ -133,7 +144,7 @@ test.describe('Sale context, receipt and financial snapshot', () => {
     await salePanel.locator('#sale-submit').click();
     const response = await committed;
     expect(response.status()).toBe(201);
-    const sale = await response.json() as SaleResponse;
+    const sale = await response.json() as SaleResult;
     expect(sale.financial).toMatchObject({
       context: 'onsite',
       unitPriceHtCents: 101,

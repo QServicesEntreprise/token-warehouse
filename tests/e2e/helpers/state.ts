@@ -9,7 +9,7 @@ import type { Article } from '../../../src/web/features/catalogue/domain/article
 import type { Packaging } from '../../../src/web/features/catalogue/domain/packaging';
 import type { ConsumptionMode } from '../../../src/web/shared-kernel/consumption-mode';
 import type { InventoryResponse } from '../../../src/web/app/inventory-api.service';
-import type { SaleResponse } from '../../../src/web/app/sales-api.service';
+import type { SaleResult } from '../../../src/web/app/features/sales/domain/sale-result';
 import type { BulkSupplyResponse, SupplyResponse } from '../../../src/web/app/stock-api.service';
 import { apiUrl as apiBaseUrl } from '../fixtures';
 import { ean13ForAttempt } from './ean13';
@@ -89,7 +89,7 @@ export const sell = async (
   ean13: string,
   quantity: number,
   context?: ConsumptionMode,
-): Promise<SaleResponse> => expectOkJson(await page.request.post(`${apiBaseUrl}/api/sales`, {
+): Promise<SaleResult> => expectOkJson(await page.request.post(`${apiBaseUrl}/api/sales`, {
   data: { ean13, quantity, ...(context === undefined ? {} : { context }) },
 }));
 

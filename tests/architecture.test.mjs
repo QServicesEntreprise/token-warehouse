@@ -185,7 +185,6 @@ test('Catalogue is an autonomous lazy context and no longer lives in legacy', as
   const routes = await readFile(join(appDirectory, 'app.routes.ts'), 'utf8');
   const catalogueRoutes = await readFile(join(catalogueDirectory, 'catalogue.routes.ts'), 'utf8');
   const legacy = await readFile(join(appDirectory, 'legacy-backoffice-page.ts'), 'utf8');
-  const sales = await readFile(join(appDirectory, 'sales-api.service.ts'), 'utf8');
 
   for (const page of ['catalogue-list-page', 'article-create-page', 'article-details-page']) {
     assert.match(catalogueRoutes, new RegExp(`presentation/${page}`));
@@ -194,7 +193,6 @@ test('Catalogue is an autonomous lazy context and no longer lives in legacy', as
   assert.match(catalogueRoutes, /path: 'nouveau'/);
   assert.match(catalogueRoutes, /path: ':ean13'/);
   assert.doesNotMatch(legacy, /ArticleApiService|catalog-title|create-title|lookup-title|catalog[A-Z]/);
-  assert.doesNotMatch(sales, /article-api\.service|features\/catalogue/);
   await assert.rejects(readFile(join(appDirectory, 'article-api.service.ts'), 'utf8'));
   await assert.rejects(readFile(join(appDirectory, 'sale-price-quote.ts'), 'utf8'));
   await readFile(join(root, 'src/web/features/sales/domain/sale-price-quote.ts'), 'utf8');
@@ -213,4 +211,42 @@ test('Catalogue is an autonomous lazy context and no longer lives in legacy', as
   for (const source of await layerSources('presentation')) {
     assert.doesNotMatch(source, /HttpClient|\b\w+(Dto|Payload|Response)\b/);
   }
+});
+
+test('the Sales context is autonomous and route-scoped', async () => {
+  const appDirectory = join(root, 'src/web/app');
+  const salesDirectory = join(appDirectory, 'features/sales');
+  const routes = await readFile(join(appDirectory, 'app.routes.ts'), 'utf8');
+  const legacy = await readFile(join(appDirectory, 'legacy-backoffice-page.ts'), 'utf8');
+  const salesFiles = (await readdir(salesDirectory, { recursive: true }))
+    .filter((file) => file.endsWith('.ts'))
+    .sort();
+  const salesSources = await Promise.all(
+    salesFiles.map((file) => readFile(join(salesDirectory, file), 'utf8')),
+  );
+
+  assert.match(routes, /path: 'ventes'[\s\S]*providers:[\s\S]*SaleStore[\s\S]*SALES_GATEWAY[\s\S]*HttpSalesGateway[\s\S]*LAST_SALE_STORAGE[\s\S]*SessionLastSaleStorage[\s\S]*loadComponent:[\s\S]*features\/sales\/presentation\/sales-page/);
+  assert.doesNotMatch(legacy, /sale-panel|SalesApiService|SaleArticleResponse|SaleResponse|last-sale-id/);
+  assert.ok(!salesFiles.includes('sales-api.service.ts'));
+  for (const source of salesSources) {
+    assert.doesNotMatch(source, /(?:from\s+['"][^'"]*|import\s*\(['"][^'"]*)(?:catalogue|stock|dashboard)/i);
+  }
+
+  for (const [file, source] of salesFiles.map((file, index) => [file, salesSources[index]])) {
+    if (file.endsWith('.spec.ts')) continue;
+    if (file.startsWith('domain/')) {
+      assert.doesNotMatch(source, /@angular|rxjs|HttpClient|Router|document|sessionStorage/);
+    }
+    if (file.startsWith('application/')) {
+      assert.doesNotMatch(source, /HttpClient|Router|document|sessionStorage|\bDto\b/);
+    }
+    if (file.startsWith('presentation/')) {
+      assert.doesNotMatch(source, /HttpClient|\bDto\b/);
+    }
+  }
+
+  const directSessionStorageUsers = salesFiles.filter((file, index) => (
+    !file.endsWith('.spec.ts') && salesSources[index].includes('sessionStorage')
+  ));
+  assert.deepEqual(directSessionStorageUsers, ['infrastructure/session-last-sale-storage.ts']);
 });

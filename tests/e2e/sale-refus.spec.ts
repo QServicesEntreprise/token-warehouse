@@ -1,6 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import type { HistoryEntryResponse } from '../../src/web/app/history-api.service';
-import type { SaleResponse } from '../../src/web/app/sales-api.service';
+import type { SaleResult } from '../../src/web/app/features/sales/domain/sale-result';
 import type { StockPositionResponse } from '../../src/web/app/stock-api.service';
 import { test } from './fixtures';
 import { ean13ForAttempt } from './helpers/ean13';
@@ -189,7 +189,7 @@ test.describe('Sale refusal invariants', () => {
     await salePanel.locator('#sale-submit').click();
     const response = await committed;
     expect(response.status()).toBe(201);
-    await expect(response.json() as Promise<SaleResponse>).resolves.toMatchObject({
+    await expect(response.json() as Promise<SaleResult>).resolves.toMatchObject({
       operation: { ean13, quantity: 3 },
       financial: {
         context: null,
