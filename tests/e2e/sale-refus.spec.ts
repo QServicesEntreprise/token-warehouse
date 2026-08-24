@@ -1,7 +1,7 @@
 import { expect, type Page } from '@playwright/test';
 import type { HistoryEntryResponse } from '../../src/web/app/history-api.service';
 import type { SaleResult } from '../../src/web/app/features/sales/domain/sale-result';
-import type { StockPositionResponse } from '../../src/web/app/stock-api.service';
+import type { StockPositionDto } from '../../src/web/features/stock/infrastructure/dto/stock-position.dto';
 import { test } from './fixtures';
 import { ean13ForAttempt } from './helpers/ean13';
 import { expectProblemDetails, waitForRequest } from './helpers/http';
@@ -27,7 +27,7 @@ const readStockAndHistory = async (page: Page, ean13: string) => {
   await expect(stockResponse).toBeOK();
   await expect(historyResponse).toBeOK();
   return {
-    stock: await stockResponse.json() as StockPositionResponse,
+    stock: await stockResponse.json() as StockPositionDto,
     history: await historyResponse.json() as HistoryEntryResponse[],
   };
 };

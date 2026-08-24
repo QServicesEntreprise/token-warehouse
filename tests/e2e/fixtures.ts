@@ -118,6 +118,7 @@ export const test = base.extend<Fixtures>({
         'run',
         '--project',
         path.join(repositoryRoot, 'src/backend/TokenWarehouse.Api/TokenWarehouse.Api.csproj'),
+        '--disable-build-servers',
         '--no-launch-profile',
         '--urls',
         apiUrl,

@@ -1,12 +1,13 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
-import { StockAvailability, StockReason } from './stock-api.service';
 
 export type DashboardArticleType = 'food' | 'nonFood';
 export type DashboardLifecycleStatus = 'ACTIVE' | 'ARCHIVED';
 export type DashboardConsumptionMode = 'takeaway' | 'onsite';
 export type DashboardPackaging = 'new' | 'refurbished' | 'unsellable';
+export type DashboardStockAvailability = 'AVAILABLE' | 'OUT_OF_STOCK' | 'NOT_SELLABLE';
+export type DashboardStockReason = 'ARCHIVED' | 'DLC_EXPIRED' | 'UNSELLABLE_PACKAGING';
 
 export interface DashboardQuery {
   from: string;
@@ -34,8 +35,8 @@ export interface DashboardStockLineResponse {
   physicalStock: number;
   sellableStock: number;
   nonSellableStock: number;
-  availability: StockAvailability;
-  reason: StockReason | null;
+  availability: DashboardStockAvailability;
+  reason: DashboardStockReason | null;
 }
 
 export interface DashboardFlowDayResponse {

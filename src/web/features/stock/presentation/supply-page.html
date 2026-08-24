@@ -1,0 +1,69 @@
+<main>
+  <section id="supply-panel" class="panel" aria-labelledby="supply-title">
+    <div>
+      <p class="eyebrow">Mouvement immédiat</p>
+      <h1 id="supply-title" tabindex="-1">Enregistrer un Approvisionnement</h1>
+    </div>
+    <p>La position visible est remplacée par le résultat engagé par le serveur après la réception.</p>
+
+    <form id="supply-form" class="supply-form" novalidate [formRoot]="supplyForm" (submit)="onSubmit($event)">
+      @for (line of supplyForm.lines; track line; let lineIndex = $index) {
+        <fieldset class="supply-line" [attr.aria-labelledby]="lineTitleId(lineIndex)">
+          <legend [id]="lineTitleId(lineIndex)">Ligne {{ lineIndex + 1 }}</legend>
+          <label [attr.for]="inputId('ean13', lineIndex)">
+            Référence EAN-13
+            <input
+              [id]="inputId('ean13', lineIndex)"
+              autocomplete="off"
+              inputmode="numeric"
+              [formField]="line.ean13"
+              [attr.aria-invalid]="fieldError(lineIndex, 'ean13') ? 'true' : null"
+              [attr.aria-describedby]="errorId('ean13', lineIndex)" />
+            <span [id]="errorId('ean13', lineIndex)" class="field-error">{{ fieldError(lineIndex, 'ean13') }}</span>
+          </label>
+
+          <label [attr.for]="inputId('quantity', lineIndex)">
+            Quantité entière positive
+            <input
+              [id]="inputId('quantity', lineIndex)"
+              type="number"
+              step="1"
+              inputmode="numeric"
+              [formField]="line.quantity"
+              [attr.aria-invalid]="fieldError(lineIndex, 'quantity') ? 'true' : null"
+              [attr.aria-describedby]="errorId('quantity', lineIndex)" />
+            <span [id]="errorId('quantity', lineIndex)" class="field-error">{{ fieldError(lineIndex, 'quantity') }}</span>
+          </label>
+
+          @if (supplyForm.lines.length > 1) {
+            <button type="button" class="secondary-button" [attr.aria-label]="'Retirer la ligne ' + (lineIndex + 1)" (click)="removeLine(lineIndex)">Retirer</button>
+          }
+        </fieldset>
+      }
+
+      <button type="button" class="secondary-button" (click)="addLine()">Ajouter une ligne</button>
+      <button type="submit" [disabled]="store.submitting()">
+        {{ store.submitting() ? 'Réception…' : 'Enregistrer l’Approvisionnement' }}
+      </button>
+    </form>
+
+    <p id="supply-status" role="status" aria-live="assertive" tabindex="-1">{{ statusMessage() }}</p>
+
+    @if (store.result(); as result) {
+      <article id="supply-result" aria-labelledby="supply-result-title">
+        <h2 id="supply-result-title">Approvisionnement engagé</h2>
+        <p>Opération <code>{{ result.operation.id }}</code> — {{ result.operation.occurredAt }}</p>
+        <ul>
+          @for (line of result.operation.lines; track line.lineNumber) {
+            <li>
+              Ligne {{ line.lineNumber }} — {{ line.ean13 }} — {{ line.quantity }} unités
+              @if (positionFor(line.ean13); as position) {
+                — Stock physique {{ position.physicalQuantity }} unités — Stock vendable {{ position.sellableQuantity }} unités
+              }
+            </li>
+          }
+        </ul>
+      </article>
+    }
+  </section>
+</main>

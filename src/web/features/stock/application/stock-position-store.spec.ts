@@ -27,6 +27,14 @@ class FakeStockGateway implements StockGateway {
   getByEan13(ean13: string): Observable<StockPosition> {
     return this.detailResponses.get(ean13) ?? throwError(() => new Error('Position absente'));
   }
+
+  recordSupply(): Observable<never> {
+    return throwError(() => new Error('Approvisionnement inattendu'));
+  }
+
+  recordBulkSupply(): Observable<never> {
+    return throwError(() => new Error('Approvisionnement inattendu'));
+  }
 }
 
 describe('StockPositionStore', () => {
