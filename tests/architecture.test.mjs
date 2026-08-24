@@ -338,3 +338,51 @@ test('the Sales context is autonomous and route-scoped', async () => {
   ));
   assert.deepEqual(directSessionStorageUsers, ['infrastructure/session-last-sale-storage.ts']);
 });
+
+test('Dashboard stays lazy, route-scoped and isolated from writing contexts', async () => {
+  const dashboardDirectory = join(root, 'src/web/features/dashboard');
+  const walk = async (directory) => {
+    const entries = await readdir(directory, { withFileTypes: true });
+    const files = [];
+    for (const entry of entries) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) files.push(...await walk(path));
+      else if (entry.name.endsWith('.ts') && !entry.name.endsWith('.spec.ts')) files.push(path);
+    }
+    return files;
+  };
+  const files = await walk(dashboardDirectory);
+  const sources = await Promise.all(files.map(async (path) => ({ path, source: await readFile(path, 'utf8') })));
+
+  for (const layer of ['domain', 'application', 'infrastructure', 'presentation']) {
+    assert.ok(files.some((path) => path.includes(`/dashboard/${layer}/`)));
+  }
+  for (const { path, source } of sources) {
+    const imports = [...source.matchAll(/from ['"]([^'"]+)['"]/g)].map((match) => match[1]);
+    assert.ok(imports.every((dependency) => !/(?:^|\/)(?:catalogue|stock|sales)(?:\/|$)/.test(dependency)), path);
+    assert.ok([...source.matchAll(/export (?:abstract class|class|interface|type|const|function|enum) /g)].length <= 1, path);
+    if (path.includes('/domain/')) {
+      assert.doesNotMatch(source, /@angular|rxjs|HttpClient|Router|document|sessionStorage/);
+    }
+    if (path.includes('/application/')) {
+      assert.doesNotMatch(source, /HttpClient|Router|document|sessionStorage|\.dto/);
+    }
+    if (!path.includes('/infrastructure/')) {
+      assert.doesNotMatch(source, /\b\w+(?:Dto|Response)\b/);
+    }
+  }
+
+  const appFiles = await readdir(join(root, 'src/web/app'));
+  assert.ok(!appFiles.includes('dashboard.component.ts'));
+  assert.ok(!appFiles.includes('dashboard-api.service.ts'));
+
+  const routes = await readFile(join(root, 'src/web/app/app.routes.ts'), 'utf8');
+  const dashboardRoutes = await readFile(join(root, 'src/web/app/dashboard.routes.ts'), 'utf8');
+  const store = await readFile(join(dashboardDirectory, 'application/dashboard-store.ts'), 'utf8');
+  assert.match(routes, /path: 'dashboard'[\s\S]*loadChildren: \(\) => import\('\.\/dashboard\.routes'\)/);
+  assert.match(dashboardRoutes, /providers:\s*\[[\s\S]*DashboardStore[\s\S]*DashboardGateway[\s\S]*DashboardHttpGateway/);
+  assert.match(dashboardRoutes, /loadComponent: \(\) => import\('\.\.\/features\/dashboard\/presentation\/dashboard-page'\)/);
+  assert.doesNotMatch(store, /providedIn/);
+  assert.match(store, /switchMap/);
+  assert.match(store, /takeUntilDestroyed/);
+});
