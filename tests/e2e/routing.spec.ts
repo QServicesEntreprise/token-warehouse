@@ -59,6 +59,5 @@ test('keeps an unsubmitted Catalogue filter while visiting another section', asy
 
   await page.getByRole('link', { name: 'Dashboard', exact: true }).click();
   await page.getByRole('link', { name: 'Catalogue', exact: true }).click();
-
   await expect(page.locator('#catalog-search')).toHaveValue('brouillon conservé');
 });

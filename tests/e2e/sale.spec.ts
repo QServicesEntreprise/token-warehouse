@@ -1,6 +1,6 @@
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
-import type { SaleResponse } from '../../src/web/app/sales-api.service';
+import type { SaleResult } from '../../src/web/app/features/sales/domain/sale-result';
 import { ean13ForAttempt, leadingZeroEan13 } from './helpers/ean13';
 import { waitForRequest } from './helpers/http';
 import {
@@ -133,7 +133,7 @@ test.describe('Sale context, receipt and financial snapshot', () => {
     await salePanel.locator('#sale-submit').click();
     const response = await committed;
     expect(response.status()).toBe(201);
-    const sale = await response.json() as SaleResponse;
+    const sale = await response.json() as SaleResult;
     expect(sale.financial).toMatchObject({
       context: 'onsite',
       unitPriceHtCents: 101,

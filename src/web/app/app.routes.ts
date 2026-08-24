@@ -1,4 +1,9 @@
 import { ActivatedRouteSnapshot, DetachedRouteHandle, RouteReuseStrategy, Routes } from '@angular/router';
+import { LAST_SALE_STORAGE } from './features/sales/application/last-sale-storage.token';
+import { SaleStore } from './features/sales/application/sale-store';
+import { SALES_GATEWAY } from './features/sales/application/sales-gateway.token';
+import { HttpSalesGateway } from './features/sales/infrastructure/http-sales-gateway';
+import { SessionLastSaleStorage } from './features/sales/infrastructure/session-last-sale-storage';
 
 const loadLegacy = () => import('./legacy-backoffice-page').then((module) => module.LegacyBackofficePage);
 
@@ -79,7 +84,12 @@ export const routes: Routes = [
   {
     path: 'ventes',
     data: { section: 'ventes' },
-    loadComponent: loadLegacy,
+    providers: [
+      SaleStore,
+      { provide: SALES_GATEWAY, useClass: HttpSalesGateway },
+      { provide: LAST_SALE_STORAGE, useClass: SessionLastSaleStorage },
+    ],
+    loadComponent: () => import('./features/sales/presentation/sales-page').then((module) => module.SalesPage),
   },
   { path: '**', redirectTo: 'dashboard' },
 ];
