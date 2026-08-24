@@ -95,7 +95,9 @@ export class ArticleDetailsPage implements AfterViewInit {
   }
 
   fieldError(field: string): string {
-    return this.store.fieldErrors()[field]?.[0] ?? '';
+    return (this.attributeField(field) ?? this.priceField(field))?.().errors()[0]?.message
+      ?? this.store.fieldErrors()[field]?.[0]
+      ?? '';
   }
 
   async onAttributeSubmit(event: Event): Promise<void> {
@@ -158,7 +160,8 @@ export class ArticleDetailsPage implements AfterViewInit {
   }
 
   private focusAttributeError(): void {
-    const field = Object.keys(this.store.fieldErrors())[0];
+    const field = ['name', 'dlc', 'consumptionModes', 'packaging']
+      .find((candidate) => this.attributeField(candidate)?.().errors().length);
     const target = field === 'consumptionModes' ? document.querySelector<HTMLElement>('#detailConsumptionModes input')
       : document.getElementById(field === 'name' ? 'detailName' : field === 'dlc' ? 'detailDlc' : field === 'packaging' ? 'detailPackaging' : 'attribute-update-error');
     target?.focus();

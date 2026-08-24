@@ -18,7 +18,7 @@ export interface SaleArticleResponse {
   reason: StockReason | null;
   priceQuotes?: SalePriceQuote[];
   dlc?: string;
-  consumptionModes?: ('takeaway' | 'onsite')[];
+  consumptionModes?: ConsumptionMode[];
   packaging?: 'new' | 'refurbished' | 'unsellable';
 }
 

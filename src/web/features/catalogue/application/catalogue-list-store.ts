@@ -78,6 +78,7 @@ export class CatalogueListStore {
         ? articles.map((article) => article.ean13 === updated.ean13 ? updated : article)
         : articles.filter((article) => article.ean13 !== updated.ean13));
       this.stateSignal.set(this.articlesSignal().length > 0 ? 'ready' : 'empty');
+      this.refresh();
       return true;
     } catch (error) {
       this.lifecycleMessageSignal.set(toCatalogueProblem(error, 'La transition du cycle de vie a échoué.').title);

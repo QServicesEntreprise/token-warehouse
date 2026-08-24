@@ -56,6 +56,7 @@ export class ArticleDetailsStore {
 
   load(ean13: string): void {
     this.mutationRequestId += 1;
+    this.submittingSignal.set(false);
     this.ean13Requests.next(ean13);
   }
 
@@ -86,10 +87,10 @@ export class ArticleDetailsStore {
     this.messageSignal.set('');
     try {
       const updated = await firstValueFrom(result);
+      this.catalogue.refresh();
       if (requestId !== this.mutationRequestId) return null;
       this.articleSignal.set(updated);
       this.messageSignal.set(message);
-      this.catalogue.refresh();
       return updated;
     } catch (error) {
       if (requestId !== this.mutationRequestId) return null;

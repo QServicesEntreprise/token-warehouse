@@ -33,7 +33,7 @@
               <label>DLC<input id="detailDlc" type="date" [formField]="attributeForm.dlc" [attr.aria-invalid]="fieldError('dlc') ? 'true' : null" aria-describedby="detail-dlc-error" />
                 @if (fieldError('dlc')) { <span id="detail-dlc-error" class="field-error">{{ fieldError('dlc') }}</span> }
               </label>
-              <fieldset id="detailConsumptionModes" aria-describedby="detail-consumptionModes-error"><legend>Modes de consommation</legend>
+              <fieldset id="detailConsumptionModes" [attr.aria-invalid]="fieldError('consumptionModes') ? 'true' : null" aria-describedby="detail-consumptionModes-error"><legend>Modes de consommation</legend>
                 @for (mode of modes; track mode.value) { <label class="choice"><input type="checkbox" [checked]="attributeModel().consumptionModes.includes(mode.value)" (change)="toggleMode(mode.value, $event)" />{{ mode.label }}</label> }
                 @if (fieldError('consumptionModes')) { <span id="detail-consumptionModes-error" class="field-error">{{ fieldError('consumptionModes') }}</span> }
               </fieldset>

@@ -82,6 +82,28 @@ describe('ArticleDetailsStore', () => {
 
     expect(searches).toBe(1);
   });
+
+  it('refreshes the Catalogue after a committed mutation superseded by another lookup', async () => {
+    const pendingUpdate = new Subject<Article>();
+    let searches = 0;
+    fake.getHandler = (ean13) => of(article(ean13, ean13 === '1111111111116' ? 'Premier' : 'Second'));
+    fake.updatePriceHandler = () => pendingUpdate;
+    fake.searchHandler = () => {
+      searches += 1;
+      return of([]);
+    };
+    store.load('1111111111116');
+
+    const update = store.updatePrice(200);
+    store.load('2222222222222');
+    pendingUpdate.next({ ...article('1111111111116', 'Premier'), priceHtCents: 200 });
+    pendingUpdate.complete();
+
+    await expect(update).resolves.toBeNull();
+    expect(store.article()?.ean13).toBe('2222222222222');
+    expect(store.submitting()).toBe(false);
+    expect(searches).toBe(1);
+  });
 });
 
 const article = (ean13: string, name: string): Article => ({

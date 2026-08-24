@@ -47,10 +47,17 @@ describe('CatalogueListStore', () => {
     expect(store.stale()).toBe(true);
   });
 
-  it('removes an archived Article before a delayed refresh can steal focus', async () => {
-    const delayedRefresh = new Subject<readonly ArticleSummary[]>();
-    fake.searchHandler = () => of([article('1111111111116', 'À archiver')]);
+  it('ignores a pre-mutation search after the lifecycle change commits', async () => {
+    const preMutationSearch = new Subject<readonly ArticleSummary[]>();
+    const postMutationSearch = new Subject<readonly ArticleSummary[]>();
+    let searches = 0;
+    fake.searchHandler = () => {
+      searches += 1;
+      if (searches === 1) return of([article('1111111111116', 'À archiver')]);
+      return searches === 2 ? preMutationSearch : postMutationSearch;
+    };
     store.search({ status: 'active' });
+    store.refresh();
     fake.archiveHandler = () => of({
       ean13: '1111111111116',
       type: 'food',
@@ -61,11 +68,14 @@ describe('CatalogueListStore', () => {
       status: 'archived',
       priceQuotes: [],
     });
-    fake.searchHandler = () => delayedRefresh;
 
     await store.toggleLifecycle(store.articles()[0]);
+    postMutationSearch.next([]);
+    preMutationSearch.next([article('1111111111116', 'Périmé')]);
 
+    expect(searches).toBe(3);
     expect(store.articles()).toEqual([]);
+    expect(store.state()).toBe('empty');
     expect(store.lifecycleMessage()).toContain('archivé');
   });
 
