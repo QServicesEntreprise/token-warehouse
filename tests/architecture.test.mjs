@@ -178,3 +178,37 @@ test('Angular routing shell stays free of legacy business state', async () => {
     /export class LegacyBackofficePage/,
   );
 });
+
+test('Catalogue is an autonomous lazy context and no longer lives in legacy', async () => {
+  const appDirectory = join(root, 'src/web/app');
+  const catalogueDirectory = join(root, 'src/web/features/catalogue');
+  const routes = await readFile(join(appDirectory, 'app.routes.ts'), 'utf8');
+  const catalogueRoutes = await readFile(join(catalogueDirectory, 'catalogue.routes.ts'), 'utf8');
+  const legacy = await readFile(join(appDirectory, 'legacy-backoffice-page.ts'), 'utf8');
+  const sales = await readFile(join(appDirectory, 'sales-api.service.ts'), 'utf8');
+
+  for (const page of ['catalogue-list-page', 'article-create-page', 'article-details-page']) {
+    assert.match(catalogueRoutes, new RegExp(`presentation/${page}`));
+  }
+  assert.match(routes, /features\/catalogue\/catalogue\.routes/);
+  assert.match(catalogueRoutes, /path: 'nouveau'/);
+  assert.match(catalogueRoutes, /path: ':ean13'/);
+  assert.doesNotMatch(legacy, /ArticleApiService|catalog-title|create-title|lookup-title|catalog[A-Z]/);
+  assert.doesNotMatch(sales, /article-api\.service|features\/catalogue/);
+  await assert.rejects(readFile(join(appDirectory, 'article-api.service.ts'), 'utf8'));
+
+  const layerSources = async (layer) => Promise.all(
+    (await readdir(join(catalogueDirectory, layer), { recursive: true }))
+      .filter((entry) => entry.endsWith('.ts') && !entry.endsWith('.spec.ts'))
+      .map((entry) => readFile(join(catalogueDirectory, layer, entry), 'utf8')),
+  );
+  for (const source of await layerSources('domain')) {
+    assert.doesNotMatch(source, /@angular|rxjs|HttpClient|Router|document\.|sessionStorage/);
+  }
+  for (const source of await layerSources('application')) {
+    assert.doesNotMatch(source, /HttpClient|Router|sessionStorage|\b\w+(Dto|Payload|Response)\b/);
+  }
+  for (const source of await layerSources('presentation')) {
+    assert.doesNotMatch(source, /HttpClient|\b\w+(Dto|Payload|Response)\b/);
+  }
+});

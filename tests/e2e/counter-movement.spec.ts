@@ -48,7 +48,7 @@ const correctSource = async (
 };
 
 test('corrects a committed supply through the real Stock journey', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/stock/corrections');
   await expect(page.locator('#stock-table').getByRole('row', { name: /Alimentaire aux deux modes/ })).toContainText('5 unités');
 
   const supplyResponsePromise = waitForRequest(page, 'POST', '/api/supplies');
@@ -107,7 +107,7 @@ test('corrects a committed supply through the real Stock journey', async ({ page
 
 test('corrects a Sale from its historical snapshot after the Article price and lifecycle change', async ({ page }) => {
   const salePanel = page.locator('#sale-panel');
-  await page.goto('/');
+  await page.goto('/ventes');
   await salePanel.locator('#sale-search').fill(canonicalEan);
   await salePanel.locator('#sale-search-form').getByRole('button', { name: 'Rechercher un Article', exact: true }).click();
   const saleRow = salePanel.getByRole('row', { name: new RegExp(leadingZeroEan13) });
@@ -167,7 +167,7 @@ test('corrects a Sale from its historical snapshot after the Article price and l
 });
 
 test('corrects an inventory after a later movement and keeps the source unchanged', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/stock/corrections');
   await page.locator('#inventory-ean13').fill(canonicalEan);
   await page.locator('#inventory-countedQuantity').fill('11');
   const inventoryResponsePromise = waitForRequest(page, 'POST', '/api/inventories');
@@ -206,7 +206,7 @@ test('corrects an inventory after a later movement and keeps the source unchange
 });
 
 test('corrects every line of a bulk supply as one visible counter-movement', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/stock/corrections');
   await page.locator('#supplyEan13').fill(canonicalEan);
   await page.locator('#supplyQuantity').fill('2');
   await page.locator('#supply-form button[type="button"]').click();
@@ -233,7 +233,7 @@ test('corrects every line of a bulk supply as one visible counter-movement', asy
 });
 
 test('rejects a bulk counter-movement atomically when one line would go negative', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/stock/corrections');
   await page.locator('#supplyEan13').fill(canonicalEan);
   await page.locator('#supplyQuantity').fill('2');
   await page.locator('#supply-form button[type="button"]').click();
@@ -267,7 +267,7 @@ test('rejects a bulk counter-movement atomically when one line would go negative
 });
 
 test('corrects an archived Article while keeping its sellable stock at zero', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/stock/corrections');
   await page.locator('#inventory-ean13').fill(archivedEan);
   await page.locator('#inventory-countedQuantity').fill('6');
   const inventoryResponsePromise = waitForRequest(page, 'POST', '/api/inventories');
@@ -316,7 +316,7 @@ test('requires a non-blank justification without creating a fact', async ({ page
   expect(historyBeforeResponse.status()).toBe(200);
   const historyBefore = await historyBeforeResponse.json();
 
-  await page.goto('/');
+  await page.goto('/stock/corrections');
   const sourceSelect = await openCounterMovement(page);
   const justification = page.locator('#counter-movement-justification');
   const justificationError = page.locator('#counter-movement-justification-error');
@@ -338,7 +338,7 @@ test('requires a non-blank justification without creating a fact', async ({ page
 
 test('renders a source loading error without partial data', async ({ page }) => {
   const source = await supply(page, canonicalEan, 1);
-  await page.goto('/');
+  await page.goto('/stock/corrections');
   const sourceSelect = await openCounterMovement(page);
   await expect(sourceSelect.locator(`option[value="${source.operation.id}"]`)).toHaveCount(1);
 

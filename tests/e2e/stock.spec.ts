@@ -12,9 +12,7 @@ test('recomputes sellable stock after food DLC and non-food packaging updates', 
   const yesterday = '2030-01-14';
   const detailStock = (quantity: number) => page.locator('.article-detail').getByText(`${quantity} unités`, { exact: true });
 
-  await page.goto('/');
-  await page.locator('#lookupEan13').fill(foodEan);
-  await page.getByRole('button', { name: 'Consulter', exact: true }).click();
+  await page.goto(`/catalogue/${foodEan}`);
   await expect(page.getByRole('heading', { name: 'Alimentaire aux deux modes' })).toBeVisible();
   await page.locator('#detailDlc').fill(today);
   await page.getByRole('button', { name: 'Enregistrer les attributs' }).click();
@@ -28,8 +26,7 @@ test('recomputes sellable stock after food DLC and non-food packaging updates', 
   await expect(detailStock(5)).toHaveCount(1);
   await expect(detailStock(0)).toHaveCount(1);
 
-  await page.locator('#lookupEan13').fill(nonFoodEan);
-  await page.getByRole('button', { name: 'Consulter', exact: true }).click();
+  await page.goto(`/catalogue/${nonFoodEan}`);
   await expect(page.getByRole('heading', { name: 'Article actif vendable' })).toBeVisible();
   await page.locator('#detailPackaging').selectOption('new');
   await page.getByRole('button', { name: 'Enregistrer les attributs' }).click();
@@ -44,8 +41,6 @@ test('recomputes sellable stock after food DLC and non-food packaging updates', 
   await expect(detailStock(0)).toHaveCount(1);
 
   await page.reload();
-  await page.locator('#lookupEan13').fill(nonFoodEan);
-  await page.getByRole('button', { name: 'Consulter', exact: true }).click();
   await expect(detailStock(8)).toHaveCount(1);
   await expect(detailStock(0)).toHaveCount(1);
 });
@@ -53,7 +48,7 @@ test('recomputes sellable stock after food DLC and non-food packaging updates', 
 test('consults Stock positions, distinguishes blocked quantities and opens detail by keyboard', async ({ page }) => {
   const stockPanel = page.locator('#stock-panel');
 
-  await page.goto('/');
+  await page.goto('/stock');
   await expect(stockPanel.getByText(/Articles trouvés/)).toBeVisible();
   await expect(stockPanel.getByRole('row', { name: /Alimentaire aux deux modes/ })).toContainText(leadingZeroEan13);
   await expect(stockPanel.getByRole('row', { name: /Alimentaire aux deux modes/ })).toContainText('5 unités');
@@ -97,7 +92,7 @@ test('announces Stock loading, empty and error states', async ({ page }) => {
   };
 
   await page.route(stockRoute, delayedStockRoute);
-  const navigation = page.goto('/');
+  const navigation = page.goto('/stock');
   await expect(stockPanel.locator('#stock-state')).toContainText('Chargement du Stock');
   releaseLoading();
   await navigation;
@@ -142,7 +137,7 @@ test.describe('Stock states prepared through public contracts', () => {
     await supply(page, article.ean13, 6);
     const stockResponse = waitForRequest(page, 'GET', '/api/stock');
 
-    await page.goto('/');
+    await page.goto('/stock');
 
     const position = ((await (await stockResponse).json()) as StockPositionResponse[])
       .find((candidate) => candidate.ean13 === article.ean13);
@@ -161,7 +156,7 @@ test.describe('Stock states prepared through public contracts', () => {
       priceHtCents: 100,
     });
 
-    await page.goto('/');
+    await page.goto('/stock');
 
     const row = page.locator('#stock-panel').getByRole('row', { name: /Article sans position persistée/ });
     await expect(row.getByRole('cell', { name: '0 unités', exact: true })).toHaveCount(2);
@@ -193,7 +188,7 @@ test.describe('Stock states prepared through public contracts', () => {
     await supply(page, archivedArticle.ean13, 4);
     await archive(page, archivedArticle.ean13);
 
-    await page.goto('/');
+    await page.goto('/stock');
 
     const stockPanel = page.locator('#stock-panel');
     const packagingRow = stockPanel.getByRole('row', { name: /Article au Packaging invendable/ });
@@ -223,7 +218,7 @@ test.describe('Stock states prepared through public contracts', () => {
     await supply(page, article.ean13, 9);
     const listResponse = waitForRequest(page, 'GET', '/api/stock');
 
-    await page.goto('/');
+    await page.goto('/stock');
 
     const listed = ((await (await listResponse).json()) as StockPositionResponse[])
       .find((position) => position.ean13 === article.ean13)!;
@@ -271,7 +266,7 @@ for (const boundary of [
       });
       await supply(page, article.ean13, 5);
 
-      await page.goto('/');
+      await page.goto('/stock');
 
       const row = page.locator('#stock-panel').getByRole('row', { name: /Article frontière DLC/ });
       await expect(row).toContainText('5 unités');

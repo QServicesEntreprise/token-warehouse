@@ -28,7 +28,6 @@ test('opens every section directly and restores navigation history', async ({ pa
   }
 
   await page.goto('/dashboard', { waitUntil: 'networkidle' });
-  await page.locator('#catalog-search').fill('brouillon conservé');
   for (const route of routes.slice(1)) {
     const link = page.getByRole('link', { name: route.link, exact: true });
     await link.focus();
@@ -52,5 +51,4 @@ test('opens every section directly and restores navigation history', async ({ pa
     await expect(page.locator(route.target)).toBeInViewport();
     await expect(page.locator(route.target)).toBeFocused();
   }
-  await expect(page.locator('#catalog-search')).toHaveValue('brouillon conservé');
 });

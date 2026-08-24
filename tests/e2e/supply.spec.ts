@@ -25,7 +25,7 @@ const readStock = async (page: Page, ean13: string): Promise<StockPositionRespon
 
 test('records a unit Approvisionnement and returns the committed Stock physique and Stock vendable', async ({ page }) => {
   const supplyPanel = page.locator('#supply-panel');
-  await page.goto('/');
+  await page.goto('/stock/approvisionnements');
   await expect(supplyPanel.getByRole('heading', { name: 'Enregistrer un Approvisionnement' })).toBeVisible();
   await expect(stockRow(page, activeEan13)).toContainText('8 unités');
 
@@ -59,7 +59,7 @@ test('records a unit Approvisionnement and returns the committed Stock physique 
 
 test('keeps a committed unit Approvisionnement after a full reload', async ({ page }) => {
   const supplyPanel = page.locator('#supply-panel');
-  await page.goto('/');
+  await page.goto('/stock/approvisionnements');
   await supplyPanel.locator('#supplyEan13').fill(activeEan13);
   await supplyPanel.locator('#supplyQuantity').fill('5');
   const responsePromise = waitForRequest(page, 'POST', '/api/supplies');
@@ -79,7 +79,7 @@ test('keeps a committed unit Approvisionnement after a full reload', async ({ pa
 
 test('persists Stock physique that remains non vendable by policy', async ({ page }) => {
   const supplyPanel = page.locator('#supply-panel');
-  await page.goto('/');
+  await page.goto('/stock/approvisionnements');
 
   await supplyPanel.locator('#supplyEan13').fill(expiredEan13);
   await supplyPanel.locator('#supplyQuantity').fill('2');
@@ -148,7 +148,7 @@ test('persists Stock physique that remains non vendable by policy', async ({ pag
 test('shows a pending Approvisionnement and keeps committed Stock after a server failure', async ({ page }) => {
   await supply(page, activeEan13, 5);
   const supplyPanel = page.locator('#supply-panel');
-  await page.goto('/');
+  await page.goto('/stock/approvisionnements');
   await expect(stockRow(page, activeEan13)).toContainText('13 unités');
 
   let releaseDelayedSupply!: () => void;
@@ -214,7 +214,7 @@ for (const invalid of [
 ]) {
   test(`rejects a ${invalid.label} Approvisionnement quantity without moving Stock`, async ({ page }) => {
     const supplyPanel = page.locator('#supply-panel');
-    await page.goto('/');
+    await page.goto('/stock/approvisionnements');
     await supplyPanel.locator('#supplyEan13').fill(activeEan13);
     await supplyPanel.locator('#supplyQuantity').fill(invalid.value);
     const responsePromise = waitForRequest(page, 'POST', '/api/supplies');
@@ -243,7 +243,7 @@ test('rejects an unknown Article with 404 and creates no Stock position', async 
   expect(before.status()).toBe(404);
 
   const supplyPanel = page.locator('#supply-panel');
-  await page.goto('/');
+  await page.goto('/stock/approvisionnements');
   await supplyPanel.locator('#supplyEan13').fill(unknownEan13);
   await supplyPanel.locator('#supplyQuantity').fill('2');
   const responsePromise = waitForRequest(page, 'POST', '/api/supplies');
@@ -266,7 +266,7 @@ test('rejects an archived Article with a targeted error and unchanged Stock phys
   });
 
   const supplyPanel = page.locator('#supply-panel');
-  await page.goto('/');
+  await page.goto('/stock/approvisionnements');
   await supplyPanel.locator('#supplyEan13').fill(archivedEan13);
   await supplyPanel.locator('#supplyQuantity').fill('2');
   const responsePromise = waitForRequest(page, 'POST', '/api/supplies');
@@ -290,7 +290,7 @@ test('rejects an archived Article with a targeted error and unchanged Stock phys
 
 test('records one ordered Opération en masse and exposes the same order in Historique', async ({ page }) => {
   const supplyPanel = page.locator('#supply-panel');
-  await page.goto('/');
+  await page.goto('/stock/approvisionnements');
   await expect(stockRow(page, activeEan13)).toContainText('8 unités');
   await supplyPanel.locator('#supplyEan13').fill(activeEan13);
   await supplyPanel.locator('#supplyQuantity').fill('3');
@@ -357,7 +357,7 @@ test('records one ordered Opération en masse and exposes the same order in Hist
 
 test('keeps every Opération en masse draft and all Stock unchanged when one Article is unknown', async ({ page }) => {
   const supplyPanel = page.locator('#supply-panel');
-  await page.goto('/');
+  await page.goto('/stock/approvisionnements');
   await supplyPanel.locator('#supplyEan13').fill(activeEan13);
   await supplyPanel.locator('#supplyQuantity').fill('3');
   await supplyPanel.getByRole('button', { name: 'Ajouter une ligne' }).click();
@@ -405,7 +405,7 @@ test('keeps every Opération en masse draft and all Stock unchanged when one Art
 
 test('leaves every known Article unchanged when another Opération en masse line is invalid', async ({ page }) => {
   const supplyPanel = page.locator('#supply-panel');
-  await page.goto('/');
+  await page.goto('/stock/approvisionnements');
   await supplyPanel.locator('#supplyEan13').fill(activeEan13);
   await supplyPanel.locator('#supplyQuantity').fill('3');
   await supplyPanel.getByRole('button', { name: 'Ajouter une ligne' }).click();
@@ -431,7 +431,7 @@ test('leaves every known Article unchanged when another Opération en masse line
 
 test('rejects a duplicate EAN-13 in one Opération en masse without partial application', async ({ page }) => {
   const supplyPanel = page.locator('#supply-panel');
-  await page.goto('/');
+  await page.goto('/stock/approvisionnements');
   await supplyPanel.locator('#supplyEan13').fill(activeEan13);
   await supplyPanel.locator('#supplyQuantity').fill('3');
   await supplyPanel.getByRole('button', { name: 'Ajouter une ligne' }).click();

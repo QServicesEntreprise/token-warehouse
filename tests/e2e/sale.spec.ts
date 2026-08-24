@@ -15,7 +15,7 @@ import {
 
 test('searches, rejects an excessive quantity, commits a sale and reloads its result', async ({ page }) => {
   const salePanel = page.locator('#sale-panel');
-  await page.goto('/');
+  await page.goto('/ventes');
 
   await salePanel.locator('#sale-search').fill('Article actif vendable');
   await salePanel.locator('#sale-search-form').getByRole('button', { name: 'Rechercher un Article', exact: true }).click();
@@ -60,7 +60,7 @@ test('searches, rejects an excessive quantity, commits a sale and reloads its re
 
 test('requires a food context, previews both rates and commits the selected mode', async ({ page }) => {
   const salePanel = page.locator('#sale-panel');
-  await page.goto('/');
+  await page.goto('/ventes');
 
   await salePanel.locator('#sale-search').fill(leadingZeroEan13);
   await salePanel.locator('#sale-search-form').getByRole('button', { name: 'Rechercher un Article', exact: true }).click();
@@ -118,7 +118,7 @@ test.describe('Sale context, receipt and financial snapshot', () => {
     });
     await supply(page, ean13, 4);
     const salePanel = page.locator('#sale-panel');
-    await page.goto('/');
+    await page.goto('/ventes');
     await salePanel.locator('#sale-search').fill(ean13);
     await salePanel.locator('#sale-search-form').getByRole('button', { name: 'Rechercher un Article', exact: true }).click();
     await salePanel.getByRole('row', { name: new RegExp(ean13) })

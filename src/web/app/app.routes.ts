@@ -29,8 +29,7 @@ export const routes: Routes = [
   },
   {
     path: 'catalogue',
-    data: { section: 'catalogue' },
-    loadComponent: loadLegacy,
+    loadChildren: () => import('../features/catalogue/catalogue.routes').then((module) => module.CATALOGUE_ROUTES),
   },
   {
     path: 'stock',

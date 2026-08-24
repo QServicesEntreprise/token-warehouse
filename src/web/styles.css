@@ -232,12 +232,6 @@ button:focus-visible {
   min-height: 1.5rem;
 }
 
-.stale-result {
-  border-left: 0.25rem solid #d9822b;
-  color: #7a4215;
-  padding-left: 0.75rem;
-}
-
 .table-wrap {
   overflow-x: auto;
 }
@@ -281,29 +275,10 @@ thead th {
   gap: 1rem;
 }
 
-.article-detail {
-  border-top: 1px solid #d8e0ec;
-  margin-top: 1rem;
-  padding-top: 1rem;
-}
-
 .stock-detail {
   border-top: 1px solid #d8e0ec;
   margin-top: 1rem;
   padding-top: 1rem;
-}
-
-.article-detail > form,
-.article-detail > section {
-  border-top: 1px solid #d8e0ec;
-  margin-top: 1rem;
-  padding-top: 1rem;
-}
-
-.price-quotes {
-  display: grid;
-  gap: 1rem;
-  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
 }
 
 .price-quote {

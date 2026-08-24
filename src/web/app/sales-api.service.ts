@@ -1,7 +1,8 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
-import { ConsumptionMode, PriceQuote } from './article-api.service';
+import { ConsumptionMode } from '../shared-kernel/consumption-mode';
+import { SalePriceQuote } from './sale-price-quote';
 import { StockAvailability, StockPositionResponse, StockReason } from './stock-api.service';
 
 export interface SaleArticleResponse {
@@ -15,7 +16,7 @@ export interface SaleArticleResponse {
   sellableQuantity: number;
   availability: StockAvailability;
   reason: StockReason | null;
-  priceQuotes?: PriceQuote[];
+  priceQuotes?: SalePriceQuote[];
   dlc?: string;
   consumptionModes?: ('takeaway' | 'onsite')[];
   packaging?: 'new' | 'refurbished' | 'unsellable';
