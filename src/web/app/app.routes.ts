@@ -47,8 +47,7 @@ export const routes: Routes = [
   { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
   {
     path: 'dashboard',
-    data: { section: 'dashboard' },
-    loadComponent: loadLegacy,
+    loadChildren: () => import('./dashboard.routes').then(module => module.dashboardRoutes),
   },
   {
     path: 'catalogue',
