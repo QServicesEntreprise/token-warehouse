@@ -1,5 +1,5 @@
-import { CorrectableSourceDto } from './correctable-source.dto';
-import { CounterMovementFinancialDto } from './counter-movement-financial.dto';
+import type { CorrectableSourceDto } from './correctable-source.dto';
+import type { CounterMovementFinancialDto } from './counter-movement-financial.dto';
 
 export interface CounterMovementResultDto {
   counterMovement: {

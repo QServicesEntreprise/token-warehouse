@@ -1,5 +1,5 @@
-import { StockPosition } from './stock-position';
-import { SupplyOperation } from './supply-operation';
+import type { StockPosition } from './stock-position';
+import type { SupplyOperation } from './supply-operation';
 
 export interface SupplyResult {
   operation: SupplyOperation;

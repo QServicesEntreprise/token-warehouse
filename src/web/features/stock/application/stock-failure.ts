@@ -1,6 +1,6 @@
 export interface StockFailure {
-  status?: number;
-  code?: string;
+  status?: number | undefined;
+  code?: string | undefined;
   fieldErrors: Record<string, string[]>;
   title: string;
 }

@@ -14,7 +14,7 @@
     @let state = store.state();
     @let detailState = store.detailState();
 
-    <div id="stock-state" class="catalog-state" aria-live="polite" role="status">
+    <div id="stock-state" class="request-state" aria-live="polite" role="status">
       @switch (state.status) {
         @case ('loading') {
           <p>Chargement du Stock…</p>
@@ -77,7 +77,7 @@
 
     @switch (detailState.status) {
       @case ('ready') {
-        <article id="stock-detail" class="stock-detail" role="region" aria-labelledby="stock-detail-title" tabindex="-1">
+        <article id="stock-detail" class="detail-block" role="region" aria-labelledby="stock-detail-title" tabindex="-1">
           <h2 id="stock-detail-title">Détail du Stock — {{ detailState.position.name }}</h2>
           <dl>
             <div><dt>EAN-13</dt><dd>{{ detailState.position.ean13 }}</dd></div>

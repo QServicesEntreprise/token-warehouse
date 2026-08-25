@@ -1,7 +1,7 @@
-import { HistoryChange } from './history-change';
-import { HistoryFinancial } from './history-financial';
-import { HistoryFinancialReversal } from './history-financial-reversal';
-import { HistoryLine } from './history-line';
+import type { HistoryChange } from './history-change';
+import type { HistoryFinancial } from './history-financial';
+import type { HistoryFinancialReversal } from './history-financial-reversal';
+import type { HistoryLine } from './history-line';
 
 interface HistoryEntryBase {
   id: string;
@@ -9,50 +9,50 @@ interface HistoryEntryBase {
   ean13: string;
   articles: readonly string[];
   lines: readonly HistoryLine[];
-  correctedByOperationId?: string;
-  correctionOperationId?: string;
+  correctedByOperationId?: string | undefined;
+  correctionOperationId?: string | undefined;
 }
 
 interface SupplyHistoryEntry extends HistoryEntryBase {
   type: 'supply';
-  quantity?: number;
-  stockEffect?: number;
-  previousPhysicalStock?: number;
-  resultingPhysicalStock?: number;
+  quantity?: number | undefined;
+  stockEffect?: number | undefined;
+  previousPhysicalStock?: number | undefined;
+  resultingPhysicalStock?: number | undefined;
 }
 
 interface InventoryHistoryEntry extends HistoryEntryBase {
   type: 'inventory';
-  previousPhysicalStock?: number;
-  countedQuantity?: number;
-  difference?: number;
-  resultingPhysicalStock?: number;
+  previousPhysicalStock?: number | undefined;
+  countedQuantity?: number | undefined;
+  difference?: number | undefined;
+  resultingPhysicalStock?: number | undefined;
 }
 
 interface SaleStockHistoryEntry extends HistoryEntryBase {
   type: 'saleStock';
-  quantity?: number;
-  stockEffect?: number;
-  previousPhysicalStock?: number;
-  resultingPhysicalStock?: number;
-  financial?: HistoryFinancial;
+  quantity?: number | undefined;
+  stockEffect?: number | undefined;
+  previousPhysicalStock?: number | undefined;
+  resultingPhysicalStock?: number | undefined;
+  financial?: HistoryFinancial | undefined;
 }
 
 interface CounterMovementHistoryEntry extends HistoryEntryBase {
   type: 'counterMovement';
-  quantity?: number;
-  stockEffect?: number;
-  resultingPhysicalStock?: number;
-  sourceOperationId?: string;
-  sourceOperationType?: string;
-  justification?: string;
-  financialReversal?: HistoryFinancialReversal;
+  quantity?: number | undefined;
+  stockEffect?: number | undefined;
+  resultingPhysicalStock?: number | undefined;
+  sourceOperationId?: string | undefined;
+  sourceOperationType?: string | undefined;
+  justification?: string | undefined;
+  financialReversal?: HistoryFinancialReversal | undefined;
 }
 
 interface CatalogLifecycleHistoryEntry extends HistoryEntryBase {
   type: 'catalogArchive' | 'catalogReactivate';
-  previousStatus?: string;
-  nextStatus?: string;
+  previousStatus?: string | undefined;
+  nextStatus?: string | undefined;
 }
 
 interface CatalogChangeHistoryEntry extends HistoryEntryBase {

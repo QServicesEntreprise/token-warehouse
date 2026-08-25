@@ -1,12 +1,12 @@
-import { AfterViewInit, ChangeDetectionStrategy, Component, inject, linkedSignal, signal } from '@angular/core';
+import { type AfterViewInit, ChangeDetectionStrategy, Component, inject, linkedSignal, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FieldTree, FormField, TreeValidationResult, form, hidden, pattern, required, submit } from '@angular/forms/signals';
+import { type FieldTree, FormField, type TreeValidationResult, form, hidden, pattern, required, submit } from '@angular/forms/signals';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { distinctUntilChanged, map } from 'rxjs';
 import { ArticleDetailsStore } from '../application/article-details-store';
-import { ArticleType } from '../domain/article-type';
-import { Packaging } from '../domain/packaging';
-import { ConsumptionMode } from '../../../shared-kernel/consumption-mode';
+import type { ArticleType } from '../domain/article-type';
+import type { Packaging } from '../domain/packaging';
+import type { ConsumptionMode } from '../../../shared-kernel/consumption-mode';
 
 interface AttributeFormModel {
   type: ArticleType;

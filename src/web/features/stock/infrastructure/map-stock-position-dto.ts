@@ -1,5 +1,5 @@
-import { StockPosition } from '../domain/stock-position';
-import { StockPositionDto } from './dto/stock-position.dto';
+import type { StockPosition } from '../domain/stock-position';
+import type { StockPositionDto } from './dto/stock-position.dto';
 import { mapStockAvailability } from './map-stock-availability';
 import { mapStockNonSellableReason } from './map-stock-non-sellable-reason';
 

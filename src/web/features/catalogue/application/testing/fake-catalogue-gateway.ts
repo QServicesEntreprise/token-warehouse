@@ -1,10 +1,11 @@
-import { Observable, of } from 'rxjs';
-import { Article } from '../../domain/article';
-import { ArticleSummary } from '../../domain/article-summary';
-import { ArticleAttributesUpdateCommand } from '../article-attributes-update-command';
-import { ArticleCreateCommand } from '../article-create-command';
-import { CatalogueGateway } from '../catalogue-gateway';
-import { CatalogueQuery } from '../catalogue-query';
+import { of } from 'rxjs';
+import type { Observable } from 'rxjs';
+import type { Article } from '../../domain/article';
+import type { ArticleSummary } from '../../domain/article-summary';
+import type { ArticleAttributesUpdateCommand } from '../article-attributes-update-command';
+import type { ArticleCreateCommand } from '../article-create-command';
+import type { CatalogueGateway } from '../catalogue-gateway';
+import type { CatalogueQuery } from '../catalogue-query';
 
 export class FakeCatalogueGateway implements CatalogueGateway {
   searchHandler: (query: CatalogueQuery) => Observable<readonly ArticleSummary[]> = () => of([]);

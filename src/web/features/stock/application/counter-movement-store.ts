@@ -1,11 +1,11 @@
 import { DestroyRef, Injectable, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Subject, catchError, firstValueFrom, map, of, switchMap, takeUntil, tap } from 'rxjs';
-import { CorrectableSource } from '../domain/correctable-source';
-import { CounterMovementResult } from '../domain/counter-movement-result';
-import { RecordCounterMovementCommand } from '../domain/record-counter-movement-command';
+import type { CorrectableSource } from '../domain/correctable-source';
+import type { CounterMovementResult } from '../domain/counter-movement-result';
+import type { RecordCounterMovementCommand } from '../domain/record-counter-movement-command';
 import { STOCK_GATEWAY } from './stock-gateway-token';
-import { StockFailure } from './stock-failure';
+import type { StockFailure } from './stock-failure';
 
 @Injectable()
 export class CounterMovementStore {

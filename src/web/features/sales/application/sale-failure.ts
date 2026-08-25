@@ -1,5 +1,5 @@
 export interface SaleFailure {
   kind: 'validation' | 'conflict' | 'error';
-  message?: string;
+  message?: string | undefined;
   fieldErrors?: Record<string, string>;
 }

@@ -1,4 +1,4 @@
-import { StockPosition } from '../domain/stock-position';
+import type { StockPosition } from '../domain/stock-position';
 
 export type StockPositionDetailState =
   | { status: 'idle' }

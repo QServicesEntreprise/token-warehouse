@@ -1,7 +1,7 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { Article } from '../domain/article';
-import { ArticleCreateCommand } from './article-create-command';
+import type { Article } from '../domain/article';
+import type { ArticleCreateCommand } from './article-create-command';
 import { CATALOGUE_GATEWAY } from './catalogue-gateway-token';
 import { CatalogueInvalidation } from './catalogue-invalidation';
 import { toCatalogueProblem } from './to-catalogue-problem';

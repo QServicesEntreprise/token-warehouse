@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { mapDashboard } from './map-dashboard';
 import { mapDashboardCalendar } from './map-dashboard-calendar';
-import { DashboardCalendarDto } from './dashboard-calendar.dto';
-import { DashboardDto } from './dashboard.dto';
+import type { DashboardCalendarDto } from './dashboard-calendar.dto';
+import type { DashboardDto } from './dashboard.dto';
 
 describe('mapDashboard', () => {
   it('maps the transport contract to Pilotage projections', () => {

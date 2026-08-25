@@ -1,6 +1,6 @@
 import { expect } from '@playwright/test';
 import type { Page, Route } from '@playwright/test';
-import type { HistoryEntryResponse } from '../../src/web/app/history-api.service';
+import type { HistoryEntryDto } from '../../src/web/features/stock/infrastructure/dto/history-entry.dto';
 import type { StockPositionDto } from '../../src/web/features/stock/infrastructure/dto/stock-position.dto';
 import { apiUrl as apiBaseUrl, test } from './fixtures';
 import { expectProblemDetails, waitForRequest } from './helpers/http';
@@ -302,7 +302,7 @@ test('records one ordered Opération en masse and exposes the same order in Hist
 
   const historyBeforeResponse = await page.request.get(`${apiBaseUrl}/api/history`);
   expect(historyBeforeResponse.status()).toBe(200);
-  const historyBefore = await historyBeforeResponse.json() as HistoryEntryResponse[];
+  const historyBefore = await historyBeforeResponse.json() as HistoryEntryDto[];
 
   const responsePromise = waitForRequest(page, 'POST', '/api/supplies/bulk');
   await supplyPanel.getByRole('button', { name: 'Enregistrer l’Approvisionnement' }).click();
@@ -330,7 +330,7 @@ test('records one ordered Opération en masse and exposes the same order in Hist
 
   const historyResponse = await page.request.get(`${apiBaseUrl}/api/history`);
   expect(historyResponse.status()).toBe(200);
-  const history = await historyResponse.json() as HistoryEntryResponse[];
+  const history = await historyResponse.json() as HistoryEntryDto[];
   expect(history).toHaveLength(historyBefore.length + 1);
   expect(history.filter((entry) => entry.id === body.operation.id)).toHaveLength(1);
   expect(history.find((entry) => entry.id === body.operation.id)).toMatchObject({

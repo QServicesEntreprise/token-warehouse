@@ -1,26 +1,27 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable, catchError, forkJoin, map, switchMap, throwError } from 'rxjs';
-import { HistoryQuery } from '../application/history-query';
-import { StockGateway } from '../application/stock-gateway';
-import { CorrectableSource } from '../domain/correctable-source';
-import { CounterMovementResult } from '../domain/counter-movement-result';
-import { HistoryEntry } from '../domain/history-entry';
-import { InventoryCommand } from '../domain/inventory-command';
-import { InventoryReceipt } from '../domain/inventory-receipt';
-import { RecordBulkSupplyCommand } from '../domain/record-bulk-supply-command';
-import { RecordCounterMovementCommand } from '../domain/record-counter-movement-command';
-import { RecordSupplyCommand } from '../domain/record-supply-command';
-import { StockPosition } from '../domain/stock-position';
-import { SupplyResult } from '../domain/supply-result';
-import { CorrectableSourceDto } from './dto/correctable-source.dto';
-import { CounterMovementResultDto } from './dto/counter-movement-result.dto';
-import { InventoryOperationDto } from './dto/inventory-operation.dto';
-import { InventoryReceiptDto } from './dto/inventory-receipt.dto';
-import { HistoryEntryDto } from './dto/history-entry.dto';
-import { RecordBulkSupplyResponseDto } from './dto/record-bulk-supply-response.dto';
-import { RecordSupplyResponseDto } from './dto/record-supply-response.dto';
-import { StockPositionDto } from './dto/stock-position.dto';
+import { catchError, forkJoin, map, switchMap, throwError } from 'rxjs';
+import type { Observable } from 'rxjs';
+import type { HistoryQuery } from '../application/history-query';
+import type { StockGateway } from '../application/stock-gateway';
+import type { CorrectableSource } from '../domain/correctable-source';
+import type { CounterMovementResult } from '../domain/counter-movement-result';
+import type { HistoryEntry } from '../domain/history-entry';
+import type { InventoryCommand } from '../domain/inventory-command';
+import type { InventoryReceipt } from '../domain/inventory-receipt';
+import type { RecordBulkSupplyCommand } from '../domain/record-bulk-supply-command';
+import type { RecordCounterMovementCommand } from '../domain/record-counter-movement-command';
+import type { RecordSupplyCommand } from '../domain/record-supply-command';
+import type { StockPosition } from '../domain/stock-position';
+import type { SupplyResult } from '../domain/supply-result';
+import type { CorrectableSourceDto } from './dto/correctable-source.dto';
+import type { CounterMovementResultDto } from './dto/counter-movement-result.dto';
+import type { InventoryOperationDto } from './dto/inventory-operation.dto';
+import type { InventoryReceiptDto } from './dto/inventory-receipt.dto';
+import type { HistoryEntryDto } from './dto/history-entry.dto';
+import type { RecordBulkSupplyResponseDto } from './dto/record-bulk-supply-response.dto';
+import type { RecordSupplyResponseDto } from './dto/record-supply-response.dto';
+import type { StockPositionDto } from './dto/stock-position.dto';
 import { mapInventoryCommand } from './map-inventory-command';
 import { mapInventoryOperationDto } from './map-inventory-operation-dto';
 import { mapInventoryReceiptDto } from './map-inventory-receipt-dto';
@@ -119,10 +120,10 @@ export class HttpStockGateway implements StockGateway {
   }
 
   history(query: HistoryQuery): Observable<readonly HistoryEntry[]> {
-    const params = query.scope === 'article'
-      ? new HttpParams().set('ean13', query.ean13)
-      : undefined;
-    return this.http.get<HistoryEntryDto[]>('/api/history', { params }).pipe(
+    const request = query.scope === 'article'
+      ? this.http.get<HistoryEntryDto[]>('/api/history', { params: new HttpParams().set('ean13', query.ean13) })
+      : this.http.get<HistoryEntryDto[]>('/api/history');
+    return request.pipe(
       map((entries) => entries.map(mapHistoryEntryDto)),
       catchError((error: unknown) => throwError(() => mapStockFailure(
         error,

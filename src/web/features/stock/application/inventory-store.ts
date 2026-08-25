@@ -1,10 +1,10 @@
 import { DestroyRef, Injectable, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Subject, catchError, firstValueFrom, map, of, switchMap, tap } from 'rxjs';
-import { InventoryCommand } from '../domain/inventory-command';
-import { InventoryReceipt } from '../domain/inventory-receipt';
+import type { InventoryCommand } from '../domain/inventory-command';
+import type { InventoryReceipt } from '../domain/inventory-receipt';
 import { LAST_INVENTORY_STORAGE } from './last-inventory-storage-token';
-import { StockFailure } from './stock-failure';
+import type { StockFailure } from './stock-failure';
 import { STOCK_GATEWAY } from './stock-gateway-token';
 
 const failureFrom = (error: unknown): StockFailure => (
@@ -65,7 +65,7 @@ export class InventoryStore {
     this.fieldErrorsState.set({});
     try {
       const request = commands.length === 1
-        ? this.gateway.recordInventory(commands[0])
+        ? this.gateway.recordInventory(commands[0]!)
         : this.gateway.recordBulkInventory(commands);
       const receipt = await firstValueFrom(request.pipe(takeUntilDestroyed(this.destroyRef)));
       this.receiptState.set(receipt);

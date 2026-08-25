@@ -1,6 +1,6 @@
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
-import type { SaleResult } from '../../src/web/app/features/sales/domain/sale-result';
+import type { SaleResult } from '../../src/web/features/sales/domain/sale-result';
 import { ean13ForAttempt, leadingZeroEan13 } from './helpers/ean13';
 import { waitForRequest } from './helpers/http';
 import {

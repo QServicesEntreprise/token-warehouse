@@ -4,8 +4,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { LAST_SALE_STORAGE } from '../application/last-sale-storage.token';
 import { SaleStore } from '../application/sale-store';
 import { SALES_GATEWAY } from '../application/sales-gateway.token';
-import { SaleResult } from '../domain/sale-result';
-import { SellableArticle } from '../domain/sellable-article';
+import type { SaleResult } from '../domain/sale-result';
+import type { SellableArticle } from '../domain/sellable-article';
 import { SalesPage } from './sales-page';
 
 const article: SellableArticle = {

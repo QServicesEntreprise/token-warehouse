@@ -1,6 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { CatalogueProblem } from '../application/catalogue-problem';
-import { ProblemDetailsDto } from './dto/problem-details.dto';
+import type { CatalogueProblem } from '../application/catalogue-problem';
+import type { ProblemDetailsDto } from './dto/problem-details.dto';
 
 export const mapProblemDetails = (error: unknown, fallback: string): CatalogueProblem => {
   const dto = error instanceof HttpErrorResponse && typeof error.error === 'object' && error.error !== null

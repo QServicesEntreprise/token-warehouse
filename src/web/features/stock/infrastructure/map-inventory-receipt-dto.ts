@@ -1,5 +1,5 @@
-import { InventoryReceipt } from '../domain/inventory-receipt';
-import { InventoryReceiptDto } from './dto/inventory-receipt.dto';
+import type { InventoryReceipt } from '../domain/inventory-receipt';
+import type { InventoryReceiptDto } from './dto/inventory-receipt.dto';
 import { mapStockAvailability } from './map-stock-availability';
 import { mapStockNonSellableReason } from './map-stock-non-sellable-reason';
 

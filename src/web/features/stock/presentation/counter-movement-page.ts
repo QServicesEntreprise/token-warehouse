@@ -1,4 +1,4 @@
-import { AfterViewInit, ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { type AfterViewInit, ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { FormField, FormRoot, form, pattern, required, submit } from '@angular/forms/signals';
 import { CounterMovementStore } from '../application/counter-movement-store';
 import { stockAvailabilityLabel } from './stock-availability-label';

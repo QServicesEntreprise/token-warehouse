@@ -1,7 +1,7 @@
-import { CorrectableSource } from './correctable-source';
-import { CounterMovementFinancial } from './counter-movement-financial';
-import { StockAvailability } from './stock-availability';
-import { StockNonSellableReason } from './stock-non-sellable-reason';
+import type { CorrectableSource } from './correctable-source';
+import type { CounterMovementFinancial } from './counter-movement-financial';
+import type { StockAvailability } from './stock-availability';
+import type { StockNonSellableReason } from './stock-non-sellable-reason';
 
 export interface CounterMovementResult {
   readonly counterMovement: {
@@ -26,5 +26,5 @@ export interface CounterMovementResult {
     readonly availability: StockAvailability;
     readonly nonSellableReason: StockNonSellableReason | null;
   }[];
-  readonly financialReversal?: CounterMovementFinancial & { readonly sourceOperationId: string };
+  readonly financialReversal?: (CounterMovementFinancial & { readonly sourceOperationId: string }) | undefined;
 }

@@ -1,4 +1,4 @@
-import { CounterMovementFinancialDto } from './counter-movement-financial.dto';
+import type { CounterMovementFinancialDto } from './counter-movement-financial.dto';
 
 export interface CorrectableSourceDto {
   id: string;

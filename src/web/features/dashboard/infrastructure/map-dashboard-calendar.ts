@@ -1,5 +1,5 @@
-import { DashboardCalendar } from '../domain/dashboard-calendar';
-import { DashboardCalendarDto } from './dashboard-calendar.dto';
+import type { DashboardCalendar } from '../domain/dashboard-calendar';
+import type { DashboardCalendarDto } from './dashboard-calendar.dto';
 
 export function mapDashboardCalendar(dto: DashboardCalendarDto): DashboardCalendar {
   return {

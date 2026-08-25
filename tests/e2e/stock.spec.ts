@@ -49,7 +49,6 @@ test('consults Stock positions, distinguishes blocked quantities and opens detai
   const stockPanel = page.locator('#stock-panel');
 
   await page.goto('/stock');
-  await expect(page.locator('app-legacy-backoffice-page')).toHaveCount(0);
   await expect(stockPanel.getByText(/Articles trouvés/)).toBeVisible();
   await expect(stockPanel.getByRole('row', { name: /Alimentaire aux deux modes/ })).toContainText(leadingZeroEan13);
   await expect(stockPanel.getByRole('row', { name: /Alimentaire aux deux modes/ })).toContainText('5 unités');

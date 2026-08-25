@@ -1,14 +1,14 @@
-import { AfterViewInit, ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
+import { type AfterViewInit, ChangeDetectionStrategy, Component, type OnInit, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink } from '@angular/router';
 import { filter } from 'rxjs';
 import { CatalogueListStore } from '../application/catalogue-list-store';
-import { CatalogueQuery } from '../application/catalogue-query';
-import { ArticleSummary } from '../domain/article-summary';
-import { ArticleType } from '../domain/article-type';
-import { ArticleStatusFilter } from '../domain/article-status-filter';
-import { Packaging } from '../domain/packaging';
-import { ConsumptionMode } from '../../../shared-kernel/consumption-mode';
+import type { CatalogueQuery } from '../application/catalogue-query';
+import type { ArticleSummary } from '../domain/article-summary';
+import type { ArticleType } from '../domain/article-type';
+import type { ArticleStatusFilter } from '../domain/article-status-filter';
+import type { Packaging } from '../domain/packaging';
+import type { ConsumptionMode } from '../../../shared-kernel/consumption-mode';
 
 @Component({
   selector: 'app-catalogue-list-page',

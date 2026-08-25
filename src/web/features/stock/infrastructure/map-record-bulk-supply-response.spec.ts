@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { RecordBulkSupplyResponseDto } from './dto/record-bulk-supply-response.dto';
+import type { RecordBulkSupplyResponseDto } from './dto/record-bulk-supply-response.dto';
 import { mapRecordBulkSupplyResponse } from './map-record-bulk-supply-response';
 
 describe('mapRecordBulkSupplyResponse', () => {

@@ -1,6 +1,6 @@
-import { Dashboard } from '../domain/dashboard';
-import { DashboardStockLine } from '../domain/dashboard-stock-line';
-import { DashboardDto } from './dashboard.dto';
+import type { Dashboard } from '../domain/dashboard';
+import type { DashboardStockLine } from '../domain/dashboard-stock-line';
+import type { DashboardDto } from './dashboard.dto';
 
 export function mapDashboard(dto: DashboardDto): Dashboard {
   const mapStockLine = (line: DashboardDto['stockByArticle'][number]): DashboardStockLine => ({ ...line });

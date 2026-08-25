@@ -1,8 +1,8 @@
-import { ConsumptionMode } from '../../../shared-kernel/consumption-mode';
-import { ArticleStatus } from './article-status';
-import { ArticleStock } from './article-stock';
-import { Packaging } from './packaging';
-import { PriceQuote } from './price-quote';
+import type { ConsumptionMode } from '../../../shared-kernel/consumption-mode';
+import type { ArticleStatus } from './article-status';
+import type { ArticleStock } from './article-stock';
+import type { Packaging } from './packaging';
+import type { PriceQuote } from './price-quote';
 
 interface ArticleBase {
   ean13: string;

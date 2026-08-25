@@ -1,7 +1,7 @@
-import { HistoryEntry } from '../domain/history-entry';
-import { HistoryFinancial } from '../domain/history-financial';
-import { HistoryLine } from '../domain/history-line';
-import { HistoryEntryDto } from './dto/history-entry.dto';
+import type { HistoryEntry } from '../domain/history-entry';
+import type { HistoryFinancial } from '../domain/history-financial';
+import type { HistoryLine } from '../domain/history-line';
+import type { HistoryEntryDto } from './dto/history-entry.dto';
 
 export const mapHistoryEntryDto = (dto: HistoryEntryDto): HistoryEntry => {
   const base = {

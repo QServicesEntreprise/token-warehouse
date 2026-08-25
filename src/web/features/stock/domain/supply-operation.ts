@@ -1,4 +1,4 @@
-import { SupplyOperationLine } from './supply-operation-line';
+import type { SupplyOperationLine } from './supply-operation-line';
 
 export interface SupplyOperation {
   id: string;

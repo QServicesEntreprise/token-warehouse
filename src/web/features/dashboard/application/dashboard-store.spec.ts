@@ -1,9 +1,9 @@
 import { TestBed } from '@angular/core/testing';
 import { Observable, Subject } from 'rxjs';
 import { describe, expect, it } from 'vitest';
-import { Dashboard } from '../domain/dashboard';
-import { DashboardCalendar } from '../domain/dashboard-calendar';
-import { DashboardFilter } from '../domain/dashboard-filter';
+import type { Dashboard } from '../domain/dashboard';
+import type { DashboardCalendar } from '../domain/dashboard-calendar';
+import type { DashboardFilter } from '../domain/dashboard-filter';
 import { DashboardFailure } from './dashboard-failure';
 import { DashboardGateway } from './dashboard-gateway';
 import { DashboardStore } from './dashboard-store';
@@ -61,17 +61,17 @@ describe('DashboardStore', () => {
       warehouseDate: '2030-03-15',
       currentMonth: { from: '2030-03-01', to: '2030-03-31' },
     });
-    expect(gateway.reads[0].filter).toEqual({
+    expect(gateway.reads[0]!.filter).toEqual({
       from: '2030-03-01',
       to: '2030-03-31',
       type: null,
       mode: null,
       packaging: null,
     });
-    gateway.reads[0].result.next(emptyDashboard('Article courant'));
+    gateway.reads[0]!.result.next(emptyDashboard('Article courant'));
 
     expect(store.state()).toBe('ready');
-    expect(store.dashboard()?.stockByArticle[0].name).toBe('Article courant');
+    expect(store.dashboard()?.stockByArticle[0]?.name).toBe('Article courant');
   });
 
   it('cancels the previous filtered read so the newest result wins', () => {
@@ -81,20 +81,20 @@ describe('DashboardStore', () => {
       warehouseDate: '2030-03-15',
       currentMonth: { from: '2030-03-01', to: '2030-03-31' },
     });
-    gateway.reads[0].result.next(emptyDashboard());
+    gateway.reads[0]!.result.next(emptyDashboard());
 
     store.setFilter('type', 'food');
     store.read();
-    const older = gateway.reads[1].result;
+    const older = gateway.reads[1]!.result;
     store.setFilter('type', 'nonFood');
     store.setFilter('packaging', 'new');
     store.read();
-    const newer = gateway.reads[2].result;
+    const newer = gateway.reads[2]!.result;
 
     expect(older.observed).toBe(false);
     older.next(emptyDashboard('Réponse ancienne'));
     newer.next(emptyDashboard('Article le plus récent'));
-    expect(store.dashboard()?.stockByArticle[0].name).toBe('Article le plus récent');
+    expect(store.dashboard()?.stockByArticle[0]?.name).toBe('Article le plus récent');
   });
 
   it('cancels an in-flight read when the newest filter submission is invalid', () => {
@@ -104,10 +104,10 @@ describe('DashboardStore', () => {
       warehouseDate: '2030-03-15',
       currentMonth: { from: '2030-03-01', to: '2030-03-31' },
     });
-    gateway.reads[0].result.next(emptyDashboard());
+    gateway.reads[0]!.result.next(emptyDashboard());
 
     store.read();
-    const inFlight = gateway.reads[1].result;
+    const inFlight = gateway.reads[1]!.result;
     store.setFilter('from', '');
     store.read();
 
@@ -125,7 +125,7 @@ describe('DashboardStore', () => {
       warehouseDate: '2030-03-15',
       currentMonth: { from: '2030-03-01', to: '2030-03-31' },
     });
-    gateway.reads[0].result.error(new DashboardFailure(
+    gateway.reads[0]!.result.error(new DashboardFailure(
       'La période est invalide.',
       { from: 'La date de début est invalide.' },
     ));
@@ -135,7 +135,7 @@ describe('DashboardStore', () => {
     expect(store.fieldErrors()).toEqual({ from: 'La date de début est invalide.' });
 
     store.read();
-    gateway.reads[1].result.next(emptyDashboard('Article retrouvé'));
+    gateway.reads[1]!.result.next(emptyDashboard('Article retrouvé'));
     expect(store.state()).toBe('ready');
   });
 });

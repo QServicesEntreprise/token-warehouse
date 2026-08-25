@@ -1,4 +1,4 @@
-import { Article } from './article';
+import type { Article } from './article';
 
 type WithoutDetails<T> = T extends Article ? Omit<T, 'priceQuotes' | 'stock'> : never;
 

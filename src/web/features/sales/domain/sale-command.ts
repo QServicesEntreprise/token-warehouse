@@ -1,4 +1,4 @@
-import { SaleContext } from './sale-context';
+import type { SaleContext } from './sale-context';
 
 export interface SaleCommand {
   ean13: string;

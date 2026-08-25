@@ -1,5 +1,5 @@
-import { StockAvailability } from './stock-availability';
-import { StockNonSellableReason } from './stock-non-sellable-reason';
+import type { StockAvailability } from './stock-availability';
+import type { StockNonSellableReason } from './stock-non-sellable-reason';
 
 export interface InventoryReceipt {
   id: string;

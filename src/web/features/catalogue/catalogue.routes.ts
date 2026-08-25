@@ -1,4 +1,4 @@
-import { Routes } from '@angular/router';
+import type { Routes } from '@angular/router';
 import { ArticleCreateStore } from './application/article-create-store';
 import { ArticleDetailsStore } from './application/article-details-store';
 import { CATALOGUE_GATEWAY } from './application/catalogue-gateway-token';

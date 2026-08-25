@@ -1,1 +1,4 @@
 :host { display: block; }
+.supply-form { align-items: end; display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); }
+.supply-line { border: 1px solid #d8e0ec; border-radius: 0.75rem; display: grid; gap: 1rem; grid-column: 1 / -1; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); padding: 1rem; }
+.supply-line legend { font-weight: 700; padding: 0 0.35rem; }

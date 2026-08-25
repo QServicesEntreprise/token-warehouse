@@ -2,12 +2,12 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { Observable, Subject, of, throwError } from 'rxjs';
 import { describe, expect, it } from 'vitest';
-import { HistoryQuery } from '../application/history-query';
+import type { HistoryQuery } from '../application/history-query';
 import { HistoryStore } from '../application/history-store';
 import { STOCK_GATEWAY } from '../application/stock-gateway-token';
-import { StockGateway } from '../application/stock-gateway';
-import { HistoryEntry } from '../domain/history-entry';
-import { StockPosition } from '../domain/stock-position';
+import type { StockGateway } from '../application/stock-gateway';
+import type { HistoryEntry } from '../domain/history-entry';
+import type { StockPosition } from '../domain/stock-position';
 import { HistoryPage } from './history-page';
 
 const ean13 = '0123456789012';

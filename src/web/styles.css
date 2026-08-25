@@ -24,17 +24,6 @@ main {
   gap: 0.75rem;
 }
 
-.main-nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-}
-
-.main-nav a {
-  color: #173b70;
-  font-weight: 700;
-}
-
 .eyebrow {
   margin: 0;
   color: #53627b;
@@ -70,35 +59,14 @@ h1 {
   grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
 }
 
-.catalog-filters {
+.filters-grid {
   align-items: end;
   display: grid;
   gap: 1rem;
   grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
 }
 
-.supply-form {
-  align-items: end;
-  display: grid;
-  gap: 1rem;
-  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-}
-
-.supply-line {
-  border: 1px solid #d8e0ec;
-  border-radius: 0.75rem;
-  gap: 1rem;
-  grid-column: 1 / -1;
-  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-  padding: 1rem;
-}
-
-.supply-line legend {
-  font-weight: 700;
-  padding: 0 0.35rem;
-}
-
-.catalog-filters button {
+.filters-grid button {
   margin-top: 0;
 }
 
@@ -179,7 +147,7 @@ button:focus-visible {
   min-height: 1.2em;
 }
 
-.catalog-state {
+.request-state {
   min-height: 1.5rem;
 }
 
@@ -226,17 +194,10 @@ thead th {
   gap: 1rem;
 }
 
-.stock-detail {
+.detail-block {
   border-top: 1px solid #d8e0ec;
   margin-top: 1rem;
   padding-top: 1rem;
-}
-
-.price-quote {
-  border: 1px solid #d8e0ec;
-  border-radius: 0.75rem;
-  margin: 0;
-  padding: 1rem;
 }
 
 dl {

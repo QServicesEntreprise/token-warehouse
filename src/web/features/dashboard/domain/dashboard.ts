@@ -1,6 +1,6 @@
-import { DashboardFlowDay } from './dashboard-flow-day';
-import { DashboardStockLine } from './dashboard-stock-line';
-import { DashboardTaxSummary } from './dashboard-tax-summary';
+import type { DashboardFlowDay } from './dashboard-flow-day';
+import type { DashboardStockLine } from './dashboard-stock-line';
+import type { DashboardTaxSummary } from './dashboard-tax-summary';
 
 export interface Dashboard {
   kpis: {

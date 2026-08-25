@@ -1,15 +1,15 @@
-import { Observable } from 'rxjs';
-import { CorrectableSource } from '../domain/correctable-source';
-import { CounterMovementResult } from '../domain/counter-movement-result';
-import { HistoryEntry } from '../domain/history-entry';
-import { InventoryCommand } from '../domain/inventory-command';
-import { InventoryReceipt } from '../domain/inventory-receipt';
-import { RecordBulkSupplyCommand } from '../domain/record-bulk-supply-command';
-import { RecordCounterMovementCommand } from '../domain/record-counter-movement-command';
-import { RecordSupplyCommand } from '../domain/record-supply-command';
-import { StockPosition } from '../domain/stock-position';
-import { SupplyResult } from '../domain/supply-result';
-import { HistoryQuery } from './history-query';
+import type { Observable } from 'rxjs';
+import type { CorrectableSource } from '../domain/correctable-source';
+import type { CounterMovementResult } from '../domain/counter-movement-result';
+import type { HistoryEntry } from '../domain/history-entry';
+import type { InventoryCommand } from '../domain/inventory-command';
+import type { InventoryReceipt } from '../domain/inventory-receipt';
+import type { RecordBulkSupplyCommand } from '../domain/record-bulk-supply-command';
+import type { RecordCounterMovementCommand } from '../domain/record-counter-movement-command';
+import type { RecordSupplyCommand } from '../domain/record-supply-command';
+import type { StockPosition } from '../domain/stock-position';
+import type { SupplyResult } from '../domain/supply-result';
+import type { HistoryQuery } from './history-query';
 
 export interface StockGateway {
   list(): Observable<readonly StockPosition[]>;

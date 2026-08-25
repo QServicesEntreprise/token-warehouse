@@ -1,8 +1,8 @@
-import { AfterViewInit, ChangeDetectionStrategy, Component, OnInit, computed, effect, inject } from '@angular/core';
+import { type AfterViewInit, ChangeDetectionStrategy, Component, type OnInit, computed, effect, inject } from '@angular/core';
 import { DashboardStore } from '../application/dashboard-store';
-import { DashboardFilter } from '../domain/dashboard-filter';
-import { DashboardStockLine } from '../domain/dashboard-stock-line';
-import { DashboardTaxSummary } from '../domain/dashboard-tax-summary';
+import type { DashboardFilter } from '../domain/dashboard-filter';
+import type { DashboardStockLine } from '../domain/dashboard-stock-line';
+import type { DashboardTaxSummary } from '../domain/dashboard-tax-summary';
 
 @Component({
   selector: 'app-dashboard-page',
@@ -15,13 +15,15 @@ export class DashboardPage implements OnInit, AfterViewInit {
   protected readonly store = inject(DashboardStore);
   protected readonly articleCount = computed(() => this.store.dashboard()?.stockByArticle.length ?? 0);
 
-  private readonly restoreErrorFocus = effect(() => {
-    if (this.store.state() !== 'error') return;
-    const errors = this.store.fieldErrors();
-    const field = (['from', 'to', 'type', 'mode', 'packaging'] as const)
-      .find(candidate => errors[candidate]);
-    if (field) queueMicrotask(() => document.getElementById(`dashboard-${field}`)?.focus());
-  });
+  constructor() {
+    effect(() => {
+      if (this.store.state() !== 'error') return;
+      const errors = this.store.fieldErrors();
+      const field = (['from', 'to', 'type', 'mode', 'packaging'] as const)
+        .find(candidate => errors[candidate]);
+      if (field) queueMicrotask(() => document.getElementById(`dashboard-${field}`)?.focus());
+    });
+  }
 
   ngOnInit(): void {
     this.store.load();

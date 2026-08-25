@@ -1,9 +1,9 @@
-import { AfterViewInit, ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
+import { type AfterViewInit, ChangeDetectionStrategy, Component, type OnInit, computed, inject, signal } from '@angular/core';
 import { FormField, FormRoot, form, required, submit, validate } from '@angular/forms/signals';
 import { SaleStore } from '../application/sale-store';
-import { SaleCommand } from '../domain/sale-command';
-import { SaleContext } from '../domain/sale-context';
-import { SellableArticle } from '../domain/sellable-article';
+import type { SaleCommand } from '../domain/sale-command';
+import type { SaleContext } from '../domain/sale-context';
+import type { SellableArticle } from '../domain/sellable-article';
 
 interface SaleFormModel {
   quantity: string;
@@ -78,7 +78,7 @@ export class SalesPage implements AfterViewInit, OnInit {
     const modes = article.consumptionModes ?? [];
     this.saleModelState.update((model) => ({
       ...model,
-      context: article.type === 'food' && modes.length === 1 ? modes[0] : '',
+      context: article.type === 'food' && modes.length === 1 ? modes[0] ?? '' : '',
     }));
     this.clientStatusState.set('');
   }

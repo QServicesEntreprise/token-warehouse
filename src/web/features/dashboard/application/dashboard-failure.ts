@@ -1,4 +1,4 @@
-import { DashboardFilter } from '../domain/dashboard-filter';
+import type { DashboardFilter } from '../domain/dashboard-filter';
 
 export class DashboardFailure extends Error {
   constructor(

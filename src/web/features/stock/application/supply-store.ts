@@ -1,9 +1,10 @@
 import { DestroyRef, Injectable, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { Observable, Subject, catchError, map, of, switchMap, tap } from 'rxjs';
-import { RecordBulkSupplyCommand } from '../domain/record-bulk-supply-command';
-import { RecordSupplyCommand } from '../domain/record-supply-command';
-import { SupplyResult } from '../domain/supply-result';
+import { Subject, catchError, map, of, switchMap, tap } from 'rxjs';
+import type { Observable } from 'rxjs';
+import type { RecordBulkSupplyCommand } from '../domain/record-bulk-supply-command';
+import type { RecordSupplyCommand } from '../domain/record-supply-command';
+import type { SupplyResult } from '../domain/supply-result';
 import { STOCK_GATEWAY } from './stock-gateway-token';
 
 @Injectable()

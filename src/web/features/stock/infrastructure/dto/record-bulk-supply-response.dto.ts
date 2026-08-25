@@ -1,5 +1,5 @@
-import { BulkSupplyOperationDto } from './bulk-supply-operation.dto';
-import { StockPositionDto } from './stock-position.dto';
+import type { BulkSupplyOperationDto } from './bulk-supply-operation.dto';
+import type { StockPositionDto } from './stock-position.dto';
 
 export interface RecordBulkSupplyResponseDto {
   operation: BulkSupplyOperationDto;

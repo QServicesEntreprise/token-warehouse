@@ -2,15 +2,15 @@ import { TestBed } from '@angular/core/testing';
 import { Observable, of, throwError } from 'rxjs';
 import { describe, expect, it } from 'vitest';
 import { STOCK_GATEWAY } from '../application/stock-gateway-token';
-import { StockGateway } from '../application/stock-gateway';
+import type { StockGateway } from '../application/stock-gateway';
 import { StockPositionStore } from '../application/stock-position-store';
-import { CorrectableSource } from '../domain/correctable-source';
-import { CounterMovementResult } from '../domain/counter-movement-result';
-import { RecordCounterMovementCommand } from '../domain/record-counter-movement-command';
-import { StockPosition } from '../domain/stock-position';
-import { InventoryReceipt } from '../domain/inventory-receipt';
-import { HistoryEntry } from '../domain/history-entry';
-import { HistoryQuery } from '../application/history-query';
+import type { CorrectableSource } from '../domain/correctable-source';
+import type { CounterMovementResult } from '../domain/counter-movement-result';
+import type { RecordCounterMovementCommand } from '../domain/record-counter-movement-command';
+import type { StockPosition } from '../domain/stock-position';
+import type { InventoryReceipt } from '../domain/inventory-receipt';
+import type { HistoryEntry } from '../domain/history-entry';
+import type { HistoryQuery } from '../application/history-query';
 import { StockPage } from './stock-page';
 
 const blockedPosition: StockPosition = {

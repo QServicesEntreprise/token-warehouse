@@ -1,5 +1,5 @@
-import { SupplyResult } from '../domain/supply-result';
-import { RecordSupplyResponseDto } from './dto/record-supply-response.dto';
+import type { SupplyResult } from '../domain/supply-result';
+import type { RecordSupplyResponseDto } from './dto/record-supply-response.dto';
 import { mapStockPositionDto } from './map-stock-position-dto';
 
 export const mapRecordSupplyResponse = (dto: RecordSupplyResponseDto): SupplyResult => ({

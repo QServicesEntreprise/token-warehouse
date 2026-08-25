@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
 import { test } from 'node:test';
-import { join } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 
 const root = new URL('../', import.meta.url).pathname;
 
@@ -132,7 +132,7 @@ test('Playwright runs claim their ports instead of sharing fixed ones', async ()
   }
 });
 
-test('Angular routing shell stays free of legacy business state', async () => {
+test('Angular routing shell is composition-only and contains no legacy route', async () => {
   const appDirectory = join(root, 'src/web/app');
   const app = await readFile(join(appDirectory, 'app.ts'), 'utf8');
   const template = await readFile(join(appDirectory, 'app.html'), 'utf8');
@@ -148,33 +148,30 @@ test('Angular routing shell stays free of legacy business state', async () => {
   assert.match(template, /<router-outlet\s*\/?\s*>/);
   assert.doesNotMatch(template, /HttpClient|ApiService|\bsignal\s*\(|\bcomputed\s*\(/);
 
-  for (const path of [
-    'dashboard',
-    'catalogue',
-    'stock',
-    'approvisionnements',
-    'inventaires',
-    'corrections',
-    'historique',
-    'ventes',
+  for (const [path, routeFile] of [
+    ['dashboard', 'dashboard.routes.ts'],
+    ['catalogue', '../features/catalogue/catalogue.routes.ts'],
+    ['stock', '../features/stock/stock.routes.ts'],
+    ['ventes', '../features/sales/sales.routes.ts'],
   ]) {
     assert.match(routes, new RegExp(`path: '${path}'`));
+    assert.match(routes, /loadChildren:/);
+    const childRoutes = await readFile(join(appDirectory, routeFile), 'utf8');
+    assert.match(childRoutes, /loadComponent:/);
+    assert.doesNotMatch(childRoutes, /\bcomponent\s*:/);
   }
-  assert.match(routes, /data:\s*\{\s*section:/);
-  assert.match(routes, /const loadLegacy\s*=\s*\(\)\s*=>\s*import\(['"]\.\/legacy-backoffice-page['"]\)/);
   assert.match(config, /provideRouter\(routes\)/);
-
-  const legacyAllowlist = [
-    'legacy-backoffice-page.spec.ts',
-    'legacy-backoffice-page.ts',
-  ];
-  const legacyFiles = (await readdir(appDirectory))
-    .filter((file) => file.startsWith('legacy-backoffice-page.'))
-    .sort();
-  assert.deepEqual(legacyFiles, legacyAllowlist);
-  assert.match(
-    await readFile(join(appDirectory, 'legacy-backoffice-page.ts'), 'utf8'),
-    /export class LegacyBackofficePage/,
+  assert.doesNotMatch(routes, /legacy|Legacy|loadLegacy/);
+  assert.doesNotMatch(config, /legacy|Legacy/);
+  assert.deepEqual(
+    (await readdir(appDirectory)).filter((file) => /legacy|app\.component|dashboard\.component/.test(file)),
+    [],
+  );
+  assert.deepEqual(
+    (await readdir(appDirectory, { withFileTypes: true }))
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name),
+    [],
   );
 });
 
@@ -183,7 +180,6 @@ test('Catalogue is an autonomous lazy context and no longer lives in legacy', as
   const catalogueDirectory = join(root, 'src/web/features/catalogue');
   const routes = await readFile(join(appDirectory, 'app.routes.ts'), 'utf8');
   const catalogueRoutes = await readFile(join(catalogueDirectory, 'catalogue.routes.ts'), 'utf8');
-  const legacy = await readFile(join(appDirectory, 'legacy-backoffice-page.ts'), 'utf8');
 
   for (const page of ['catalogue-list-page', 'article-create-page', 'article-details-page']) {
     assert.match(catalogueRoutes, new RegExp(`presentation/${page}`));
@@ -191,10 +187,9 @@ test('Catalogue is an autonomous lazy context and no longer lives in legacy', as
   assert.match(routes, /features\/catalogue\/catalogue\.routes/);
   assert.match(catalogueRoutes, /path: 'nouveau'/);
   assert.match(catalogueRoutes, /path: ':ean13'/);
-  assert.doesNotMatch(legacy, /ArticleApiService|catalog-title|create-title|lookup-title|catalog[A-Z]/);
   await assert.rejects(readFile(join(appDirectory, 'article-api.service.ts'), 'utf8'));
   await assert.rejects(readFile(join(appDirectory, 'sale-price-quote.ts'), 'utf8'));
-  await readFile(join(root, 'src/web/features/sales/domain/sale-price-quote.ts'), 'utf8');
+  await assert.rejects(readFile(join(root, 'src/web/features/sales/domain/sale-price-quote.ts'), 'utf8'));
 
   const layerSources = async (layer) => Promise.all(
     (await readdir(join(catalogueDirectory, layer), { recursive: true }))
@@ -216,13 +211,13 @@ test('Stock positions are an autonomous lazy context and no longer live in legac
   const appDirectory = join(root, 'src/web/app');
   const stockDirectory = join(root, 'src/web/features/stock');
   const routes = await readFile(join(appDirectory, 'app.routes.ts'), 'utf8');
-  const legacy = await readFile(join(appDirectory, 'legacy-backoffice-page.ts'), 'utf8');
+  const stockRoutes = await readFile(join(stockDirectory, 'stock.routes.ts'), 'utf8');
   const store = await readFile(join(stockDirectory, 'application/stock-position-store.ts'), 'utf8');
   const page = await readFile(join(stockDirectory, 'presentation/stock-page.ts'), 'utf8');
 
-  assert.match(routes, /features\/stock\/presentation\/stock-page/);
-  assert.match(routes, /provide:\s*STOCK_GATEWAY,\s*useExisting:\s*HttpStockGateway/);
-  assert.doesNotMatch(legacy, /stock-panel|stockPositions|stockState|openStockPosition|loadStock/);
+  assert.match(routes, /features\/stock\/stock\.routes/);
+  assert.match(stockRoutes, /loadComponent:[\s\S]*presentation\/stock-page/);
+  assert.match(stockRoutes, /provide:\s*STOCK_GATEWAY,\s*useExisting:\s*HttpStockGateway/);
   await assert.rejects(readFile(join(appDirectory, 'stock-api.service.ts'), 'utf8'));
   assert.doesNotMatch(store, /HttpClient|\b\w+(Dto|Payload|Response)\b/);
   assert.match(store, /inject\(STOCK_GATEWAY\)/);
@@ -250,10 +245,10 @@ test('Stock Inventories are autonomous, route-scoped and absent from legacy', as
   const appDirectory = join(root, 'src/web/app');
   const stockDirectory = join(root, 'src/web/features/stock');
   const routes = await readFile(join(appDirectory, 'app.routes.ts'), 'utf8');
-  const legacy = await readFile(join(appDirectory, 'legacy-backoffice-page.ts'), 'utf8');
+  const stockRoutes = await readFile(join(stockDirectory, 'stock.routes.ts'), 'utf8');
 
-  assert.match(routes, /path: 'inventaires'[\s\S]*providers:[\s\S]*InventoryStore[\s\S]*STOCK_GATEWAY[\s\S]*HttpStockGateway[\s\S]*LAST_INVENTORY_STORAGE[\s\S]*SessionLastInventoryStorage[\s\S]*loadComponent:[\s\S]*features\/stock\/presentation\/inventory-page/);
-  assert.doesNotMatch(legacy, /inventory-form|InventoryApiService|inventoryReceipt|last-inventory-id/);
+  assert.match(routes, /features\/stock\/stock\.routes/);
+  assert.match(stockRoutes, /path: 'inventaires'[\s\S]*providers:[\s\S]*InventoryStore[\s\S]*STOCK_GATEWAY[\s\S]*HttpStockGateway[\s\S]*LAST_INVENTORY_STORAGE[\s\S]*SessionLastInventoryStorage[\s\S]*loadComponent:[\s\S]*presentation\/inventory-page/);
   await assert.rejects(readFile(join(appDirectory, 'inventory-api.service.ts'), 'utf8'));
   await assert.rejects(readFile(join(appDirectory, 'stock-api.service.ts'), 'utf8'));
 
@@ -277,12 +272,13 @@ test('Stock Approvisionnements are route-scoped and no longer live in legacy', a
   const appDirectory = join(root, 'src/web/app');
   const stockDirectory = join(root, 'src/web/features/stock');
   const routes = await readFile(join(appDirectory, 'app.routes.ts'), 'utf8');
-  const legacy = await readFile(join(appDirectory, 'legacy-backoffice-page.ts'), 'utf8');
+  const stockRoutes = await readFile(join(stockDirectory, 'stock.routes.ts'), 'utf8');
   const gateway = await readFile(join(stockDirectory, 'application/stock-gateway.ts'), 'utf8');
   const store = await readFile(join(stockDirectory, 'application/supply-store.ts'), 'utf8');
   const page = await readFile(join(stockDirectory, 'presentation/supply-page.ts'), 'utf8');
 
-  assert.match(routes, /path: 'approvisionnements'[\s\S]*providers:[\s\S]*SupplyStore[\s\S]*STOCK_GATEWAY[\s\S]*HttpStockGateway[\s\S]*loadComponent:[\s\S]*features\/stock\/presentation\/supply-page/);
+  assert.match(routes, /features\/stock\/stock\.routes/);
+  assert.match(stockRoutes, /path: 'approvisionnements'[\s\S]*providers:[\s\S]*SupplyStore[\s\S]*STOCK_GATEWAY[\s\S]*HttpStockGateway[\s\S]*loadComponent:[\s\S]*presentation\/supply-page/);
   assert.match(gateway, /recordSupply/);
   assert.match(gateway, /recordBulkSupply/);
   assert.match(store, /inject\(STOCK_GATEWAY\)/);
@@ -290,21 +286,20 @@ test('Stock Approvisionnements are route-scoped and no longer live in legacy', a
   assert.match(page, /@angular\/forms\/signals/);
   assert.match(page, /SupplyStore/);
   assert.doesNotMatch(page, /HttpClient|\b\w+(Dto|Payload|Response)\b|\.\.\/infrastructure/);
-  assert.doesNotMatch(legacy, /supply-panel|StockApiService|supplyModel|supplyLines|onSupplySubmit|recordBulkSupply/);
 });
 
 test('Stock corrections are autonomous, route-scoped and free of Sales imports', async () => {
   const appDirectory = join(root, 'src/web/app');
   const stockDirectory = join(root, 'src/web/features/stock');
   const routes = await readFile(join(appDirectory, 'app.routes.ts'), 'utf8');
-  const legacy = await readFile(join(appDirectory, 'legacy-backoffice-page.ts'), 'utf8');
+  const stockRoutes = await readFile(join(stockDirectory, 'stock.routes.ts'), 'utf8');
   const files = (await readdir(stockDirectory, { recursive: true }))
     .filter((file) => file.endsWith('.ts'))
     .sort();
   const sources = await Promise.all(files.map((file) => readFile(join(stockDirectory, file), 'utf8')));
 
-  assert.match(routes, /path: 'corrections'[\s\S]*providers:[\s\S]*CounterMovementStore[\s\S]*STOCK_GATEWAY[\s\S]*HttpStockGateway[\s\S]*loadComponent:[\s\S]*counter-movement-page/);
-  assert.doesNotMatch(legacy, /CounterMovement|counter-movement/);
+  assert.match(routes, /features\/stock\/stock\.routes/);
+  assert.match(stockRoutes, /path: 'corrections'[\s\S]*providers:[\s\S]*CounterMovementStore[\s\S]*STOCK_GATEWAY[\s\S]*HttpStockGateway[\s\S]*loadComponent:[\s\S]*counter-movement-page/);
   await assert.rejects(readFile(join(appDirectory, 'counter-movement-api.service.ts'), 'utf8'));
   for (const source of sources) {
     assert.doesNotMatch(source, /(?:from\s+['"][^'"]*|import\s*\(['"][^'"]*)(?:sales|ventes)/i);
@@ -331,27 +326,27 @@ test('Stock History is autonomous, route-scoped and no longer lives in legacy', 
   const appDirectory = join(root, 'src/web/app');
   const stockDirectory = join(root, 'src/web/features/stock');
   const routes = await readFile(join(appDirectory, 'app.routes.ts'), 'utf8');
-  const legacy = await readFile(join(appDirectory, 'legacy-backoffice-page.ts'), 'utf8');
+  const stockRoutes = await readFile(join(stockDirectory, 'stock.routes.ts'), 'utf8');
   const gateway = await readFile(join(stockDirectory, 'application/stock-gateway.ts'), 'utf8');
   const store = await readFile(join(stockDirectory, 'application/history-store.ts'), 'utf8');
   const page = await readFile(join(stockDirectory, 'presentation/history-page.ts'), 'utf8');
 
-  assert.match(routes, /path: 'historique'[\s\S]*providers:[\s\S]*HistoryStore[\s\S]*STOCK_GATEWAY[\s\S]*HttpStockGateway[\s\S]*loadComponent:[\s\S]*features\/stock\/presentation\/history-page/);
+  assert.match(routes, /features\/stock\/stock\.routes/);
+  assert.match(stockRoutes, /path: 'historique'[\s\S]*providers:[\s\S]*HistoryStore[\s\S]*STOCK_GATEWAY[\s\S]*HttpStockGateway[\s\S]*loadComponent:[\s\S]*presentation\/history-page/);
   assert.match(gateway, /history\(query: HistoryQuery\)/);
   assert.match(store, /inject\(STOCK_GATEWAY\)/);
   assert.match(store, /switchMap/);
   assert.doesNotMatch(store, /HttpClient|\b\w+(Dto|Payload|Response)\b/);
   assert.match(page, /HistoryStore/);
   assert.doesNotMatch(page, /HttpClient|\b\w+(Dto|Payload|Response)\b|\.\.\/domain|\.\.\/infrastructure/);
-  assert.doesNotMatch(legacy, /HistoryApiService|history-panel|historyEntries|historyState|loadHistory/);
   await assert.rejects(readFile(join(appDirectory, 'history-api.service.ts'), 'utf8'));
 });
 
 test('the Sales context is autonomous and route-scoped', async () => {
   const appDirectory = join(root, 'src/web/app');
-  const salesDirectory = join(appDirectory, 'features/sales');
+  const salesDirectory = join(root, 'src/web/features/sales');
   const routes = await readFile(join(appDirectory, 'app.routes.ts'), 'utf8');
-  const legacy = await readFile(join(appDirectory, 'legacy-backoffice-page.ts'), 'utf8');
+  const salesRoutes = await readFile(join(salesDirectory, 'sales.routes.ts'), 'utf8');
   const salesFiles = (await readdir(salesDirectory, { recursive: true }))
     .filter((file) => file.endsWith('.ts'))
     .sort();
@@ -359,8 +354,8 @@ test('the Sales context is autonomous and route-scoped', async () => {
     salesFiles.map((file) => readFile(join(salesDirectory, file), 'utf8')),
   );
 
-  assert.match(routes, /path: 'ventes'[\s\S]*providers:[\s\S]*SaleStore[\s\S]*SALES_GATEWAY[\s\S]*HttpSalesGateway[\s\S]*LAST_SALE_STORAGE[\s\S]*SessionLastSaleStorage[\s\S]*loadComponent:[\s\S]*features\/sales\/presentation\/sales-page/);
-  assert.doesNotMatch(legacy, /sale-panel|SalesApiService|SaleArticleResponse|SaleResponse|last-sale-id/);
+  assert.match(routes, /features\/sales\/sales\.routes/);
+  assert.match(salesRoutes, /providers:[\s\S]*SaleStore[\s\S]*SALES_GATEWAY[\s\S]*HttpSalesGateway[\s\S]*LAST_SALE_STORAGE[\s\S]*SessionLastSaleStorage[\s\S]*loadComponent:[\s\S]*presentation\/sales-page/);
   assert.ok(!salesFiles.includes('sales-api.service.ts'));
   for (const source of salesSources) {
     assert.doesNotMatch(source, /(?:from\s+['"][^'"]*|import\s*\(['"][^'"]*)(?:catalogue|stock|dashboard)/i);
@@ -431,4 +426,111 @@ test('Dashboard stays lazy, route-scoped and isolated from writing contexts', as
   assert.doesNotMatch(store, /providedIn/);
   assert.match(store, /switchMap/);
   assert.match(store, /takeUntilDestroyed/);
+});
+
+test('the final frontend has executable boundaries and no migration leftovers', async () => {
+  const webRoot = join(root, 'src/web');
+  const contexts = [
+    { name: 'catalogue', directory: join(webRoot, 'features/catalogue') },
+    { name: 'stock', directory: join(webRoot, 'features/stock') },
+    { name: 'dashboard', directory: join(webRoot, 'features/dashboard') },
+    { name: 'sales', directory: join(webRoot, 'features/sales') },
+  ];
+  const walk = async (directory) => {
+    const entries = await readdir(directory, { withFileTypes: true });
+    const files = [];
+    for (const entry of entries) {
+      const file = join(directory, entry.name);
+      if (entry.isDirectory()) files.push(...await walk(file));
+      else files.push(file);
+    }
+    return files;
+  };
+  const allFiles = await walk(webRoot);
+  const productionFiles = allFiles.filter((file) => file.endsWith('.ts') && !file.endsWith('.spec.ts'));
+  const sources = await Promise.all(productionFiles.map(async (file) => ({
+    file,
+    source: await readFile(file, 'utf8'),
+  })));
+
+  assert.deepEqual(
+    allFiles.filter((file) => /(?:^|\/)(?:models|types|utils|index)\.ts$|(?:-api\.service\.ts$)|(?:legacy|app\.component|dashboard\.component)/i.test(file)),
+    [],
+  );
+  for (const { file, source } of sources) {
+    assert.doesNotMatch(source, /LegacyBackofficePage|loadLegacy|legacy-backoffice-page|(?:Article|Stock|History|Sales|Dashboard)ApiService/);
+    assert.ok(
+      [...source.matchAll(/^\s*export\s+(?:(?:abstract|declare)\s+)?(?:class|interface|type|const|function|enum)\b/gm)].length <= 1,
+      file,
+    );
+  }
+
+  const layerDependencies = {
+    domain: new Set(['domain']),
+    application: new Set(['domain', 'application']),
+    infrastructure: new Set(['domain', 'application', 'infrastructure']),
+    presentation: new Set(['domain', 'application', 'presentation']),
+  };
+  const contextFor = (file) => contexts.find(({ directory }) => (
+    file === directory || file.startsWith(`${directory}/`)
+  ));
+  const layerFor = (file, context) => {
+    if (!context) return undefined;
+    const path = relative(context.directory, file).replaceAll('\\', '/');
+    return ['domain', 'application', 'infrastructure', 'presentation']
+      .find((layer) => path.startsWith(`${layer}/`));
+  };
+
+  for (const { file, source } of sources) {
+    const context = contextFor(file);
+    const layer = layerFor(file, context);
+    const imports = [
+      ...source.matchAll(/\bfrom\s+['"]([^'"]+)['"]/g),
+      ...source.matchAll(/^\s*import\s*['"]([^'"]+)['"]/gm),
+    ].map((match) => match[1]);
+    for (const specifier of imports) {
+      if (!specifier.startsWith('.') || !context) continue;
+      const target = resolve(dirname(file), specifier);
+      const targetContext = contextFor(target);
+      if (targetContext && targetContext.name !== context.name) {
+        assert.fail(`${file} imports another bounded context through ${specifier}`);
+      }
+      if (!layer || !targetContext) continue;
+      const targetLayer = layerFor(target, targetContext);
+      if (targetLayer) assert.ok(layerDependencies[layer].has(targetLayer), `${file} -> ${specifier}`);
+    }
+
+    if (!layer) continue;
+    if (layer === 'domain') {
+      assert.doesNotMatch(source, /@angular|rxjs|HttpClient|Router|document\.|sessionStorage/);
+    }
+    if (layer === 'application') {
+      assert.doesNotMatch(source, /HttpClient|Router|document\.|sessionStorage|\b\w+(Dto|Payload|Response)\b/);
+    }
+    if (layer === 'presentation') {
+      assert.doesNotMatch(source, /HttpClient|\b\w+(Dto|Payload|Response)\b|(?:^|[/'"])infrastructure(?:[/'"]|$)/);
+    }
+    if (layer !== 'infrastructure') {
+      assert.doesNotMatch(source, /\b\w+(Dto|Payload|Response)\b/);
+    }
+  }
+
+  const tsconfig = JSON.parse(await readFile(join(root, 'tsconfig.json'), 'utf8'));
+  for (const option of [
+    'verbatimModuleSyntax',
+    'isolatedModules',
+    'noUncheckedSideEffectImports',
+    'noUncheckedIndexedAccess',
+    'exactOptionalPropertyTypes',
+    'noUnusedLocals',
+    'noUnusedParameters',
+  ]) {
+    assert.equal(tsconfig.compilerOptions[option], true, `tsconfig compilerOptions.${option}`);
+  }
+  assert.equal(tsconfig.compilerOptions.moduleDetection, 'force');
+
+  const packageJson = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
+  assert.match(packageJson.devDependencies.typescript, /^6\.0\.\d+$/);
+  const globalStyles = await readFile(join(webRoot, 'styles.css'), 'utf8');
+  assert.doesNotMatch(globalStyles, /\.(?:catalog-filters|supply-form|supply-line|primary-link|stale-result|price-quote|dashboard-[\w-]+)/);
 });

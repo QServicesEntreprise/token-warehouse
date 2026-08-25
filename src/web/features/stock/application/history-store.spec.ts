@@ -1,11 +1,11 @@
 import { TestBed } from '@angular/core/testing';
 import { Observable, Subject, of, throwError } from 'rxjs';
 import { describe, expect, it } from 'vitest';
-import { HistoryEntry } from '../domain/history-entry';
-import { StockPosition } from '../domain/stock-position';
+import type { HistoryEntry } from '../domain/history-entry';
+import type { StockPosition } from '../domain/stock-position';
 import { STOCK_GATEWAY } from './stock-gateway-token';
-import { StockGateway } from './stock-gateway';
-import { HistoryQuery } from './history-query';
+import type { StockGateway } from './stock-gateway';
+import type { HistoryQuery } from './history-query';
 import { HistoryStore } from './history-store';
 
 const entry = (id: string): HistoryEntry => ({

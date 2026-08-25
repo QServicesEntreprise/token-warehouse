@@ -1,6 +1,6 @@
-import { InventoryReceipt } from '../domain/inventory-receipt';
-import { StockPosition } from '../domain/stock-position';
-import { InventoryOperationDto } from './dto/inventory-operation.dto';
+import type { InventoryReceipt } from '../domain/inventory-receipt';
+import type { StockPosition } from '../domain/stock-position';
+import type { InventoryOperationDto } from './dto/inventory-operation.dto';
 
 export const mapInventoryOperationDto = (
   operation: InventoryOperationDto,

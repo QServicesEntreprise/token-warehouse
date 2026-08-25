@@ -1,4 +1,4 @@
-import { HistoryEntry } from '../domain/history-entry';
+import type { HistoryEntry } from '../domain/history-entry';
 
 export type HistoryLoadState =
   | { status: 'idle'; entries: readonly HistoryEntry[] }

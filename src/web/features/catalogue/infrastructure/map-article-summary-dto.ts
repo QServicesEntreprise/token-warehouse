@@ -1,5 +1,5 @@
-import { ArticleSummary } from '../domain/article-summary';
-import { ArticleDto } from './dto/article.dto';
+import type { ArticleSummary } from '../domain/article-summary';
+import type { ArticleDto } from './dto/article.dto';
 import { mapArticleDto } from './map-article-dto';
 
 export const mapArticleSummaryDto = (dto: ArticleDto): ArticleSummary => {

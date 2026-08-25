@@ -1,11 +1,11 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Subject, catchError, map, of, switchMap, tap } from 'rxjs';
-import { StockPosition } from '../domain/stock-position';
+import type { StockPosition } from '../domain/stock-position';
 import { STOCK_GATEWAY } from './stock-gateway-token';
 import { stockFailureMessage } from './stock-failure-message';
-import { StockPositionDetailState } from './stock-position-detail-state';
-import { StockPositionLoadState } from './stock-position-load-state';
+import type { StockPositionDetailState } from './stock-position-detail-state';
+import type { StockPositionLoadState } from './stock-position-load-state';
 
 @Injectable()
 export class StockPositionStore {

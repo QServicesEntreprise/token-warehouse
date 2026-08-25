@@ -1,8 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 import { Subject, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { SaleResult } from '../domain/sale-result';
-import { SellableArticle } from '../domain/sellable-article';
+import type { SaleResult } from '../domain/sale-result';
+import type { SellableArticle } from '../domain/sellable-article';
 import { LAST_SALE_STORAGE } from './last-sale-storage.token';
 import { SaleStore } from './sale-store';
 import { SALES_GATEWAY } from './sales-gateway.token';

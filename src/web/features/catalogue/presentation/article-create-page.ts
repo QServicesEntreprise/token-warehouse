@@ -1,11 +1,11 @@
-import { AfterViewInit, ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
-import { FieldTree, FormField, TreeValidationResult, form, hidden, pattern, required, submit } from '@angular/forms/signals';
+import { type AfterViewInit, ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { type FieldTree, FormField, type TreeValidationResult, form, hidden, pattern, required, submit } from '@angular/forms/signals';
 import { Router, RouterLink } from '@angular/router';
-import { ArticleCreateCommand } from '../application/article-create-command';
+import type { ArticleCreateCommand } from '../application/article-create-command';
 import { ArticleCreateStore } from '../application/article-create-store';
-import { ArticleType } from '../domain/article-type';
-import { Packaging } from '../domain/packaging';
-import { ConsumptionMode } from '../../../shared-kernel/consumption-mode';
+import type { ArticleType } from '../domain/article-type';
+import type { Packaging } from '../domain/packaging';
+import type { ConsumptionMode } from '../../../shared-kernel/consumption-mode';
 
 interface ArticleFormModel {
   ean13: string;

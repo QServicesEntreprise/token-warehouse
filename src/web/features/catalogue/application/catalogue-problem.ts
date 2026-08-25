@@ -1,5 +1,5 @@
 export interface CatalogueProblem {
-  code?: string;
+  code?: string | undefined;
   fieldErrors: Record<string, string[]>;
   title: string;
 }

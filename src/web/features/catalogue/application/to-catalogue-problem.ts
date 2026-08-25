@@ -1,4 +1,4 @@
-import { CatalogueProblem } from './catalogue-problem';
+import type { CatalogueProblem } from './catalogue-problem';
 
 export const toCatalogueProblem = (error: unknown, fallback: string): CatalogueProblem => {
   if (typeof error === 'object' && error !== null && 'title' in error) {
