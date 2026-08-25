@@ -1,163 +1,352 @@
 # Token Warehouse
 
-Socle exécutable et testable du monolithe modulaire, avec le parcours de création
-et de consultation d’un Article.
+Back-office de gestion de stocks pour un entrepôt unique, réalisé en réponse à
+l'exercice technique « Gestion de stocks ».
 
-## Stack et structure
+Angular 22 (standalone, Signals, Signal Forms) devant une API ASP.NET Core 10
+Minimal API en C#, sur SQLite via EF Core 10. Découpage hexagonal
+Domain / Application / Infrastructure / Presentation, vérifié par un test
+d'architecture.
 
-- .NET SDK `10.0.400`, ASP.NET Core 10 Minimal API et EF Core 10.
-- Angular `22.1.3` standalone avec Signals/Signal Forms et le builder Angular `22.1.5`.
-- SQLite local dans `src/backend/TokenWarehouse.Api/token-warehouse.db` pour le
-  lancement manuel; les tests d'intégration utilisent un fichier temporaire et
-  une connexion SQLite `:memory:` conservée ouverte.
-- Le test Playwright démarre l’API avec une base SQLite temporaire isolée pour
-  chaque scénario sous `artifacts/playwright/<port>/`.
-- Playwright `1.62.1` réserve deux ports libres par exécution — un pour Angular,
-  un pour l’API — pendant que chaque scénario redémarre l’API avec sa propre
-  base. Deux suites lancées en parallèle n’entrent donc pas en conflit.
-  `TOKEN_WAREHOUSE_WEB_PORT` et `TOKEN_WAREHOUSE_API_PORT` figent ces ports au
-  besoin. Le lancement manuel garde `5100` et `4200`.
+---
 
-Les dépendances vont de `Domain` vers `Application`, puis vers
-`Infrastructure`; `Api` compose les adapters. Aucun generic repository,
-Mediator, CQRS ou bus d'événements n'est présent.
+## 1. Réponses aux questions du brief
 
-## Prérequis et premier lancement
+### IA utilisée
 
-Depuis la racine, dans un checkout propre:
+- **Claude Code (Opus)** — agent principal, exécution des loops de spécification
+  et de delivery.
+- **ChatGPT (GPT)** — en second, pour la mise au point du workflow et des
+  arbitrages ponctuels de conception.
+
+### Usages de l'IA
+
+L'IA n'a pas été utilisée en « autocomplétion assistée ». Le temps humain a été
+investi dans la **conception d'un workflow agentique** qui produit, relit et
+valide le code de bout en bout ; le pilotage de ce workflow a ensuite remplacé
+l'écriture directe.
+
+Le workflow est branché sur GitHub Issues et GitHub Projects, et s'exécute en
+huit loops :
+
+| Phase | Loop | Rôle |
+| --- | --- | --- |
+| Spécification | `po` | Raffine le besoin métier en issue lisible et testable. |
+| Spécification | `tech-spec` | Raffine la solution technique, les seams et l'impact architecture. |
+| Spécification | `qa-spec` | Transforme l'issue en contrat QA falsifiable avant tout code. |
+| Delivery | `developer` | Implémente le ticket, en TDD, sur une branche dédiée. |
+| Delivery | `reviewer` | Revue technique indépendante de la PR. |
+| Delivery | `qa` | Validation QA au SHA exact, checks déterministes + exploration Playwright. |
+| Delivery | `rework` | Reprend les rejets de review ou de QA. |
+| Delivery | `merge` | Merge après review et QA vertes. |
+
+Chaque tranche fonctionnelle a donc traversé un refine besoin → refine technique
+→ refine qualité → développement → review → QA → merge, avec une PR numérotée
+par tranche (45 commits, une PR par tranche verticale).
+
+Ce qui est resté à la main, et qui explique les choix visibles dans le code :
+la **modélisation du domaine** (agrégats, value objects, politiques), les
+**arbitrages métier** (archivage plutôt que suppression, contre-mouvement plutôt
+qu'édition d'historique, taux de TVA rationnels plutôt que décimaux), le
+**périmètre**, et l'**acceptation ou le rejet** de chaque PR.
+
+### Temps passé
+
+**Une dizaine d'heures de temps humain**, réparties sur 8 jours calendaires
+(18 → 25 août 2026). L'essentiel de ces heures est allé à la construction du
+workflow, à la spécification et à la revue — pas à la frappe de code.
+
+C'est l'hypothèse de travail assumée de ce rendu : à qualité égale, le levier
+d'un Lead Tech n'est pas sa vitesse de frappe, c'est le système qu'il met en
+place pour que le travail sorte relu, testé et traçable sans lui.
+
+### Choix et hypothèses
+
+**Interprétations de l'énoncé**
+
+- **« Suppression » d'un Article → archivage réversible.** Un Article référencé
+  par des mouvements de stock ne peut pas disparaître sans casser l'Historique
+  et les Ventes déjà enregistrées. `POST /api/articles/{ean13}/archive` et
+  `/reactivate` remplacent le `DELETE`. L'archivage rend l'Article non vendable
+  et bloque l'approvisionnement, sans effacer son passé.
+- **Une correction ne modifie jamais un fait passé.** Une erreur de saisie se
+  corrige par un **Contre-mouvement** explicite et justifié, qui annule l'effet
+  du mouvement source et le référence. Lecture comptable du besoin exprimé par
+  l'énoncé (« articles perdus ou volés », « erreurs de saisie de stock »).
+- **Le Stock physique est une position courante, pas un recalcul.** L'énoncé
+  définit la quantité en stock comme « la somme des approvisionnements depuis le
+  dernier inventaire, moins les quantités vendues ». Le système tient une
+  position courante mutée dans la même transaction que chaque fait, et un
+  Inventaire pose une nouvelle base physique. Résultat identique, lecture O(1)
+  au lieu d'un repli sur tout l'historique.
+- **Stock physique ≠ Stock vendable.** Un Article périmé, archivé ou au
+  packaging invendable conserve son Stock physique mais tombe à zéro vendable,
+  avec la raison exposée par l'API.
+- **Les prix TTC ne sont jamais persistés.** Ils sont recalculés à partir du
+  Prix HT et du taux applicable. Seule une Vente fige son snapshot financier,
+  qui reste immuable ensuite.
+- **Les montants sont en centimes entiers, les taux de TVA en rationnels.**
+  `TaxRate("takeaway", 11, 200)` plutôt que `0.055m`. Aucun flottant sur un
+  chemin financier, arrondi au centime explicite et testé aux bornes.
+- **Un seul Entrepôt, un seul Gestionnaire, pas d'authentification.** Hors
+  périmètre de l'exercice.
+
+**Choix techniques**
+
+- **Monolithe modulaire, pas de microservices.** Quatre projets, dépendances à
+  sens unique, composition dans la Presentation.
+- **Pas de Mediator, pas de CQRS, pas de bus d'événements, pas de generic
+  repository.** Des classes de use case explicites suffisent à cette taille. Un
+  test d'architecture échoue si l'un de ces éléments réapparaît.
+- **SQLite en fichier local.** Aucun service externe, aucun secret, aucune
+  installation ; les migrations s'appliquent au démarrage.
+- **Angular 22 avec Signal Forms.** Choisi pour la validation typée des
+  formulaires de saisie. Voir la réserve en §6.
+- **Aucune librairie de composants UI.** Le CSS est écrit à la main, l'interface
+  reste sobre et pilotable au clavier.
+
+**Périmètre**
+
+L'énoncé précise « il n'est pas obligatoire de tout faire ». Toutes les
+fonctionnalités listées en exemple sont couvertes, et trois modules ont été
+ajoutés au-delà : **Ventes** (nécessaires pour que « moins les quantités
+vendues » ait un sens), **Contre-mouvements**, et un **Dashboard** de pilotage
+avec indicateurs financiers.
+
+Assumé : c'est un dépassement de périmètre. Il est le produit du débit du
+workflow agentique, pas d'un arbitrage produit. Voir §6 pour ce que je
+retrancherais.
+
+---
+
+## 2. Lancer le projet
+
+### Prérequis
+
+- .NET SDK `10.0.400`
+- Node.js `>= 24.15.0`
+
+### Installation
 
 ```sh
-dotnet --version
-node --version
-npm --version
 dotnet tool restore
 npm ci --legacy-peer-deps
 npx playwright install chromium
 ```
 
-Le checkout de référence utilise .NET `10.0.400` et Node `>=24.15.0`.
 `--legacy-peer-deps` est requis par le lockfile Angular 22, qui utilise
 TypeScript `6.0.3`, version stable compatible avec Angular 22.
 
-## Vérification déterministe
+### Lancement manuel
 
 ```sh
-dotnet build TokenWarehouse.slnx
-dotnet test TokenWarehouse.slnx --no-build
-npm run build:web
-npm run test:web
-npm run test:architecture
-npm run test:e2e
+# Terminal 1 — API sur http://127.0.0.1:5100
+dotnet run --project src/backend/TokenWarehouse.Api/TokenWarehouse.Api.csproj --urls http://127.0.0.1:5100
+
+# Terminal 2 — front sur http://127.0.0.1:4200
+npm run start:web
 ```
 
-Ou, après `dotnet tool restore` et `npm ci --legacy-peer-deps`:
+Le front proxifie `/api` vers l'API. La base SQLite est créée et migrée au
+démarrage dans `src/backend/TokenWarehouse.Api/token-warehouse.db`.
+
+### Vérification complète
 
 ```sh
 npm run verify
 ```
 
-`dotnet test` couvre le Domain, l’Application, la composition du host HTTP,
-SQLite, les collisions EAN et la substitution du fake. `npm run test:web`
-exécute les tests publics du formulaire Angular. Le test Playwright crée puis
-relit des Articles alimentaires et non alimentaires dans l’interface réelle,
-avec erreurs et clavier; le scénario de panne intercepte uniquement la requête
-publique du Catalogue pour rendre l’erreur et le retry déterministes.
-
-La commande `npm run verify` a été exécutée deux fois le 19 août 2026 : une
-fois après l'installation initiale, puis après `dotnet clean TokenWarehouse.slnx`
-et `npm ci --legacy-peer-deps`. Les deux exécutions ont terminé avec le code 0,
-sans service externe ni fichier `.env`.
-
-## Lancement manuel et nettoyage
+Enchaîne, dans cet ordre :
 
 ```sh
-dotnet run --project src/backend/TokenWarehouse.Api/TokenWarehouse.Api.csproj --urls http://127.0.0.1:5100
-npm run start:web
+npm run build:web          # build Angular de production
+npm run test:web           # tests unitaires front (Vitest)
+npm run test:architecture  # tests d'architecture (node:test)
+dotnet build TokenWarehouse.slnx
+dotnet test TokenWarehouse.slnx --no-build
+npm run test:e2e           # Playwright, API réelle
 ```
 
-L’API expose `GET /health`, `GET /api/articles`, `POST /api/articles`,
-`GET /api/articles/{ean13}`, `PATCH /api/articles/{ean13}`,
-`POST /api/articles/{ean13}/archive`, `POST /api/articles/{ean13}/reactivate`
-`POST /api/inventories`, `POST /api/inventories/bulk`, `GET /api/inventories/{id}`
-et `GET /api/history?ean13={ean13}`. Elle expose aussi
-`POST /api/supplies` pour enregistrer une réception unitaire. Le payload
-conserve `ean13` comme chaîne et exige une `quantity` entière strictement
-positive; le succès `201` retourne l’`operation` immuable (`id`, `type`,
-`ean13`, `quantity`, `occurredAt`) et la `position` engagée. Les erreurs sont
-des Problem Details: `400` pour la structure ou la quantité, `404` pour un
-Article inconnu et `409` avec `code: article_archived` pour un Article archivé.
-`POST /api/supplies/bulk` reçoit `lines`, une collection non vide de lignes
-`{ ean13, quantity }`. Toutes les lignes sont validées avant une transaction
-unique; le succès `201` retourne une seule `operation` avec ses lignes
-ordonnées et les `positions` engagées dans le même ordre. Une erreur de ligne
-rejette toute la livraison et conserve les erreurs sous des clés comme
-`lines[1].quantity`; les erreurs mélangées suivent la priorité `400`, `409`,
-puis `404`.
-`POST /api/inventories` et `GET /api/inventories/{id}` enregistrent ou relisent
-Un Inventaire unitaire reçoit `ean13` et `countedQuantity`; l’Inventaire en masse
-reçoit une collection non vide `lines` avec un seul Article par ligne. Les deux
-réponses renvoient uniquement le fait engagé, l’écart calculé, la nouvelle base
-physique et le Stock vendable. Le GET par identifiant relit le fait sans modifier
-la position courante; une opération en masse conserve ses lignes dans leur ordre.
-`GET /api/history?ean13={ean13}` relit l’Historique.
- Le PATCH accepte `priceHtCents` pour le
-parcours de prix existant, ou les attributs évolutifs `name`, `dlc` et
-`consumptionModes` pour un Article alimentaire, et `name` et `packaging` pour
-un Article non alimentaire. Un PATCH qui mélange prix et attributs est refusé;
-une modification d’attributs renvoie la représentation canonique après commit
-et ajoute un fait immuable à l’Historique.
-Le host applique les migrations SQLite au démarrage sans service externe ni
-secret.
+**Dernière exécution complète mesurée — 25 août 2026, commit `60dd706`, sur
+checkout propre :**
 
-Pour les tests déterministes, `TOKEN_WAREHOUSE_UTC_NOW` peut fixer l’instant
-UTC des opérations et `TOKEN_WAREHOUSE_WAREHOUSE_DATE` la date métier de
-l’Entrepôt.
+| Suite | Résultat |
+| --- | --- |
+| `dotnet build` | 8 projets, 0 erreur, 0 warning (`TreatWarningsAsErrors`) |
+| `dotnet test` | 314 tests — Domain 65, Application 79, Api 170 |
+| `test:architecture` | 15 tests |
+| `build:web` | 283,48 kB initial / 78,04 kB transféré, 16 lazy chunks |
+| `test:web` | 34 fichiers, 103 tests |
+| `test:e2e` | 96 tests (4 min 24) |
+| **Total** | **528 tests, 0 échec** |
 
-## Contrat Stock courant
-
-`GET /api/stock` retourne une ligne ordonnée par EAN-13 pour chaque Article du
-Catalogue, y compris les Articles archivés et ceux sans position courante.
-`GET /api/stock/{ean13}` retourne la même représentation pour un Article connu.
-Chaque ligne conserve l’EAN-13 comme chaîne et expose `physicalQuantity`,
-`sellableQuantity`, `availability` (`AVAILABLE`, `OUT_OF_STOCK` ou
-`NOT_SELLABLE`) et `reason` (`ARCHIVED`, `DLC_EXPIRED`,
-`UNSELLABLE_PACKAGING` ou `null`). Les quantités vendables sont calculées par
-le backend et ne sont jamais recalculées par Angular. Un EAN mal formé renvoie
-`400`, un Article inconnu `404`, et les erreurs techniques utilisent
-`application/problem+json` avec `code: internal_error`.
-
-## Contrat Article
-
-Les valeurs canoniques du JSON sont `food`/`nonFood`, `takeaway`/`onsite` et
-`new`/`refurbished`/`unsellable`. Une création valide transporte `ean13` comme
-chaîne de 13 chiffres, `priceHtCents` comme entier et renvoie `isActive: true`
-avec `status: "active"`. Les transitions renvoient le même contrat avec
-`status: "archived"` ou `status: "active"` et ajoutent un fait immuable
-consultable par l’Historique.
-Les réponses alimentaires exposent `dlc` et `consumptionModes`; les réponses
-non alimentaires exposent `packaging`, sans attribut de l’autre classification.
-Chaque réponse Article expose aussi `priceQuotes`: une quote pour un mode unique
-ou un Article non alimentaire, deux quotes pour les deux modes. Une quote porte
-`saleContext` si applicable, `taxRate` (`code`, `ratio`, `numerator`,
-`denominator`), `vatCents` et `priceTtcCents`. Les Prix TTC ne sont pas persistés.
-
-La liste accepte `status=active|archived|all` (actif par défaut), `search` pour
-le nom ou l’EAN-13, `type=food|nonFood`, `mode=takeaway|onsite` et
-`packaging=new|refurbished|unsellable`. Les dimensions présentes sont combinées
-par intersection; une collection vide reste une réponse `200 []`.
-
-Les erreurs sont `application/problem+json`: `400` avec `code: article.validation`
-et `errors` indexées par champ, `409` avec `code: article.ean13.conflict`, `404`
-avec `code: article.not_found` et `500` avec `code: internal_error` sans détail
-interne.
-
-Pour repartir d'un état local propre:
+### Repartir d'un état propre
 
 ```sh
 dotnet clean TokenWarehouse.slnx
 rm -rf dist artifacts
-rm -f token-warehouse.db token-warehouse.db-shm token-warehouse.db-wal \
-  src/backend/TokenWarehouse.Api/token-warehouse.db \
-  src/backend/TokenWarehouse.Api/token-warehouse.db-shm \
-  src/backend/TokenWarehouse.Api/token-warehouse.db-wal
+rm -f src/backend/TokenWarehouse.Api/token-warehouse.db*
+```
+
+---
+
+## 3. Architecture
+
+```text
+Angular  ──HTTP JSON──▶  Api (Presentation)
+                              │ compose les adapters
+                              ▼
+                        Application  ── définit les ports
+                              ▼
+                          Domain  ── invariants, aucun framework
+                              ▲
+                        Infrastructure  ── EF Core, SQLite, horloge
+```
+
+| Projet | Contenu | Dépendances |
+| --- | --- | --- |
+| `TokenWarehouse.Domain` | Agrégats, value objects, politiques | **aucune** |
+| `TokenWarehouse.Application` | Use cases, ports | Domain |
+| `TokenWarehouse.Infrastructure` | Adapters EF Core / SQLite, horloge | Application |
+| `TokenWarehouse.Api` | Endpoints HTTP, composition | Application + Infrastructure |
+
+`npm run test:architecture` échoue si ce sens de dépendance change, si un paquet
+de framework remonte dans le Domain ou l'Application, ou si un Mediator, un
+generic repository, du CQRS ou un event bus apparaît.
+
+**Building blocks du Domain**
+
+- Agrégats : `Article`, `StockPosition`
+- Entité immuable : `StockOperation` (Approvisionnement, Vente, Inventaire,
+  Contre-mouvement)
+- Value objects : `Ean13` (13 chiffres + checksum), `Money` (centimes),
+  `Quantity`, `TaxRate` (rationnel), `SaleContext`, `Justification`
+- Politiques : `PricingPolicy` (taux applicable, TVA, arrondi),
+  `SellabilityPolicy` (Stock vendable, raison de blocage)
+
+Détail complet et justification de chaque choix : [`ARCHITECTURE.md`](ARCHITECTURE.md).
+Vocabulaire métier : [`CONTEXT.md`](CONTEXT.md). Décisions datées :
+[`docs/adr/`](docs/adr/).
+
+---
+
+## 4. Règles métier implémentées
+
+| Règle | Implémentation |
+| --- | --- |
+| EAN-13 unique, 13 chiffres, checksum valide | `Ean13.TryCreate` + contrainte d'unicité en base ; une collision concurrente renvoie `409`, pas une exception |
+| Deux classifications d'Articles | Attributs exclusifs : une DLC et des modes de consommation pour l'alimentaire, un Packaging pour le non alimentaire |
+| TVA 5,5 % à emporter | `TaxRate(11, 200)` |
+| TVA 10 % sur place | `TaxRate(1, 10)` |
+| TVA 20 % non alimentaire | `TaxRate(1, 5)` |
+| Article aux deux modes | Deux quotes de prix, une par contexte ; une Vente exige alors un contexte explicite |
+| Stock = approvisionnements depuis le dernier inventaire − ventes | Position courante mutée par chaque fait ; un Inventaire pose une nouvelle base physique |
+| Écarts d'inventaire (pertes, vols, erreurs) | `InventoryReconciliation` calcule et conserve l'écart, il n'est jamais silencieux |
+| Stock vendable | Zéro si archivé, DLC dépassée ou Packaging invendable, avec la raison |
+| Opérations en masse | Toutes les lignes validées avant une transaction unique ; une ligne fautive rejette la livraison entière |
+| Concurrence | Verrouillage optimiste par version sur l'Article et sur la position ; une position ne peut pas devenir négative |
+
+---
+
+## 5. Contrat HTTP
+
+Toutes les erreurs structurées sont en `application/problem+json`, avec un
+champ `code` et, pour les validations, des `errors` indexées par champ
+exploitables directement par Signal Forms.
+
+### Catalogue
+
+| Méthode | Route | Notes |
+| --- | --- | --- |
+| `GET` | `/api/articles` | Filtres `status` (`active` par défaut, `archived`, `all`), `search` (nom ou EAN-13), `type`, `mode`, `packaging`. Combinés par intersection. |
+| `POST` | `/api/articles` | `ean13` en chaîne, `priceHtCents` entier. `409 article.ean13.conflict` sur doublon. |
+| `GET` | `/api/articles/{ean13}` | Expose `priceQuotes` : une quote par contexte applicable, avec `taxRate`, `vatCents`, `priceTtcCents`. |
+| `PATCH` | `/api/articles/{ean13}` | Soit `priceHtCents`, soit les attributs (`name`, `dlc`, `consumptionModes`, `packaging`). Mélanger les deux est refusé. |
+| `POST` | `/api/articles/{ean13}/archive` | |
+| `POST` | `/api/articles/{ean13}/reactivate` | |
+
+### Stock et opérations
+
+| Méthode | Route | Notes |
+| --- | --- | --- |
+| `GET` | `/api/stock` | Une ligne par Article, archivés et sans position inclus. `physicalQuantity`, `sellableQuantity`, `availability`, `reason`. |
+| `GET` | `/api/stock/{ean13}` | |
+| `POST` | `/api/supplies` | Réception unitaire. `409 article_archived` sur Article archivé. |
+| `POST` | `/api/supplies/bulk` | `lines` non vide. Erreurs conservées sous `lines[1].quantity`. Priorité `400` → `409` → `404`. |
+| `GET` | `/api/supplies/{id}` | |
+| `POST` | `/api/inventories` | `ean13` + `countedQuantity`. Renvoie l'écart, la nouvelle base physique et le Stock vendable. |
+| `POST` | `/api/inventories/bulk` | Un seul Article par ligne. |
+| `GET` | `/api/inventories/{id}` | Relit le fait sans modifier la position. |
+| `GET` | `/api/stock/counter-movements/sources` | Opérations corrigeables. |
+| `POST` | `/api/stock/counter-movements` | Justification obligatoire ; annule l'effet du mouvement source. |
+
+### Ventes, Historique, Pilotage
+
+| Méthode | Route | Notes |
+| --- | --- | --- |
+| `GET` | `/api/sales/articles` | Articles vendables, avec leur Stock vendable. |
+| `POST` | `/api/sales` | Contexte de vente exigé si l'Article a deux modes. Fige un snapshot financier immuable. |
+| `GET` | `/api/sales/{operationId}` | |
+| `GET` | `/api/history` | `?ean13=` optionnel. Fusionne mouvements de stock et faits de cycle de vie, du plus récent au plus ancien. |
+| `GET` | `/api/dashboard` | Période, filtres, flux quotidiens, indicateurs financiers par taux de TVA. |
+| `GET` | `/health` | État de la persistance et calendrier de l'Entrepôt. |
+
+**Valeurs canoniques du JSON** : `food` / `nonFood`, `takeaway` / `onsite`,
+`new` / `refurbished` / `unsellable`, `AVAILABLE` / `OUT_OF_STOCK` /
+`NOT_SELLABLE`, `ARCHIVED` / `DLC_EXPIRED` / `UNSELLABLE_PACKAGING`.
+
+**Déterminisme des tests** : `TOKEN_WAREHOUSE_UTC_NOW` fige l'instant UTC des
+opérations, `TOKEN_WAREHOUSE_WAREHOUSE_DATE` la date métier de l'Entrepôt.
+
+---
+
+## 6. Limites connues et dette assumée
+
+Ce que je retrancherais ou corrigerais en priorité si ce projet passait en
+production, par ordre d'importance :
+
+1. **Aucune CI.** `npm run verify` existe et passe ; rien ne l'exécute
+   automatiquement. C'est le premier manque à combler.
+2. **Périmètre trop large pour l'exercice.** Ventes, Dashboard et
+   Contre-mouvements sont hors demande. Le rendu aurait été plus lisible sans
+   eux, avec l'écran Inventaire terminé à la place.
+3. **Stratégie de réutilisation de route encore portée par le routeur.**
+   `app/route-reuse-strategy.ts` conserve des composants détachés via des
+   variables mutables au niveau module. Ce besoin — préserver une saisie en
+   cours — appartient au store du parcours, pas au routeur.
+4. **Prix TTC absent de la liste du Catalogue.** L'API le fournit, l'écran
+   n'affiche que le Prix HT, et en centimes bruts.
+5. **Historique non paginé et lu en mémoire.** `SqliteHistoryReader` charge les
+   opérations avant de filtrer côté C#. Acceptable au volume de l'exercice,
+   à pousser en SQL avant tout usage réel. Même remarque pour `GET /api/stock`
+   et `GET /api/articles`, non paginés.
+6. **Pas d'OpenAPI.** Le contrat n'existe que dans ce fichier, et il a déjà
+   dérivé sur au moins un code d'erreur.
+7. **Conventions de codes d'erreur non unifiées** : `article.validation`,
+   `article_archived` et `INTERNAL_ERROR` coexistent.
+8. **Stack récente et exigeante.** Angular 22 avec `@angular/forms/signals`
+   encore expérimental, TypeScript 6, .NET 10, Node ≥ 24.15, et
+   `--legacy-peer-deps` obligatoire à l'installation. Pari assumé pour les
+   Signal Forms ; les versions ci-dessus sont celles validées.
+9. **Pas de linter ni de formateur** (`.editorconfig`, ESLint, analyzers .NET).
+   Le style est homogène, rien ne le tient.
+10. **Playwright en série** : `workers: 1`, un seul navigateur.
+
+---
+
+## 7. Structure du dépôt
+
+```text
+src/backend/TokenWarehouse.Domain/          invariants métier, sans framework
+src/backend/TokenWarehouse.Application/     use cases et ports
+src/backend/TokenWarehouse.Infrastructure/  adapters EF Core / SQLite
+src/backend/TokenWarehouse.Api/             endpoints Minimal API et composition
+src/web/features/<contexte>/                Angular, un contexte par dossier
+src/web/app/                                shell, routes, configuration
+tests/TokenWarehouse.*.Tests/               xUnit
+tests/architecture.test.mjs                 tests d'architecture
+tests/e2e/                                  Playwright, API réelle
+docs/adr/                                   décisions d'architecture
+ARCHITECTURE.md                             architecture et building blocks
+CONTEXT.md                                  langage ubiquitaire
 ```
