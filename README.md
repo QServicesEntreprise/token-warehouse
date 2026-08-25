@@ -167,18 +167,18 @@ dotnet test TokenWarehouse.slnx --no-build
 npm run test:e2e           # Playwright, API réelle
 ```
 
-**Dernière exécution complète mesurée — 25 août 2026, commit `1282116`, sur
+**Dernière exécution complète mesurée — 25 août 2026, commit `7c0c6f2`, sur
 checkout propre après `npm ci --legacy-peer-deps` :**
 
 | Suite | Résultat |
 | --- | --- |
 | `dotnet build` | 8 projets, 0 erreur, 0 warning (`TreatWarningsAsErrors`) |
-| `dotnet test` | 314 tests — Domain 65, Application 79, Api 170 |
-| `test:architecture` | 17 tests |
-| `build:web` | 263,77 kB initial / 73,80 kB transféré, 32 lazy chunks |
-| `test:web` | 39 fichiers, 114 tests |
-| `test:e2e` | 97 tests (5 min 00) |
-| **Total** | **542 tests, 0 échec** |
+| `dotnet test` | 315 tests — Domain 65, Application 79, Api 171 |
+| `test:architecture` | 18 tests |
+| `build:web` | 276,06 kB initial / 78,39 kB transféré, 30 lazy chunks |
+| `test:web` | 39 fichiers, 117 tests |
+| `test:e2e` | 101 tests (5 min 00) |
+| **Total** | **551 tests, 0 échec** |
 
 ### Repartir d'un état propre
 
@@ -311,28 +311,28 @@ production, par ordre d'importance :
    automatiquement. C'est le premier manque à combler.
 2. **Périmètre trop large pour l'exercice.** Ventes, Dashboard et
    Contre-mouvements sont hors demande. Le rendu aurait été plus lisible sans
-   eux, avec l'écran Inventaire terminé à la place.
+   eux. L'écran Inventaire, lui, est désormais terminé : sélecteur d'Articles,
+   rappel du nom et du Stock physique connu à la saisie, reçu nommé, et entrée
+   directe depuis la table Stock.
 3. **Stratégie de réutilisation de route encore portée par le routeur.**
    `app/route-reuse-strategy.ts` conserve des composants détachés via des
    variables mutables au niveau module. Ce besoin — préserver une saisie en
    cours — appartient au store du parcours, pas au routeur.
-4. **Prix TTC absent de la liste du Catalogue.** L'API le fournit, l'écran
-   n'affiche que le Prix HT, et en centimes bruts.
-5. **Historique non paginé et lu en mémoire.** `SqliteHistoryReader` charge les
+4. **Historique non paginé et lu en mémoire.** `SqliteHistoryReader` charge les
    opérations avant de filtrer côté C#. Acceptable au volume de l'exercice,
    à pousser en SQL avant tout usage réel. Même remarque pour `GET /api/stock`
    et `GET /api/articles`, non paginés.
-6. **Pas d'OpenAPI.** Le contrat n'existe que dans ce fichier, et il a déjà
+5. **Pas d'OpenAPI.** Le contrat n'existe que dans ce fichier, et il a déjà
    dérivé sur au moins un code d'erreur.
-7. **Conventions de codes d'erreur non unifiées** : `article.validation`,
+6. **Conventions de codes d'erreur non unifiées** : `article.validation`,
    `article_archived` et `INTERNAL_ERROR` coexistent.
-8. **Stack récente et exigeante.** Angular 22 avec `@angular/forms/signals`
+7. **Stack récente et exigeante.** Angular 22 avec `@angular/forms/signals`
    encore expérimental, TypeScript 6, .NET 10, Node ≥ 24.15, et
    `--legacy-peer-deps` obligatoire à l'installation. Pari assumé pour les
    Signal Forms ; les versions ci-dessus sont celles validées.
-9. **Pas de linter ni de formateur** (`.editorconfig`, ESLint, analyzers .NET).
+8. **Pas de linter ni de formateur** (`.editorconfig`, ESLint, analyzers .NET).
    Le style est homogène, rien ne le tient.
-10. **Playwright en série** : `workers: 1`, un seul navigateur.
+9. **Playwright en série** : `workers: 1`, un seul navigateur.
 
 ---
 
@@ -346,6 +346,7 @@ src/backend/TokenWarehouse.Api/             endpoints Minimal API et composition
 src/web/features/<contexte>/                Angular, un contexte par dossier
 src/web/app/                                shell, routes, configuration
 tests/TokenWarehouse.*.Tests/               xUnit
+tests/TokenWarehouse.E2eHost/               hôte API des E2E, hors production
 tests/architecture.test.mjs                 tests d'architecture
 tests/e2e/                                  Playwright, API réelle
 décisions d'architecture                    docs/adr/
