@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import { Observable, of, throwError } from 'rxjs';
 import { describe, expect, it } from 'vitest';
 import { STOCK_GATEWAY } from '../application/stock-gateway-token';
@@ -69,6 +70,7 @@ describe('StockPage', () => {
     const fixture = TestBed.configureTestingModule({
       imports: [StockPage],
       providers: [
+        provideRouter([]),
         StockPositionStore,
         { provide: STOCK_GATEWAY, useClass: FakeStockGateway },
       ],
@@ -82,7 +84,9 @@ describe('StockPage', () => {
     expect(stockPanel.querySelector('#stock-table')?.textContent).toContain('DLC dépassée');
     expect(stockPanel.querySelector('#stock-table')?.textContent).toContain('Stock non vendable');
 
-    (stockPanel.querySelector('.table-action') as HTMLButtonElement).click();
+    const [detailAction, inventoryAction] = [...stockPanel.querySelectorAll('.table-action')] as HTMLButtonElement[];
+    expect(inventoryAction?.getAttribute('aria-label')).toBe('Inventorier Article bloqué');
+    detailAction!.click();
     fixture.detectChanges();
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     fixture.detectChanges();

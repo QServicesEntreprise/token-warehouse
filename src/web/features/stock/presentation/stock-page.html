@@ -67,6 +67,14 @@
                     (click)="store.openDetail(position.ean13)">
                     {{ detailState.status === 'loading' ? 'Chargement…' : 'Détail' }}
                   </button>
+                  <button
+                    type="button"
+                    class="table-action"
+                    [attr.aria-label]="'Inventorier ' + position.name"
+                    [routerLink]="['/stock/inventaires']"
+                    [queryParams]="{ ean13: position.ean13 }">
+                    Inventorier
+                  </button>
                 </td>
               </tr>
             }

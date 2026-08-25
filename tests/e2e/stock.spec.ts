@@ -277,3 +277,15 @@ for (const boundary of [
     });
   });
 }
+
+test('opens the Inventory prefilled from a Stock row', async ({ page }) => {
+  await page.goto('/stock');
+  await expect(page.locator('#stock-table')).toBeVisible();
+  await page.getByRole('button', { name: /^Inventorier Alimentaire aux deux modes$/ }).click();
+
+  await expect(page).toHaveURL(/\/stock\/inventaires\?ean13=/);
+  await expect(page.locator('#inventory-ean13')).toHaveValue(leadingZeroEan13);
+  await expect(page.locator('#inventory-countedQuantity')).toHaveValue('');
+  await expect(page.locator('#inventory-form .inventory-line-hint'))
+    .toContainText('Stock physique connu : 5 unités');
+});
