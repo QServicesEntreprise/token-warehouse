@@ -78,6 +78,26 @@ test('the scaffold does not add explicitly forbidden abstractions', async () => 
   assert.doesNotMatch(source, /MediatR|GenericRepository|\bCQRS\b|EventBus/i);
 });
 
+test('test seams stay out of production assemblies', async () => {
+  const sources = await Promise.all(
+    (await readdir(join(root, 'src/backend'), { recursive: true }))
+      .filter((path) => path.endsWith('.cs') && !/(^|[\\/])(bin|obj)([\\/]|$)/.test(path))
+      .map((path) => readFile(join(root, 'src/backend', path), 'utf8')),
+  );
+  const source = sources.join('\n');
+
+  for (const seam of [
+    'FailingHistoryReader',
+    'E2eSaleCommitGate',
+    'SeedE2e',
+    'TOKEN_WAREHOUSE_HISTORY_FAILURE',
+    'TOKEN_WAREHOUSE_SALE_COMMIT_GATE',
+    'TOKEN_WAREHOUSE_E2E_SEED',
+  ]) {
+    assert.doesNotMatch(source, new RegExp(seam));
+  }
+});
+
 test('documented cleanup removes the manual API SQLite database and sidecars', async () => {
   const settings = JSON.parse(
     await readFile(join(root, 'src/backend/TokenWarehouse.Api/appsettings.json'), 'utf8'),

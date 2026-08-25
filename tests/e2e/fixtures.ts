@@ -117,7 +117,7 @@ export const test = base.extend<Fixtures>({
       [
         'run',
         '--project',
-        path.join(repositoryRoot, 'src/backend/TokenWarehouse.Api/TokenWarehouse.Api.csproj'),
+        path.join(repositoryRoot, 'tests/TokenWarehouse.E2eHost/TokenWarehouse.E2eHost.csproj'),
         '--disable-build-servers',
         '--no-launch-profile',
         '--urls',

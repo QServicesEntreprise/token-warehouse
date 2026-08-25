@@ -5,11 +5,15 @@ export const waitForRequest = (
   method: string,
   pathname: string,
   matchesUrl?: (url: URL) => boolean,
-): Promise<Response> => page.waitForResponse((response) => {
+): Promise<Response> => page.waitForResponse(async (response) => {
   const url = new URL(response.url());
-  return response.request().method() === method
-    && url.pathname === pathname
-    && (matchesUrl === undefined || matchesUrl(url));
+  if (response.request().method() !== method
+    || url.pathname !== pathname
+    || (matchesUrl !== undefined && !matchesUrl(url))) {
+    return false;
+  }
+
+  return await response.finished() === null;
 });
 
 export const expectProblemDetails = async (
