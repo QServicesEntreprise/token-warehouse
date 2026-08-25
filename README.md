@@ -167,25 +167,27 @@ dotnet test TokenWarehouse.slnx --no-build
 npm run test:e2e           # Playwright, API réelle
 ```
 
-**Dernière exécution complète mesurée — 25 août 2026, commit `60dd706`, sur
-checkout propre :**
+**Dernière exécution complète mesurée — 25 août 2026, commit `1282116`, sur
+checkout propre après `npm ci --legacy-peer-deps` :**
 
 | Suite | Résultat |
 | --- | --- |
 | `dotnet build` | 8 projets, 0 erreur, 0 warning (`TreatWarningsAsErrors`) |
 | `dotnet test` | 314 tests — Domain 65, Application 79, Api 170 |
-| `test:architecture` | 15 tests |
-| `build:web` | 283,48 kB initial / 78,04 kB transféré, 16 lazy chunks |
-| `test:web` | 34 fichiers, 103 tests |
-| `test:e2e` | 96 tests (4 min 24) |
-| **Total** | **528 tests, 0 échec** |
+| `test:architecture` | 17 tests |
+| `build:web` | 263,77 kB initial / 73,80 kB transféré, 32 lazy chunks |
+| `test:web` | 39 fichiers, 114 tests |
+| `test:e2e` | 97 tests (5 min 00) |
+| **Total** | **542 tests, 0 échec** |
 
 ### Repartir d'un état propre
 
 ```sh
 dotnet clean TokenWarehouse.slnx
 rm -rf dist artifacts
-rm -f src/backend/TokenWarehouse.Api/token-warehouse.db*
+rm -f src/backend/TokenWarehouse.Api/token-warehouse.db \
+  src/backend/TokenWarehouse.Api/token-warehouse.db-shm \
+  src/backend/TokenWarehouse.Api/token-warehouse.db-wal
 ```
 
 ---
