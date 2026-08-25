@@ -9,6 +9,7 @@ export const mapArticleSummaryDto = (dto: ArticleDto): ArticleSummary => {
     name: article.name,
     priceHtCents: article.priceHtCents,
     status: article.status,
+    priceQuotes: article.priceQuotes,
   };
   return article.type === 'food'
     ? { ...base, type: 'food', dlc: article.dlc, consumptionModes: [...article.consumptionModes] }

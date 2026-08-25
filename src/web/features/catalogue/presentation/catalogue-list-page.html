@@ -54,12 +54,17 @@
     @if (store.articles().length > 0) {
       <div class="table-wrap"><table>
         <caption class="sr-only">Résultats du Catalogue</caption>
-        <thead><tr><th scope="col">Article</th><th scope="col">EAN-13</th><th scope="col">Type</th><th scope="col">Statut</th><th scope="col">Classification</th><th scope="col">Prix HT</th><th scope="col"><span class="sr-only">Action</span></th></tr></thead>
+        <thead><tr><th scope="col">Article</th><th scope="col">EAN-13</th><th scope="col">Type</th><th scope="col">Statut</th><th scope="col">Classification</th><th scope="col">Prix HT</th><th scope="col">Prix TTC</th><th scope="col"><span class="sr-only">Action</span></th></tr></thead>
         <tbody>
           @for (article of store.articles(); track article.ean13) {
             <tr>
               <th scope="row">{{ article.name }}</th><td>{{ article.ean13 }}</td><td>{{ article.type === 'food' ? 'Alimentaire' : 'Non alimentaire' }}</td><td>{{ isActive(article) ? 'Actif' : 'Archivé' }}</td>
-              <td>{{ article.type === 'food' ? formatModes(article.consumptionModes) : formatPackaging(article.packaging) }}</td><td>{{ article.priceHtCents }} centimes</td>
+              <td>{{ article.type === 'food' ? formatModes(article.consumptionModes) : formatPackaging(article.packaging) }}</td><td>{{ article.priceHtCents / 100 | currency:'EUR':'symbol':'1.2-2' }}</td>
+              <td>
+                @for (quote of article.priceQuotes; track quote.saleContext ?? quote.taxRate.code) {
+                  <div>@if (article.priceQuotes.length > 1) { {{ quote.saleContext === 'takeaway' ? 'À emporter' : 'Sur place' }} }{{ quote.priceTtcCents / 100 | currency:'EUR':'symbol':'1.2-2' }}</div>
+                }
+              </td>
               <td>
                 <button type="button" class="table-action link-button" [attr.aria-label]="'Consulter ' + article.name" [routerLink]="['/catalogue', article.ean13]">Détail</button>
                 <button type="button" class="table-action" [disabled]="!!store.transitioningEan()" [attr.aria-label]="(isActive(article) ? 'Archiver ' : 'Réactiver ') + article.name" (click)="toggleLifecycle(article)">

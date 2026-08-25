@@ -260,7 +260,7 @@ exploitables directement par Signal Forms.
 
 | Méthode | Route | Notes |
 | --- | --- | --- |
-| `GET` | `/api/articles` | Filtres `status` (`active` par défaut, `archived`, `all`), `search` (nom ou EAN-13), `type`, `mode`, `packaging`. Combinés par intersection. |
+| `GET` | `/api/articles` | Filtres `status` (`active` par défaut, `archived`, `all`), `search` (nom ou EAN-13), `type`, `mode`, `packaging`. Combinés par intersection. Chaque ligne expose aussi `priceQuotes`, de même forme que le détail. |
 | `POST` | `/api/articles` | `ean13` en chaîne, `priceHtCents` entier. `409 article.ean13.conflict` sur doublon. |
 | `GET` | `/api/articles/{ean13}` | Expose `priceQuotes` : une quote par contexte applicable, avec `taxRate`, `vatCents`, `priceTtcCents`. |
 | `PATCH` | `/api/articles/{ean13}` | Soit `priceHtCents`, soit les attributs (`name`, `dlc`, `consumptionModes`, `packaging`). Mélanger les deux est refusé. |
