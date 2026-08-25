@@ -228,7 +228,7 @@ generic repository, du CQRS ou un event bus apparaît.
 
 Détail complet et justification de chaque choix : [`ARCHITECTURE.md`](ARCHITECTURE.md).
 Vocabulaire métier : [`CONTEXT.md`](CONTEXT.md). Décisions datées :
-[`docs/adr/`](docs/adr/).
+[ADR](docs/adr/).
 
 ---
 
@@ -348,7 +348,7 @@ src/web/app/                                shell, routes, configuration
 tests/TokenWarehouse.*.Tests/               xUnit
 tests/architecture.test.mjs                 tests d'architecture
 tests/e2e/                                  Playwright, API réelle
-docs/adr/                                   décisions d'architecture
+décisions d'architecture                    docs/adr/
 ARCHITECTURE.md                             architecture et building blocks
 CONTEXT.md                                  langage ubiquitaire
 ```
