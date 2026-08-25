@@ -1,6 +1,6 @@
 /token-warehouse-agentic-workflow
 
-docs/
+docs/*.pdf
 token-warehouse-agentic-workflow-v2.3-fixed/
 .env
 
@@ -8,7 +8,6 @@ token-warehouse-agentic-workflow-v2.3-fixed/
 .agents/
 .claude/
 
-'Exercice de gestion de stocks.pdf'
 
 bin/
 obj/
