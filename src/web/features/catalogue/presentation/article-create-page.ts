@@ -1,12 +1,12 @@
 import { type AfterViewInit, ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
-import { type FieldTree, FormField, type TreeValidationResult, form, hidden, maxLength, pattern, required, submit } from '@angular/forms/signals';
+import { type FieldTree, FormField, type TreeValidationResult, form, hidden, maxLength, pattern, required, submit, validate } from '@angular/forms/signals';
 import { Router, RouterLink } from '@angular/router';
 import type { ArticleCreateCommand } from '../application/article-create-command';
 import { ArticleCreateStore } from '../application/article-create-store';
 import type { ArticleType } from '../domain/article-type';
 import type { Packaging } from '../domain/packaging';
 import type { ConsumptionMode } from '../../../shared-kernel/consumption-mode';
-import { parseEuros } from '../../../shared-kernel/parse-euros';
+import { parseEuros } from './parse-euros';
 
 interface ArticleFormModel {
   ean13: string;
@@ -33,14 +33,17 @@ export class ArticleCreatePage implements AfterViewInit {
   readonly model = this.modelSignal.asReadonly();
   readonly modes: readonly { value: ConsumptionMode; label: string }[] = [{ value: 'takeaway', label: 'À emporter' }, { value: 'onsite', label: 'Sur place' }];
   readonly articleForm = form(this.modelSignal, (path) => {
+    const ean13Message = 'L’EAN-13 doit contenir 13 chiffres.';
     required(path.ean13, { message: 'L’EAN-13 est requis.' });
     // Renders the native maxlength attribute, so the field itself refuses a 14th character.
-    maxLength(path.ean13, 13, { message: 'L’EAN-13 doit contenir 13 chiffres.' });
-    pattern(path.ean13, /^\d{13}$/, { message: 'L’EAN-13 doit contenir 13 chiffres.' });
+    maxLength(path.ean13, 13, { message: ean13Message });
+    pattern(path.ean13, /^\d{13}$/, { message: ean13Message });
     required(path.type);
     required(path.name, { message: 'Le nom est requis.' });
     required(path.priceHt, { message: 'Le Prix HT est requis.' });
-    pattern(path.priceHt, /^-?\d+(?:[.,]\d{1,2})?$/, { message: 'Le Prix HT doit être un montant en euros, par exemple 12,50.' });
+    validate(path.priceHt, ({ value }) => parseEuros(value()) === null
+      ? { kind: 'euros', message: 'Le Prix HT doit être un montant en euros, par exemple 12,50.' }
+      : undefined);
     required(path.dlc, { message: 'La DLC est requise.' });
     required(path.consumptionModes, { message: 'Choisissez au moins un mode.' });
     required(path.packaging, { message: 'Le Packaging est requis.' });
@@ -64,7 +67,12 @@ export class ArticleCreatePage implements AfterViewInit {
     await submit(this.articleForm, {
       action: async () => {
         const value = this.modelSignal();
-        const base = { ean13: value.ean13, name: value.name, priceHtCents: parseEuros(value.priceHt) ?? 0 };
+        const priceHtCents = parseEuros(value.priceHt);
+        if (priceHtCents === null) {
+          restoreFocus = true;
+          return { kind: 'euros', message: 'Le Prix HT doit être un montant en euros, par exemple 12,50.', fieldTree: this.articleForm.priceHt };
+        }
+        const base = { ean13: value.ean13, name: value.name, priceHtCents };
         const command: ArticleCreateCommand = value.type === 'food'
           ? { ...base, type: 'food', dlc: value.dlc, consumptionModes: value.consumptionModes }
           : { ...base, type: 'nonFood', packaging: value.packaging as Packaging };
@@ -89,6 +97,7 @@ export class ArticleCreatePage implements AfterViewInit {
     return errors.length > 0 ? errors : { kind: 'server', message: this.store.error() };
   }
 
+  // Accepts both vocabularies: the server names the field priceHtCents, the form names it priceHt.
   private fieldFor(field: string): FieldTree<unknown> | undefined {
     if (field === 'ean13') return this.articleForm.ean13;
     if (field === 'type') return this.articleForm.type;

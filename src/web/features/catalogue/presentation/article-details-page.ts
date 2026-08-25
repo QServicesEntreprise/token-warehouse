@@ -1,6 +1,6 @@
 import { type AfterViewInit, ChangeDetectionStrategy, Component, inject, linkedSignal, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { type FieldTree, FormField, type TreeValidationResult, form, hidden, pattern, required, submit } from '@angular/forms/signals';
+import { type FieldTree, FormField, type TreeValidationResult, form, hidden, required, submit, validate } from '@angular/forms/signals';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { distinctUntilChanged, map } from 'rxjs';
 import { ArticleDetailsStore } from '../application/article-details-store';
@@ -8,8 +8,8 @@ import type { ArticleType } from '../domain/article-type';
 import type { Packaging } from '../domain/packaging';
 import type { ConsumptionMode } from '../../../shared-kernel/consumption-mode';
 import { EurosPipe } from '../../../shared-kernel/euros-pipe';
-import { eurosInputValue } from '../../../shared-kernel/euros-input-value';
-import { parseEuros } from '../../../shared-kernel/parse-euros';
+import { eurosInputValue } from './euros-input-value';
+import { parseEuros } from './parse-euros';
 
 interface AttributeFormModel {
   type: ArticleType;
@@ -65,7 +65,9 @@ export class ArticleDetailsPage implements AfterViewInit {
   });
   readonly priceForm = form(this.priceModelSignal, (path) => {
     required(path.priceHt, { message: 'Le Prix HT est requis.' });
-    pattern(path.priceHt, /^-?\d+(?:[.,]\d{1,2})?$/, { message: 'Le Prix HT doit être un montant en euros, par exemple 12,50.' });
+    validate(path.priceHt, ({ value }) => parseEuros(value()) === null
+      ? { kind: 'euros', message: 'Le Prix HT doit être un montant en euros, par exemple 12,50.' }
+      : undefined);
   });
 
   constructor() {
@@ -132,7 +134,12 @@ export class ArticleDetailsPage implements AfterViewInit {
     let restoreFocus = false;
     await submit(this.priceForm, {
       action: async () => {
-        const updated = await this.store.updatePrice(parseEuros(this.priceModelSignal().priceHt) ?? 0);
+        const priceHtCents = parseEuros(this.priceModelSignal().priceHt);
+        if (priceHtCents === null) {
+          restoreFocus = true;
+          return { kind: 'euros', message: 'Le Prix HT doit être un montant en euros, par exemple 12,50.', fieldTree: this.priceForm.priceHt };
+        }
+        const updated = await this.store.updatePrice(priceHtCents);
         if (updated || this.detailLoadId !== detailLoadId) return undefined;
         restoreFocus = true;
         return this.serverErrors('price');
@@ -158,6 +165,7 @@ export class ArticleDetailsPage implements AfterViewInit {
     return errors.length > 0 ? errors : { kind: 'server', message: this.store.error() };
   }
 
+  // Accepts both vocabularies: the server names the field priceHtCents, the form names it priceHt.
   private priceField(field: string): FieldTree<unknown> | undefined {
     return field === 'priceHtCents' || field === 'priceHt' ? this.priceForm.priceHt : undefined;
   }

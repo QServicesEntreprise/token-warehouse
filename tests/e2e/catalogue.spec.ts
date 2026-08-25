@@ -38,6 +38,54 @@ const expectCreationRefused = async (
   expect(await listResponse.json()).toEqual([]);
 };
 
+test('crée le même Prix HT en centimes que la saisie use la virgule ou le point', async ({ page }, testInfo) => {
+  const attempt = testInfo.repeatEachIndex * (testInfo.project.retries + 1) + testInfo.retry;
+  const commaEan = ean13ForAttempt('660000000', attempt);
+  const pointEan = ean13ForAttempt('660000001', attempt);
+
+  const createWith = async (ean13: string, typed: string): Promise<number> => {
+    await page.goto('/catalogue/nouveau');
+    await page.locator('#ean13').fill(ean13);
+    await page.locator('#name').fill(`Article saisi ${typed}`);
+    await page.locator('#priceHt').fill(typed);
+    await page.locator('#dlc').fill('2030-12-31');
+    await page.locator('#consumptionModes').getByLabel('À emporter').check();
+    const creation = waitForRequest(page, 'POST', '/api/articles');
+    await page.getByRole('button', { name: 'Créer l’Article' }).click();
+    const request = (await creation).request();
+    expect(request.postDataJSON().priceHtCents).toBe(1250);
+    const stored = await page.request.get(`${apiBaseUrl}/api/articles/${ean13}`);
+    expect(stored.status()).toBe(200);
+    return (await stored.json()).priceHtCents;
+  };
+
+  expect(await createWith(commaEan, '12,50')).toBe(1250);
+  expect(await createWith(pointEan, '12.50')).toBe(1250);
+});
+
+test('refuse un Prix HT qui n’est pas un montant en euros sans appeler l’API', async ({ page }, testInfo) => {
+  const attempt = testInfo.repeatEachIndex * (testInfo.project.retries + 1) + testInfo.retry;
+  const ean13 = ean13ForAttempt('660000002', attempt);
+
+  await page.goto('/catalogue/nouveau');
+  await page.locator('#ean13').fill(ean13);
+  await page.locator('#name').fill('Prix HT illisible');
+  await page.locator('#priceHt').fill('12,505');
+  await page.locator('#dlc').fill('2030-12-31');
+  await page.locator('#consumptionModes').getByLabel('À emporter').check();
+
+  let creationAttempted = false;
+  await page.route('**/api/articles', async (route: Route) => {
+    creationAttempted = true;
+    await route.abort();
+  });
+  await page.getByRole('button', { name: 'Créer l’Article' }).click();
+
+  await expect(page.locator('#price-error')).toContainText('montant en euros');
+  await expect(page.locator('#priceHt')).toBeFocused();
+  expect(creationAttempted).toBe(false);
+});
+
 test('recherche le Catalogue et conserve une intersection vide de trois filtres', async ({ page }, testInfo) => {
   const attempt = testInfo.repeatEachIndex * (testInfo.project.retries + 1) + testInfo.retry;
   const foodEan = ean13ForAttempt('012345678', attempt);

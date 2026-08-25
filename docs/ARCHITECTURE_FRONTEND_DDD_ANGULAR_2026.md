@@ -101,7 +101,7 @@ Ventes ne doit pas importer `Catalogue` ou `Stock`. Son endpoint lui fournit un 
 Responsabilités :
 
 - filtrer une période et les dimensions du Dashboard ;
-- afficher KPI, stock, flux quotidiens, chiffre d’affaires et TVA ;
+- afficher KPI, stock, alertes, chiffre d’affaires et TVA ;
 - gérer les états vide, chargement et erreur.
 
 Pilotage est strictement en lecture. Il possède ses projections et n’importe aucun modèle interne de Catalogue, Stock ou Ventes.
@@ -116,7 +116,9 @@ Le shared kernel est volontairement fermé. Il peut contenir uniquement les voca
 - `StockAvailability` ;
 - `StockReason`.
 
-Tout nouveau type partagé doit avoir au moins deux consommateurs métier actuels et la même sémantique. Un DTO, un état de formulaire ou un modèle de page n’entre jamais dans le shared kernel.
+S’y ajoute un seul déclarable Angular, `EurosPipe`, parce que la présentation des montants en euros est identique dans les quatre contextes et qu’aucun d’eux ne peut en posséder la version de référence.
+
+Tout nouveau type partagé doit avoir au moins deux consommateurs métier actuels et la même sémantique. Un DTO, un état de formulaire ou un modèle de page n’entre jamais dans le shared kernel : la lecture d’une saisie en euros et le rendu d’un champ de prix restent dans la présentation du contexte qui les utilise.
 
 ## 4. Responsabilités des couches
 
