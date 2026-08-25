@@ -1,3 +1,4 @@
+import { CurrencyPipe } from '@angular/common';
 import { type AfterViewInit, ChangeDetectionStrategy, Component, type OnInit, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink } from '@angular/router';
@@ -13,7 +14,7 @@ import type { ConsumptionMode } from '../../../shared-kernel/consumption-mode';
 @Component({
   selector: 'app-catalogue-list-page',
   standalone: true,
-  imports: [RouterLink],
+  imports: [CurrencyPipe, RouterLink],
   templateUrl: './catalogue-list-page.html',
   styleUrl: './catalogue-list-page.css',
   changeDetection: ChangeDetectionStrategy.OnPush,

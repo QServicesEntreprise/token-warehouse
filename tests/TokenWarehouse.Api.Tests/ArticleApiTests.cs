@@ -1634,7 +1634,8 @@ public sealed class ArticleApiTests
         using var activeBody = JsonDocument.Parse(await active.Content.ReadAsStringAsync());
         foreach (var article in activeBody.RootElement.EnumerateArray())
         {
-            Assert.False(article.TryGetProperty("priceQuotes", out _));
+            Assert.True(article.TryGetProperty("priceQuotes", out var priceQuotes));
+            Assert.True(priceQuotes.GetArrayLength() > 0);
             Assert.False(article.TryGetProperty("priceTtcCents", out _));
             Assert.False(article.TryGetProperty("vatCents", out _));
         }
@@ -1644,6 +1645,112 @@ public sealed class ArticleApiTests
         using var archivedBody = JsonDocument.Parse(await archivedDetail.Content.ReadAsStringAsync());
         Assert.False(archivedBody.RootElement.GetProperty("isActive").GetBoolean());
         Assert.Equal("5901234123457", archivedBody.RootElement.GetProperty("ean13").GetString());
+    }
+
+    [Fact]
+    public async Task Lists_articles_with_price_quotes_matching_the_detail_contract()
+    {
+        using var factory = new ArticleHostFactory();
+        using var client = factory.CreateClient();
+
+        async Task CreateArticle(object payload)
+        {
+            using var response = await client.PostAsJsonAsync("/api/articles", payload);
+            Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        }
+
+        await CreateArticle(new
+        {
+            ean13 = "0123456789012",
+            type = "nonFood",
+            name = "Écran neuf",
+            priceHtCents = 12900,
+            packaging = "new"
+        });
+        await CreateArticle(new
+        {
+            ean13 = "1234567890128",
+            type = "food",
+            name = "Café à emporter",
+            priceHtCents = 450,
+            dlc = "2030-12-31",
+            consumptionModes = new[] { "takeaway" }
+        });
+        await CreateArticle(new
+        {
+            ean13 = "2345678901234",
+            type = "food",
+            name = "Café sur place",
+            priceHtCents = 450,
+            dlc = "2030-12-31",
+            consumptionModes = new[] { "onsite" }
+        });
+        await CreateArticle(new
+        {
+            ean13 = "3456789012340",
+            type = "food",
+            name = "Café aux deux modes",
+            priceHtCents = 450,
+            dlc = "2030-12-31",
+            consumptionModes = new[] { "takeaway", "onsite" }
+        });
+        await CreateArticle(new
+        {
+            ean13 = "4006381333931",
+            type = "nonFood",
+            name = "Carton invendable",
+            priceHtCents = 100,
+            packaging = "unsellable"
+        });
+
+        using var listResponse = await client.GetAsync("/api/articles?status=all");
+        Assert.Equal(HttpStatusCode.OK, listResponse.StatusCode);
+        using var list = JsonDocument.Parse(await listResponse.Content.ReadAsStringAsync());
+
+        JsonElement Listed(string name) => list.RootElement.EnumerateArray()
+            .Single(article => article.GetProperty("name").GetString() == name);
+
+        async Task AssertListMatchesDetail(string ean13, string name)
+        {
+            using var detailResponse = await client.GetAsync($"/api/articles/{ean13}");
+            Assert.Equal(HttpStatusCode.OK, detailResponse.StatusCode);
+            using var detail = JsonDocument.Parse(await detailResponse.Content.ReadAsStringAsync());
+            Assert.Equal(
+                detail.RootElement.GetProperty("priceQuotes").GetRawText(),
+                Listed(name).GetProperty("priceQuotes").GetRawText());
+        }
+
+        var nonFoodQuote = Listed("Écran neuf").GetProperty("priceQuotes");
+        Assert.Equal(1, nonFoodQuote.GetArrayLength());
+        Assert.False(nonFoodQuote[0].TryGetProperty("saleContext", out _));
+        Assert.Equal("nonFood", nonFoodQuote[0].GetProperty("taxRate").GetProperty("code").GetString());
+        Assert.Equal(15480, nonFoodQuote[0].GetProperty("priceTtcCents").GetInt32());
+
+        var takeawayQuote = Listed("Café à emporter").GetProperty("priceQuotes");
+        Assert.Equal(1, takeawayQuote.GetArrayLength());
+        Assert.Equal("takeaway", takeawayQuote[0].GetProperty("saleContext").GetString());
+        Assert.Equal(475, takeawayQuote[0].GetProperty("priceTtcCents").GetInt32());
+
+        var onsiteQuote = Listed("Café sur place").GetProperty("priceQuotes");
+        Assert.Equal(1, onsiteQuote.GetArrayLength());
+        Assert.Equal("onsite", onsiteQuote[0].GetProperty("saleContext").GetString());
+        Assert.Equal(495, onsiteQuote[0].GetProperty("priceTtcCents").GetInt32());
+
+        var twoModesQuotes = Listed("Café aux deux modes").GetProperty("priceQuotes");
+        Assert.Equal(2, twoModesQuotes.GetArrayLength());
+        Assert.Equal("takeaway", twoModesQuotes[0].GetProperty("saleContext").GetString());
+        Assert.Equal(475, twoModesQuotes[0].GetProperty("priceTtcCents").GetInt32());
+        Assert.Equal("onsite", twoModesQuotes[1].GetProperty("saleContext").GetString());
+        Assert.Equal(495, twoModesQuotes[1].GetProperty("priceTtcCents").GetInt32());
+
+        var unsellableQuote = Listed("Carton invendable").GetProperty("priceQuotes");
+        Assert.Equal(120, unsellableQuote[0].GetProperty("priceTtcCents").GetInt32());
+
+        await AssertListMatchesDetail("0123456789012", "Écran neuf");
+        await AssertListMatchesDetail("1234567890128", "Café à emporter");
+        await AssertListMatchesDetail("2345678901234", "Café sur place");
+        await AssertListMatchesDetail("3456789012340", "Café aux deux modes");
+        await AssertListMatchesDetail("4006381333931", "Carton invendable");
     }
 
     [Fact]

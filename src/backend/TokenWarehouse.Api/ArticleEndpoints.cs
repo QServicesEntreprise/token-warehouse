@@ -473,6 +473,8 @@ public sealed class ArticleListResponse
 
     public string Status { get; init; } = string.Empty;
 
+    public IReadOnlyList<PriceQuoteResponse> PriceQuotes { get; init; } = [];
+
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Dlc { get; init; }
 
@@ -490,6 +492,7 @@ public sealed class ArticleListResponse
         PriceHtCents = article.PriceHt.Cents,
         IsActive = article.IsActive,
         Status = ArticleResponse.ToWireStatus(article.IsActive),
+        PriceQuotes = article.PriceQuotes.Select(PriceQuoteResponse.From).ToArray(),
         Dlc = article.Type == ArticleType.Food
             ? article.Dlc?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
             : null,

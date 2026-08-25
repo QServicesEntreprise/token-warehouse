@@ -116,6 +116,62 @@ test('recherche le Catalogue et conserve une intersection vide de trois filtres'
   await expect(catalogPanel.getByRole('row', { name: /Article archivé/ })).toHaveCount(0);
 });
 
+test('affiche le Prix HT et tous les Prix TTC du Catalogue en euros', async ({ page }, testInfo) => {
+  const attempt = testInfo.repeatEachIndex * (testInfo.project.retries + 1) + testInfo.retry;
+  await createNonFoodArticle(page, {
+    ean13: ean13ForAttempt('650000010', attempt),
+    name: 'Écran neuf',
+    packaging: 'new',
+    priceHtCents: 12900,
+  });
+  await createFoodArticle(page, {
+    ean13: ean13ForAttempt('650000020', attempt),
+    name: 'Café à emporter',
+    modes: ['takeaway'],
+    dlc: '2030-12-31',
+    priceHtCents: 450,
+  });
+  await createFoodArticle(page, {
+    ean13: ean13ForAttempt('650000030', attempt),
+    name: 'Café sur place',
+    modes: ['onsite'],
+    dlc: '2030-12-31',
+    priceHtCents: 450,
+  });
+  await createFoodArticle(page, {
+    ean13: ean13ForAttempt('650000040', attempt),
+    name: 'Café aux deux modes',
+    modes: ['takeaway', 'onsite'],
+    dlc: '2030-12-31',
+    priceHtCents: 450,
+  });
+  await createNonFoodArticle(page, {
+    ean13: ean13ForAttempt('650000050', attempt),
+    name: 'Carton invendable',
+    packaging: 'unsellable',
+    priceHtCents: 100,
+  });
+
+  await page.goto('/catalogue');
+  const row = (name: string) => page.getByRole('row', { name: new RegExp(name) });
+  const priceCells = (name: string) => row(name).locator('td');
+
+  await expect(page.getByRole('columnheader', { name: 'Prix HT' })).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: 'Prix TTC' })).toBeVisible();
+  await expect(priceCells('Écran neuf').nth(4)).toContainText(/129,00\s*€/);
+  await expect(priceCells('Écran neuf').nth(5)).toContainText(/154,80\s*€/);
+  await expect(priceCells('Café à emporter').nth(4)).toContainText(/4,50\s*€/);
+  await expect(priceCells('Café à emporter').nth(5)).toContainText(/4,75\s*€/);
+  await expect(priceCells('Café sur place').nth(4)).toContainText(/4,50\s*€/);
+  await expect(priceCells('Café sur place').nth(5)).toContainText(/4,95\s*€/);
+  await expect(priceCells('Café aux deux modes').nth(4)).toContainText(/4,50\s*€/);
+  await expect(priceCells('Café aux deux modes').nth(5)).toContainText(/À emporter\s*4,75\s*€/);
+  await expect(priceCells('Café aux deux modes').nth(5)).toContainText(/Sur place\s*4,95\s*€/);
+  await expect(priceCells('Carton invendable').nth(4)).toContainText(/1,00\s*€/);
+  await expect(priceCells('Carton invendable').nth(5)).toContainText(/1,20\s*€/);
+  await expect(page.locator('table')).not.toContainText('centimes');
+});
+
 test('crée les trois formes d’Article et initialise leurs Stocks à zéro', async ({ page }, testInfo) => {
   const attempt = testInfo.repeatEachIndex * (testInfo.project.retries + 1) + testInfo.retry;
   const foodEan = ean13ForAttempt('012345678', attempt);

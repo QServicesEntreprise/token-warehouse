@@ -1,5 +1,5 @@
 import type { Article } from './article';
 
-type WithoutDetails<T> = T extends Article ? Omit<T, 'priceQuotes' | 'stock'> : never;
+type WithoutStock<T> = T extends Article ? Omit<T, 'stock'> : never;
 
-export type ArticleSummary = WithoutDetails<Article>;
+export type ArticleSummary = WithoutStock<Article>;

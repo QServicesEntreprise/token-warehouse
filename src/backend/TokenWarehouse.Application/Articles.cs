@@ -113,7 +113,10 @@ public sealed record ArticleListItemView(
     bool IsActive,
     DateOnly? Dlc,
     IReadOnlyList<ConsumptionMode> ConsumptionModes,
-    PackagingCondition? Packaging);
+    PackagingCondition? Packaging)
+{
+    public IReadOnlyList<PricingQuote> PriceQuotes { get; init; } = [];
+}
 
 public enum ArticleStorePriceUpdateCandidateStatus
 {
@@ -783,7 +786,10 @@ public sealed class ArticleApplication(IArticleStore store, IClock clock, IStock
             article.IsActive,
             article.Dlc,
             article.ConsumptionModes,
-            article.Packaging);
+            article.Packaging)
+        {
+            PriceQuotes = PricingPolicy.Calculate(article).Quotes
+        };
 
     private async Task<ArticleView> ToViewAsync(
         Article article,

@@ -120,4 +120,5 @@ const article = (ean13: string, name: string): ArticleSummary => ({
   dlc: '2030-01-15',
   consumptionModes: ['takeaway'],
   status: 'active',
+  priceQuotes: [],
 });
