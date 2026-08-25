@@ -152,6 +152,18 @@ npm run start:web
 Le front proxifie `/api` vers l'API. La base SQLite est créée et migrée au
 démarrage dans `src/backend/TokenWarehouse.Api/token-warehouse.db`.
 
+**Jeu de démonstration.** Si le Catalogue est vide au démarrage, l'API le
+peuple : 20 Articles, un Approvisionnement, six Ventes couvrant les trois taux
+de TVA, un Inventaire avec écart et un Contre-mouvement. L'application ne
+s'ouvre donc jamais sur des écrans vides. Le peuplement passe par les use cases,
+jamais par des écritures directes en base, et il est ignoré dès qu'un Article
+existe ou que l'environnement est `Testing`. Les données suivent
+[le brief créatif](docs/token-warehouse-creative-product-brief.md) : les
+Articles alimentaires sont des modèles de langage — à emporter pour les poids
+ouverts, sur place pour les modèles consommés via API — et les non alimentaires
+une gamme de compute du Gaming PC au Space Datacenter. Parcours de test manuel :
+[`docs/GUIDE_TEST_MANUEL.md`](docs/GUIDE_TEST_MANUEL.md).
+
 ### Vérification complète
 
 ```sh
