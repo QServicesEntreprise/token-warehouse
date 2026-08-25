@@ -13,6 +13,7 @@ export const STOCK_ROUTES: Routes = [
   {
     path: '',
     pathMatch: 'full',
+    title: 'Stock courant · Token Warehouse',
     providers: [
       HttpStockGateway,
       StockPositionStore,
@@ -22,6 +23,7 @@ export const STOCK_ROUTES: Routes = [
   },
   {
     path: 'approvisionnements',
+    title: 'Approvisionnement · Token Warehouse',
     data: { section: 'approvisionnements' },
     providers: [
       HttpStockGateway,
@@ -32,6 +34,7 @@ export const STOCK_ROUTES: Routes = [
   },
   {
     path: 'inventaires',
+    title: 'Inventaire · Token Warehouse',
     providers: [
       InventoryStore,
       StockPositionStore,
@@ -42,6 +45,7 @@ export const STOCK_ROUTES: Routes = [
   },
   {
     path: 'corrections',
+    title: 'Contre-mouvement · Token Warehouse',
     providers: [
       HttpStockGateway,
       CounterMovementStore,
@@ -51,6 +55,7 @@ export const STOCK_ROUTES: Routes = [
   },
   {
     path: 'historique',
+    title: 'Historique · Token Warehouse',
     providers: [
       HistoryStore,
       { provide: STOCK_GATEWAY, useClass: HttpStockGateway },

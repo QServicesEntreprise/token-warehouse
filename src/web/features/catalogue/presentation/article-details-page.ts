@@ -6,8 +6,12 @@ import { distinctUntilChanged, map } from 'rxjs';
 import { ArticleDetailsStore } from '../application/article-details-store';
 import type { ArticleType } from '../domain/article-type';
 import type { Packaging } from '../domain/packaging';
+import { badgeTone } from '../../../shared-kernel/badge-tone';
 import type { ConsumptionMode } from '../../../shared-kernel/consumption-mode';
+import { consumptionModeLabel } from '../../../shared-kernel/consumption-mode-label';
 import { EurosPipe } from '../../../shared-kernel/euros-pipe';
+import { taxRateLabel } from '../../../shared-kernel/tax-rate-label';
+import { packagingLabel } from './packaging-label';
 import { eurosInputValue } from './euros-input-value';
 import { parseEuros } from './parse-euros';
 
@@ -33,6 +37,9 @@ interface PriceFormModel {
 })
 export class ArticleDetailsPage implements AfterViewInit {
   readonly store = inject(ArticleDetailsStore);
+  readonly badgeTone = badgeTone;
+  readonly taxRateLabel = taxRateLabel;
+  readonly packagingLabel = packagingLabel;
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly lookupEan13Signal = signal('');
@@ -86,6 +93,10 @@ export class ArticleDetailsPage implements AfterViewInit {
 
   ngAfterViewInit(): void {
     document.getElementById('article-details-title')?.focus();
+  }
+
+  formatModes(modes: ConsumptionMode[]): string {
+    return modes.map(consumptionModeLabel).join(', ');
   }
 
   setLookupEan13(event: Event): void {

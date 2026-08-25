@@ -1,7 +1,9 @@
 import { type AfterViewInit, ChangeDetectionStrategy, Component, type OnInit, computed, inject, signal } from '@angular/core';
 import { FormField, FormRoot, form, required, submit, validate } from '@angular/forms/signals';
 import { SaleStore } from '../application/sale-store';
+import { badgeTone } from '../../../shared-kernel/badge-tone';
 import { EurosPipe } from '../../../shared-kernel/euros-pipe';
+import { taxRateLabel } from '../../../shared-kernel/tax-rate-label';
 import type { SaleCommand } from '../domain/sale-command';
 import type { SaleContext } from '../domain/sale-context';
 import type { SellableArticle } from '../domain/sellable-article';
@@ -21,6 +23,8 @@ interface SaleFormModel {
 })
 export class SalesPage implements AfterViewInit, OnInit {
   readonly store = inject(SaleStore);
+  readonly badgeTone = badgeTone;
+  readonly taxRateLabel = taxRateLabel;
   private readonly searchState = signal('');
   private readonly clientStatusState = signal('');
   private readonly saleModelState = signal<SaleFormModel>({ quantity: '', context: '' });

@@ -40,8 +40,15 @@ p {
 }
 
 h1 {
-  font-size: clamp(2rem, 4vw, 3.5rem);
-  line-height: 1.05;
+  font-size: clamp(1.75rem, 3vw, 2.5rem);
+  line-height: 1.15;
+}
+
+/* Les cibles focalisées par script (titres de page, blocs de résultat, messages
+   d'erreur) portent tabindex="-1" pour l'annonce lecteur d'écran : elles ne sont
+   jamais atteintes au clavier, l'anneau de focus n'y est donc que du bruit. */
+[tabindex="-1"]:focus {
+  outline: none;
 }
 
 .panel {
@@ -151,7 +158,8 @@ button:focus-visible {
 }
 
 .table-wrap {
-  overflow-x: auto;
+  max-height: 75vh;
+  overflow: auto;
 }
 
 table {
@@ -169,10 +177,64 @@ td {
 }
 
 thead th {
+  background: #fff;
   color: #53627b;
   font-size: 0.82rem;
   letter-spacing: 0.04em;
+  position: sticky;
   text-transform: uppercase;
+  top: 0;
+  z-index: 1;
+}
+
+tbody tr:nth-child(even) {
+  background: #f8fafd;
+}
+
+tbody tr:hover {
+  background: #eef3fa;
+}
+
+/* Quantités et montants alignés au chiffre près d'une ligne à l'autre. */
+td,
+dd {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Pastilles de statut : le ton est choisi par badge-tone.ts. */
+.badge {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  display: inline-block;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.2;
+  padding: 0.2rem 0.6rem;
+  white-space: nowrap;
+}
+
+.badge--ok {
+  background: #e6f4ec;
+  border-color: #bcdfc9;
+  color: #14603a;
+}
+
+.badge--warn {
+  background: #fdf1dc;
+  border-color: #f0d6a8;
+  color: #7a4215;
+}
+
+.badge--bad {
+  background: #fce9eb;
+  border-color: #f2c2c8;
+  color: #8b1d29;
+}
+
+.badge--muted {
+  background: #eef1f6;
+  border-color: #d8e0ec;
+  color: #53627b;
 }
 
 .sr-only {

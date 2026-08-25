@@ -58,7 +58,7 @@
         <tbody>
           @for (article of store.articles(); track article.ean13) {
             <tr>
-              <th scope="row">{{ article.name }}</th><td>{{ article.ean13 }}</td><td>{{ article.type === 'food' ? 'Alimentaire' : 'Non alimentaire' }}</td><td>{{ isActive(article) ? 'Actif' : 'Archivé' }}</td>
+              <th scope="row">{{ article.name }}</th><td>{{ article.ean13 }}</td><td>{{ article.type === 'food' ? 'Alimentaire' : 'Non alimentaire' }}</td><td><span [class]="badgeTone(isActive(article) ? 'Actif' : 'Archivé')">{{ isActive(article) ? 'Actif' : 'Archivé' }}</span></td>
               <td>{{ article.type === 'food' ? formatModes(article.consumptionModes) : formatPackaging(article.packaging) }}</td><td>{{ article.priceHtCents | euros }}</td>
               <td>
                 @for (quote of article.priceQuotes; track quote.saleContext ?? quote.taxRate.code) {

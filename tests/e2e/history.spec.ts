@@ -481,7 +481,7 @@ test('keeps a committed Sale and its financial correction separately in History'
   });
   await expect(page.locator(`[aria-labelledby="history-entry-${sale.operation.id}"]`)).toContainText(/2,00\s€/);
   await expect(page.locator('#history-list')).toContainText(/-2,11\s€/);
-  await expect(page.locator(`[aria-labelledby="history-entry-${sale.operation.id}"]`)).toContainText('11/200');
+  await expect(page.locator(`[aria-labelledby="history-entry-${sale.operation.id}"]`)).toContainText('5,5 %');
   await expect(page.locator('#history-list')).toContainText('À emporter');
   const correctionCard = page.locator(`[aria-labelledby="history-entry-${correctionEntry!.id}"]`);
   await expect(correctionCard).toContainText('Prix HT unitaire historique');
@@ -499,7 +499,7 @@ test('keeps a committed Sale and its financial correction separately in History'
   await expect(articleCorrectionCard).toContainText('Prix HT unitaire historique');
   await expect(articleCorrectionCard).toContainText(/1,00\s€/);
   await expect(page.locator('#history-list')).toContainText('À emporter');
-  await expect(page.locator('#history-list')).toContainText('11/200');
+  await expect(page.locator('#history-list')).toContainText('5,5 %');
 });
 
 test.describe('history read failure runtime seam', () => {

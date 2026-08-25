@@ -1,5 +1,6 @@
 import { type AfterViewInit, ChangeDetectionStrategy, Component, type OnInit, effect, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { badgeTone } from '../../../shared-kernel/badge-tone';
 import { StockPositionStore } from '../application/stock-position-store';
 import { stockAvailabilityLabel } from './stock-availability-label';
 import { stockNonSellableReasonLabel } from './stock-non-sellable-reason-label';
@@ -14,6 +15,7 @@ import { stockNonSellableReasonLabel } from './stock-non-sellable-reason-label';
 })
 export class StockPage implements AfterViewInit, OnInit {
   readonly store = inject(StockPositionStore);
+  readonly badgeTone = badgeTone;
   private readonly filterValue = signal('');
   readonly availabilityLabel = stockAvailabilityLabel;
   readonly reasonLabel = stockNonSellableReasonLabel;

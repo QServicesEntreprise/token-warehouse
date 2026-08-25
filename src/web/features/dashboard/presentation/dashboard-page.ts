@@ -1,6 +1,8 @@
 import { type AfterViewInit, ChangeDetectionStrategy, Component, type OnInit, computed, effect, inject } from '@angular/core';
 import { DashboardStore } from '../application/dashboard-store';
+import { badgeTone } from '../../../shared-kernel/badge-tone';
 import { EurosPipe } from '../../../shared-kernel/euros-pipe';
+import { taxRateLabel } from '../../../shared-kernel/tax-rate-label';
 import type { DashboardFilter } from '../domain/dashboard-filter';
 import type { DashboardStockLine } from '../domain/dashboard-stock-line';
 import type { DashboardTaxSummary } from '../domain/dashboard-tax-summary';
@@ -15,6 +17,7 @@ import type { DashboardTaxSummary } from '../domain/dashboard-tax-summary';
 })
 export class DashboardPage implements OnInit, AfterViewInit {
   protected readonly store = inject(DashboardStore);
+  protected readonly badgeTone = badgeTone;
   protected readonly articleCount = computed(() => this.store.dashboard()?.stockByArticle.length ?? 0);
 
   constructor() {
@@ -105,11 +108,7 @@ export class DashboardPage implements OnInit, AfterViewInit {
   }
 
   protected formatTaxRate(line: DashboardTaxSummary): string {
-    return line.taxRate.code === 'takeaway'
-      ? '5,5 %'
-      : line.taxRate.code === 'onsite'
-        ? '10 %'
-        : '20 %';
+    return taxRateLabel(line.taxRate);
   }
 
   protected rowId(ean13: string): string {

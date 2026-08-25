@@ -175,7 +175,7 @@ test.describe('Sale refusal invariants', () => {
     await row.getByRole('button', { name: 'Sélectionner Article non alimentaire vendu sans contexte' }).click();
     await expect(salePanel.locator('#sale-context input')).toHaveCount(0);
     await expect(salePanel.locator('#sale-context-none')).toHaveText('Aucun Contexte de Vente — TVA non alimentaire.');
-    await expect(salePanel.locator('#sale-pricing-preview')).toContainText('1/5');
+    await expect(salePanel.locator('#sale-pricing-preview')).toContainText('20 %');
     await expect(salePanel.locator('#sale-pricing-preview')).toContainText(/1,21\s€/);
 
     await expectRejectedWithoutMutation(

@@ -82,8 +82,8 @@ test('requires a food context, previews both rates and commits the selected mode
   await row.getByRole('button', { name: 'Sélectionner Alimentaire aux deux modes' }).click();
 
   await expect(salePanel.locator('#sale-context input')).toHaveCount(2);
-  await expect(salePanel.locator('#sale-pricing-preview')).toContainText('11/200');
-  await expect(salePanel.locator('#sale-pricing-preview')).toContainText('1/10');
+  await expect(salePanel.locator('#sale-pricing-preview')).toContainText('5,5 %');
+  await expect(salePanel.locator('#sale-pricing-preview')).toContainText('10 %');
 
   await salePanel.locator('#sale-quantity').fill('3');
   await salePanel.locator('#sale-submit').click();
@@ -105,13 +105,13 @@ test('requires a food context, previews both rates and commits the selected mode
   expect(receipt.financial.amountTtcCents).toBe(330);
   expect(receipt.position.physicalQuantity).toBe(2);
   expect(receipt.position.sellableQuantity).toBe(2);
-  await expect(salePanel.locator('#sale-result')).toContainText('1/10');
+  await expect(salePanel.locator('#sale-result')).toContainText('10 %');
   await expect(salePanel.locator('#sale-result')).toContainText(/3,30\s€/);
 
   await page.reload();
   await expect(salePanel.locator('#sale-context input')).toHaveCount(2);
-  await expect(salePanel.locator('#sale-pricing-preview')).toContainText('11/200');
-  await expect(salePanel.locator('#sale-pricing-preview')).toContainText('1/10');
+  await expect(salePanel.locator('#sale-pricing-preview')).toContainText('5,5 %');
+  await expect(salePanel.locator('#sale-pricing-preview')).toContainText('10 %');
 });
 
 test.describe('Sale context, receipt and financial snapshot', () => {
@@ -138,7 +138,7 @@ test.describe('Sale context, receipt and financial snapshot', () => {
 
     await expect(salePanel.locator('#sale-context input')).toHaveCount(0);
     await expect(salePanel.locator('#sale-context-derived')).toHaveText('Contexte déduit : Sur place.');
-    await expect(salePanel.locator('#sale-pricing-preview')).toContainText('1/10');
+    await expect(salePanel.locator('#sale-pricing-preview')).toContainText('10 %');
     await salePanel.locator('#sale-quantity').fill('3');
     const committed = waitForRequest(page, 'POST', '/api/sales');
     await salePanel.locator('#sale-submit').click();
@@ -162,7 +162,7 @@ test.describe('Sale context, receipt and financial snapshot', () => {
     await expect(field('EAN-13')).toHaveText(ean13);
     await expect(field('Quantité')).toHaveText('3 unités');
     await expect(field('Prix HT unitaire')).toHaveText(/^1,01\s€$/);
-    await expect(field('Taux de TVA')).toHaveText('1/10');
+    await expect(field('Taux de TVA')).toHaveText('10 %');
     await expect(field('Montant HT')).toHaveText(/^3,03\s€$/);
     await expect(field('TVA')).toHaveText(/^0,30\s€$/);
     await expect(field('Montant TTC')).toHaveText(/^3,33\s€$/);

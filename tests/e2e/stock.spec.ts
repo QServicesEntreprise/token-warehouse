@@ -36,7 +36,7 @@ test('recomputes sellable stock after food DLC and non-food packaging updates', 
   await page.locator('#detailPackaging').selectOption('unsellable');
   await page.getByRole('button', { name: 'Enregistrer les attributs' }).click();
   await expect(page.locator('#attribute-update-error')).toContainText('mis à jour');
-  await expect(page.locator('.article-detail').getByText('unsellable', { exact: true })).toBeVisible();
+  await expect(page.locator('.article-detail > dl dd').filter({ hasText: /^Invendable$/ })).toBeVisible();
   await expect(detailStock(8)).toHaveCount(1);
   await expect(detailStock(0)).toHaveCount(1);
 

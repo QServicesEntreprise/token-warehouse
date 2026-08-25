@@ -5,6 +5,7 @@ import { filter } from 'rxjs';
 import type { HistoryLoadState } from '../application/history-load-state';
 import { HistoryStore } from '../application/history-store';
 import { EurosPipe } from '../../../shared-kernel/euros-pipe';
+import { taxRateLabel } from '../../../shared-kernel/tax-rate-label';
 
 const historyTypeLabels: Record<string, string> = {
   supply: 'Approvisionnement',
@@ -29,6 +30,7 @@ const historyTypeLabels: Record<string, string> = {
 })
 export class HistoryPage implements AfterViewInit, OnInit {
   readonly store = inject(HistoryStore);
+  readonly taxRateLabel = taxRateLabel;
   private readonly router = inject(Router);
   private readonly mutableFilter = signal('');
   private hasVisitedHistory = false;

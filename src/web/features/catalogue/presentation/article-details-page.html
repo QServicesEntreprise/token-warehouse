@@ -18,10 +18,10 @@
         <h3 id="detail-title" tabindex="-1">{{ article.name }}</h3>
         <dl>
           <div><dt>EAN-13</dt><dd>{{ article.ean13 }}</dd></div><div><dt>Type</dt><dd>{{ article.type === 'food' ? 'Alimentaire' : 'Non alimentaire' }}</dd></div>
-          <div><dt>Prix HT</dt><dd>{{ article.priceHtCents | euros }}</dd></div><div><dt>Statut</dt><dd>{{ article.status === 'active' ? 'Actif' : 'Archivé' }}</dd></div>
+          <div><dt>Prix HT</dt><dd>{{ article.priceHtCents | euros }}</dd></div><div><dt>Statut</dt><dd><span [class]="badgeTone(article.status === 'active' ? 'Actif' : 'Archivé')">{{ article.status === 'active' ? 'Actif' : 'Archivé' }}</span></dd></div>
           @if (article.dlc) { <div><dt>DLC</dt><dd>{{ article.dlc }}</dd></div> }
-          @if (article.consumptionModes) { <div><dt>Modes</dt><dd>{{ article.consumptionModes.join(', ') }}</dd></div> }
-          @if (article.packaging) { <div><dt>Packaging</dt><dd>{{ article.packaging }}</dd></div> }
+          @if (article.consumptionModes) { <div><dt>Modes</dt><dd>{{ formatModes(article.consumptionModes) }}</dd></div> }
+          @if (article.packaging) { <div><dt>Packaging</dt><dd>{{ packagingLabel(article.packaging) }}</dd></div> }
           <div><dt>Stock physique</dt><dd>{{ article.stock?.physicalQuantity ?? 0 }} unités</dd></div><div><dt>Stock vendable</dt><dd>{{ article.stock?.sellableQuantity ?? 0 }} unités</dd></div>
         </dl>
         <button id="detail-lifecycle-action" type="button" class="secondary-button" [disabled]="store.submitting()" (click)="toggleLifecycle()">{{ article.status === 'active' ? 'Archiver l’Article' : 'Réactiver l’Article' }}</button>
@@ -61,7 +61,7 @@
         }
         <section aria-labelledby="quotes-title"><h4 id="quotes-title">Prix TTC</h4><div class="price-quotes">
           @for (quote of article.priceQuotes; track quote.saleContext ?? quote.taxRate.code) {
-            <dl class="price-quote">@if (quote.saleContext) { <div><dt>Contexte de Vente</dt><dd>{{ quote.saleContext === 'takeaway' ? 'À emporter' : 'Sur place' }}</dd></div> }<div><dt>Taux de TVA</dt><dd>{{ quote.taxRate.ratio }}</dd></div><div><dt>TVA</dt><dd>{{ quote.vatCents | euros }}</dd></div><div><dt>Prix TTC</dt><dd>{{ quote.priceTtcCents | euros }}</dd></div></dl>
+            <dl class="price-quote">@if (quote.saleContext) { <div><dt>Contexte de Vente</dt><dd>{{ quote.saleContext === 'takeaway' ? 'À emporter' : 'Sur place' }}</dd></div> }<div><dt>Taux de TVA</dt><dd>{{ taxRateLabel(quote.taxRate) }}</dd></div><div><dt>TVA</dt><dd>{{ quote.vatCents | euros }}</dd></div><div><dt>Prix TTC</dt><dd>{{ quote.priceTtcCents | euros }}</dd></div></dl>
           }
         </div></section>
       </article>

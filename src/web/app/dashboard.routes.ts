@@ -5,6 +5,7 @@ import { DashboardHttpGateway } from '../features/dashboard/infrastructure/dashb
 
 export const dashboardRoutes: Routes = [{
   path: '',
+  title: 'Dashboard · Token Warehouse',
   providers: [
     DashboardStore,
     { provide: DashboardGateway, useClass: DashboardHttpGateway },

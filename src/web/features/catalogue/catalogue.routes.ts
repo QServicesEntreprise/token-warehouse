@@ -15,15 +15,18 @@ export const CATALOGUE_ROUTES: Routes = [
       {
         path: '',
         pathMatch: 'full',
+        title: 'Catalogue · Token Warehouse',
         loadComponent: () => import('./presentation/catalogue-list-page').then((module) => module.CatalogueListPage),
       },
       {
         path: 'nouveau',
+        title: 'Nouvel Article · Token Warehouse',
         providers: [ArticleCreateStore],
         loadComponent: () => import('./presentation/article-create-page').then((module) => module.ArticleCreatePage),
       },
       {
         path: ':ean13',
+        title: 'Détail de l’Article · Token Warehouse',
         providers: [ArticleDetailsStore],
         loadComponent: () => import('./presentation/article-details-page').then((module) => module.ArticleDetailsPage),
       },

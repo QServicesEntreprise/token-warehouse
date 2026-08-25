@@ -8,8 +8,11 @@ import type { ArticleSummary } from '../domain/article-summary';
 import type { ArticleType } from '../domain/article-type';
 import type { ArticleStatusFilter } from '../domain/article-status-filter';
 import type { Packaging } from '../domain/packaging';
+import { badgeTone } from '../../../shared-kernel/badge-tone';
 import type { ConsumptionMode } from '../../../shared-kernel/consumption-mode';
+import { consumptionModeLabel } from '../../../shared-kernel/consumption-mode-label';
 import { EurosPipe } from '../../../shared-kernel/euros-pipe';
+import { packagingLabel } from './packaging-label';
 
 @Component({
   selector: 'app-catalogue-list-page',
@@ -21,6 +24,7 @@ import { EurosPipe } from '../../../shared-kernel/euros-pipe';
 })
 export class CatalogueListPage implements OnInit, AfterViewInit {
   readonly store = inject(CatalogueListStore);
+  readonly badgeTone = badgeTone;
   private readonly searchSignal = signal('');
   private readonly statusSignal = signal<ArticleStatusFilter>('active');
   private readonly typeSignal = signal<ArticleType | 'all'>('all');
@@ -101,12 +105,10 @@ export class CatalogueListPage implements OnInit, AfterViewInit {
   }
 
   formatModes(modes: ConsumptionMode[]): string {
-    return modes.map((mode) => mode === 'takeaway' ? 'À emporter' : 'Sur place').join(', ');
+    return modes.map(consumptionModeLabel).join(', ');
   }
 
   formatPackaging(packaging: Packaging | undefined): string {
-    return packaging === 'new' ? 'Neuf'
-      : packaging === 'refurbished' ? 'Reconditionné'
-        : packaging === 'unsellable' ? 'Invendable' : '—';
+    return packagingLabel(packaging);
   }
 }

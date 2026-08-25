@@ -249,12 +249,12 @@ test('crée les trois formes d’Article et initialise leurs Stocks à zéro', a
   await expect(page.getByRole('heading', { name: 'Chocolat noir' })).toBeVisible();
   await expect(page.locator('.article-detail').getByText(foodEan)).toBeVisible();
   await expect(articleDetailText(/^10,00\s€$/)).toBeVisible();
-  await expect(page.getByText('takeaway, onsite')).toBeVisible();
+  await expect(page.locator('.article-detail > dl dd').filter({ hasText: /^À emporter, Sur place$/ })).toBeVisible();
   await expect(articleDetailText(/^10,55\s€$/)).toBeVisible();
   await expect(articleDetailText(/^11,00\s€$/)).toBeVisible();
   await expect(page.locator('.price-quote')).toHaveCount(2);
-  await expect(page.locator('.price-quotes')).toContainText('11/200');
-  await expect(page.locator('.price-quotes')).toContainText('1/10');
+  await expect(page.locator('.price-quotes')).toContainText('5,5 %');
+  await expect(page.locator('.price-quotes')).toContainText('10 %');
   await expect(page.locator('#priceTtcCents')).toHaveCount(0);
   await expect(page.locator('.article-detail').getByText('0 unités', { exact: true })).toHaveCount(2);
   await page.getByRole('link', { name: 'Catalogue', exact: true }).click();
@@ -275,7 +275,7 @@ test('crée les trois formes d’Article et initialise leurs Stocks à zéro', a
   await expect(page.locator('.price-quote')).toHaveCount(1);
   const singleFoodQuote = page.locator('.price-quote');
   await expect(singleFoodQuote).toContainText('À emporter');
-  await expect(singleFoodQuote).toContainText('11/200');
+  await expect(singleFoodQuote).toContainText('5,5 %');
   await expect(singleFoodQuote).toContainText(/10,55\s€/);
   await expect(singleFoodQuote).not.toContainText('Sur place');
 
@@ -283,7 +283,7 @@ test('crée les trois formes d’Article et initialise leurs Stocks à zéro', a
   await expect(page.getByRole('heading', { name: 'Café à emporter' })).toBeVisible();
   await expect(page.locator('.price-quote')).toHaveCount(1);
   await expect(page.locator('.price-quote')).toContainText('À emporter');
-  await expect(page.locator('.price-quote')).toContainText('11/200');
+  await expect(page.locator('.price-quote')).toContainText('5,5 %');
   await expect(page.locator('.price-quote')).toContainText(/10,55\s€/);
 
   await page.goto('/catalogue/nouveau');
@@ -306,10 +306,10 @@ test('crée les trois formes d’Article et initialise leurs Stocks à zéro', a
   await expect(page.locator('.article-detail').getByText(nonFoodEan)).toBeVisible();
   await expect(page.locator('.article-detail').getByText('Non alimentaire', { exact: true })).toBeVisible();
   await expect(articleDetailText(/^25,00\s€$/)).toBeVisible();
-  await expect(page.getByText('refurbished')).toBeVisible();
+  await expect(page.locator('.article-detail > dl dd').filter({ hasText: /^Reconditionné$/ })).toBeVisible();
   await expect(articleDetailText(/^30,00\s€$/)).toBeVisible();
   await expect(page.locator('.price-quote')).toHaveCount(1);
-  await expect(page.locator('.price-quote')).toContainText('1/5');
+  await expect(page.locator('.price-quote')).toContainText('20 %');
   await expect(page.locator('.price-quote')).toContainText(/5,00\s€/);
 
   await page.goto('/catalogue/nouveau');
@@ -382,30 +382,30 @@ test('modifie le Prix HT et retrouve les changements de DLC et Packaging dans l�
   await page.goto(`/catalogue/${foodEan}`);
   await expect(page.getByRole('heading', { name: 'Chocolat noir' })).toBeVisible();
   await expect(articleDetailText('2027-01-31')).toBeVisible();
-  await expect(articleDetailText('takeaway, onsite')).toBeVisible();
+  await expect(articleDetailText('À emporter, Sur place')).toBeVisible();
   await expect(articleDetailText(/^2,10\s€$/)).toBeVisible();
   await expect(articleDetailText(/^2,19\s€$/)).toBeVisible();
 
   await page.reload();
   await expect(articleDetailText('2027-01-31')).toBeVisible();
-  await expect(articleDetailText('takeaway, onsite')).toBeVisible();
+  await expect(articleDetailText('À emporter, Sur place')).toBeVisible();
 
   await page.goto(`/catalogue/${nonFoodEan}`);
   await page.locator('#detailPackaging').selectOption('unsellable');
   await page.getByRole('button', { name: 'Enregistrer les attributs' }).click();
-  await expect(page.getByText('unsellable')).toBeVisible();
+  await expect(page.locator('.article-detail > dl dd').filter({ hasText: /^Invendable$/ })).toBeVisible();
   await page.locator('#detailPriceHt').fill('19,99');
   await page.getByRole('button', { name: 'Enregistrer le Prix HT' }).click();
   await expect(articleDetailText(/^19,99\s€$/)).toBeVisible();
   await expect(articleDetailText(/^23,99\s€$/)).toBeVisible();
-  await expect(page.getByText('unsellable')).toBeVisible();
+  await expect(page.locator('.article-detail > dl dd').filter({ hasText: /^Invendable$/ })).toBeVisible();
 
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Batterie reconditionnée' })).toBeVisible();
   await expect(articleDetailText(/^19,99\s€$/)).toBeVisible();
   await expect(articleDetailText(/^23,99\s€$/)).toBeVisible();
   await expect(articleDetailText(/^4,00\s€$/)).toBeVisible();
-  await expect(page.getByText('unsellable')).toBeVisible();
+  await expect(page.locator('.article-detail > dl dd').filter({ hasText: /^Invendable$/ })).toBeVisible();
   await expect(page.locator('.price-quote')).toHaveCount(1);
   await page.goto('/stock/historique');
   await page.locator('#history-ean13').fill(nonFoodEan);
@@ -450,7 +450,7 @@ test('refuse les opérations et le Prix HT sur un Article archivé puis autorise
   await expect(articleDetailText('Alimentaire')).toBeVisible();
   await expect(articleDetailText(/^1,99\s€$/)).toBeVisible();
   await expect(articleDetailText('2030-12-31')).toBeVisible();
-  await expect(articleDetailText('takeaway')).toBeVisible();
+  await expect(page.locator('.article-detail > dl dd').filter({ hasText: /^À emporter$/ })).toBeVisible();
   await expect(page.locator('.article-detail').getByText('4 unités', { exact: true })).toHaveCount(1);
   await expect(page.locator('.article-detail').getByText('0 unités', { exact: true })).toHaveCount(1);
 
@@ -479,7 +479,7 @@ test('refuse les opérations et le Prix HT sur un Article archivé puis autorise
   await expect(articleDetailText('Alimentaire')).toBeVisible();
   await expect(articleDetailText(/^1,99\s€$/)).toBeVisible();
   await expect(articleDetailText('2030-12-31')).toBeVisible();
-  await expect(articleDetailText('takeaway')).toBeVisible();
+  await expect(page.locator('.article-detail > dl dd').filter({ hasText: /^À emporter$/ })).toBeVisible();
 
   await page.goto('/catalogue/nouveau');
   await page.locator('#ean13').fill(foodEan);

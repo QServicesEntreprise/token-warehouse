@@ -56,7 +56,7 @@
                 <td>{{ position.physicalQuantity }} unités</td>
                 <td>{{ position.sellableQuantity }} unités</td>
                 <td>{{ position.nonSellableQuantity }} unités</td>
-                <td>{{ availabilityLabel(position.availability) }}</td>
+                <td><span [class]="badgeTone(availabilityLabel(position.availability))">{{ availabilityLabel(position.availability) }}</span></td>
                 <td>{{ reasonLabel(position.nonSellableReason) }}</td>
                 <td>
                   <button

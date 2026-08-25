@@ -229,11 +229,11 @@
                   <td>{{ row.ean13 }}</td>
                   <th scope="row">{{ row.name }}</th>
                   <td>{{ formatArticleType(row.articleType) }}</td>
-                  <td>{{ formatLifecycle(row.lifecycleStatus) }}</td>
+                  <td><span [class]="badgeTone(formatLifecycle(row.lifecycleStatus))">{{ formatLifecycle(row.lifecycleStatus) }}</span></td>
                   <td>{{ row.physicalStock }} unités</td>
                   <td>{{ row.sellableStock }} unités</td>
                   <td>{{ row.nonSellableStock }} unités</td>
-                  <td>{{ formatStockAvailability(row.availability) }}</td>
+                  <td><span [class]="badgeTone(formatStockAvailability(row.availability))">{{ formatStockAvailability(row.availability) }}</span></td>
                   <td>{{ formatStockReason(row.reason) }}</td>
                 </tr>
               }

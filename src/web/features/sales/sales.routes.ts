@@ -7,6 +7,7 @@ import { SessionLastSaleStorage } from './infrastructure/session-last-sale-stora
 
 export const SALES_ROUTES: Routes = [{
   path: '',
+  title: 'Vente · Token Warehouse',
   data: { section: 'ventes' },
   providers: [
     SaleStore,

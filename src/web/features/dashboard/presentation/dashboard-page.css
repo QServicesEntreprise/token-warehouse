@@ -38,6 +38,7 @@
 
 .dashboard-kpi p {
   font-size: 1.5rem;
+  font-variant-numeric: tabular-nums;
   font-weight: 700;
   margin-top: 0.5rem;
 }
