@@ -79,6 +79,18 @@ class FakeStockGateway implements StockGateway {
     throw new Error('unused');
   }
 
+  recordInventory(): Observable<never> {
+    return throwError(() => new Error('Inventaire inattendu'));
+  }
+
+  recordBulkInventory(): Observable<never> {
+    return throwError(() => new Error('Inventaire inattendu'));
+  }
+
+  getInventoryById(): Observable<never> {
+    return throwError(() => new Error('Inventaire inattendu'));
+  }
+
   recordSupply(): Observable<never> {
     return throwError(() => new Error('unused'));
   }

@@ -40,5 +40,4 @@ export class StockPage implements AfterViewInit, OnInit {
   retry(): void {
     this.store.load(this.filterValue());
   }
-
 }

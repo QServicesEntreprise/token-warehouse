@@ -1,0 +1,89 @@
+<main aria-labelledby="inventory-title">
+  <section class="panel" aria-labelledby="inventory-title">
+    <div>
+      <p class="eyebrow">Opération de stock</p>
+      <h1 id="inventory-title" tabindex="-1">Enregistrer un Inventaire</h1>
+    </div>
+    <p>Comptez une ou plusieurs Références EAN-13 pour établir de nouvelles bases de Stock physique.</p>
+
+    <form id="inventory-form" class="form-grid" novalidate [formRoot]="inventoryForm" (submit)="onSubmit($event)">
+      @for (line of inventoryForm.lines; track line; let index = $index) {
+        <fieldset class="inventory-line">
+          <legend>Ligne {{ index + 1 }}</legend>
+          <label>
+            Référence EAN-13
+            <input
+              [id]="fieldId('ean13', index)"
+              autocomplete="off"
+              inputmode="numeric"
+              [formField]="line.ean13"
+              (input)="clearFieldError(index, 'ean13')"
+              [attr.aria-describedby]="fieldError(index, 'ean13') ? fieldId('ean13', index) + '-error' : null" />
+            @if (fieldError(index, 'ean13'); as error) {
+              <span [id]="fieldId('ean13', index) + '-error'" class="field-error">{{ error }}</span>
+            }
+          </label>
+
+          <label>
+            Quantité comptée
+            <input
+              [id]="fieldId('countedQuantity', index)"
+              type="text"
+              step="1"
+              inputmode="numeric"
+              [formField]="line.countedQuantity"
+              (input)="clearFieldError(index, 'countedQuantity')"
+              [attr.aria-describedby]="fieldError(index, 'countedQuantity') ? fieldId('countedQuantity', index) + '-error' : null" />
+            @if (fieldError(index, 'countedQuantity'); as error) {
+              <span [id]="fieldId('countedQuantity', index) + '-error'" class="field-error">{{ error }}</span>
+            }
+          </label>
+
+          @if (inventoryForm.lines.length > 1) {
+            <button type="button" class="secondary-button" [attr.aria-label]="'Retirer la ligne ' + (index + 1)" (click)="removeLine(index)">
+              Retirer
+            </button>
+          }
+        </fieldset>
+      }
+
+      <button id="inventory-add-line" type="button" class="secondary-button" (click)="addLine()">Ajouter une ligne</button>
+      <button type="submit" [disabled]="inventoryForm().submitting()">
+        {{ inventoryForm().submitting() ? 'Enregistrement…' : 'Enregistrer l’Inventaire' }}
+      </button>
+    </form>
+
+    @if (store.restoreState() === 'loading') {
+      <p id="inventory-restore-state" role="status" aria-live="polite">Relecture du dernier Inventaire…</p>
+    }
+    @if (store.restoreState() === 'error') {
+      <p id="inventory-restore-state" class="form-error" role="alert" aria-live="assertive">Le dernier Inventaire ne peut pas être relu.</p>
+    }
+    @if (clientError() || store.error(); as error) {
+      <p id="inventory-error" class="form-error" role="alert" aria-live="assertive" tabindex="-1">{{ clientError() || error }}</p>
+    }
+
+    @if (store.receipt(); as receipt) {
+      <article id="inventory-result" class="stock-detail" role="region" aria-live="polite" aria-labelledby="inventory-result-title" tabindex="-1">
+        <h2 id="inventory-result-title">Inventaire enregistré</h2>
+        <p>Identifiant serveur : <code>{{ receipt.id }}</code></p>
+        @for (line of receipt.lines; track line.lineNumber) {
+          <section class="inventory-result-line" [attr.aria-labelledby]="'inventory-result-line-title-' + line.lineNumber">
+            <h3 [id]="'inventory-result-line-title-' + line.lineNumber">Ligne {{ line.lineNumber }} — {{ line.ean13 }}</h3>
+            <dl>
+              <div><dt>EAN-13</dt><dd>{{ line.ean13 }}</dd></div>
+              <div><dt>Stock physique précédent</dt><dd>{{ line.previousPhysicalStock }} unités</dd></div>
+              <div><dt>Quantité comptée</dt><dd>{{ line.countedQuantity }} unités</dd></div>
+              <div><dt>Écart d’inventaire</dt><dd>{{ formatDifference(line.inventoryDifference) }}</dd></div>
+              <div><dt>Nouvelle base physique</dt><dd>{{ line.resultingPhysicalStock }} unités</dd></div>
+              <div><dt>Stock vendable</dt><dd>{{ line.position.sellableQuantity }} unités</dd></div>
+              <div><dt>Disponibilité</dt><dd>{{ formatAvailability(line.position.availability) }}</dd></div>
+              <div><dt>Raison</dt><dd>{{ formatReason(line.position.nonSellableReason) }}</dd></div>
+              <div><dt>Timestamp UTC</dt><dd>{{ receipt.timestampUtc }}</dd></div>
+            </dl>
+          </section>
+        }
+      </article>
+    }
+  </section>
+</main>

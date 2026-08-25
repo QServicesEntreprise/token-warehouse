@@ -8,7 +8,7 @@ import { expect, type APIResponse, type Page } from '@playwright/test';
 import type { Article } from '../../../src/web/features/catalogue/domain/article';
 import type { Packaging } from '../../../src/web/features/catalogue/domain/packaging';
 import type { ConsumptionMode } from '../../../src/web/shared-kernel/consumption-mode';
-import type { InventoryResponse } from '../../../src/web/app/inventory-api.service';
+import type { InventoryReceiptDto } from '../../../src/web/features/stock/infrastructure/dto/inventory-receipt.dto';
 import type { SaleResult } from '../../../src/web/app/features/sales/domain/sale-result';
 import type { RecordBulkSupplyResponseDto } from '../../../src/web/features/stock/infrastructure/dto/record-bulk-supply-response.dto';
 import type { RecordSupplyResponseDto } from '../../../src/web/features/stock/infrastructure/dto/record-supply-response.dto';
@@ -98,7 +98,7 @@ export const inventory = async (
   page: Page,
   ean13: string,
   countedQuantity: number,
-): Promise<InventoryResponse> => expectOkJson(await page.request.post(
+): Promise<InventoryReceiptDto> => expectOkJson(await page.request.post(
   `${apiBaseUrl}/api/inventories`,
   { data: { ean13, countedQuantity } },
 ));

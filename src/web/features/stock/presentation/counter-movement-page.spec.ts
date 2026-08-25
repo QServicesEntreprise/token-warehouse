@@ -5,6 +5,8 @@ import { STOCK_GATEWAY } from '../application/stock-gateway-token';
 import { StockGateway } from '../application/stock-gateway';
 import { CorrectableSource } from '../domain/correctable-source';
 import { CounterMovementResult } from '../domain/counter-movement-result';
+import { InventoryCommand } from '../domain/inventory-command';
+import { InventoryReceipt } from '../domain/inventory-receipt';
 import { RecordCounterMovementCommand } from '../domain/record-counter-movement-command';
 import { StockPosition } from '../domain/stock-position';
 import { CounterMovementStore } from '../application/counter-movement-store';
@@ -25,6 +27,18 @@ class FakeStockGateway implements StockGateway {
 
   getByEan13(): Observable<StockPosition> {
     return throwError(() => new Error('Position absente'));
+  }
+
+  recordInventory(_command: InventoryCommand): Observable<InventoryReceipt> {
+    return throwError(() => new Error('Inventaire inattendu'));
+  }
+
+  recordBulkInventory(_commands: readonly InventoryCommand[]): Observable<InventoryReceipt> {
+    return throwError(() => new Error('Inventaire inattendu'));
+  }
+
+  getInventoryById(): Observable<InventoryReceipt> {
+    return throwError(() => new Error('Inventaire inattendu'));
   }
 
   recordSupply(): Observable<never> {

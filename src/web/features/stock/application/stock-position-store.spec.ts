@@ -5,6 +5,7 @@ import { CorrectableSource } from '../domain/correctable-source';
 import { CounterMovementResult } from '../domain/counter-movement-result';
 import { RecordCounterMovementCommand } from '../domain/record-counter-movement-command';
 import { StockPosition } from '../domain/stock-position';
+import { InventoryReceipt } from '../domain/inventory-receipt';
 import { HistoryEntry } from '../domain/history-entry';
 import { HistoryQuery } from './history-query';
 import { STOCK_GATEWAY } from './stock-gateway-token';
@@ -31,6 +32,18 @@ class FakeStockGateway implements StockGateway {
 
   getByEan13(ean13: string): Observable<StockPosition> {
     return this.detailResponses.get(ean13) ?? throwError(() => new Error('Position absente'));
+  }
+
+  recordInventory(): Observable<InventoryReceipt> {
+    return throwError(() => new Error('Inventaire hors test'));
+  }
+
+  recordBulkInventory(): Observable<InventoryReceipt> {
+    return throwError(() => new Error('Inventaire hors test'));
+  }
+
+  getInventoryById(): Observable<InventoryReceipt> {
+    return throwError(() => new Error('Inventaire hors test'));
   }
 
   recordSupply(): Observable<never> {

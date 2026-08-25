@@ -60,6 +60,103 @@ describe('HttpStockGateway', () => {
     });
   });
 
+  it('records an Inventory and maps the committed server receipt', async () => {
+    const result = firstValueFrom(gateway.recordInventory({
+      ean13: '0123456789012',
+      countedQuantity: 11,
+    }));
+    const request = http.expectOne('/api/inventories');
+    expect(request.request.method).toBe('POST');
+    expect(request.request.body).toEqual({ ean13: '0123456789012', countedQuantity: 11 });
+    request.flush({
+      operation: {
+        id: 'inventory-1',
+        type: 'INVENTORY',
+        ean13: '0123456789012',
+        previousPhysicalStock: 5,
+        countedQuantity: 11,
+        inventoryDifference: 6,
+        resultingPhysicalStock: 11,
+        timestampUtc: '2030-01-15T10:00:00+00:00',
+      },
+      position: {
+        ean13: '0123456789012',
+        physicalStock: 11,
+        sellableStock: 11,
+        availability: 'AVAILABLE',
+        reason: null,
+      },
+    });
+
+    await expect(result).resolves.toMatchObject({ id: 'inventory-1', lines: [{ inventoryDifference: 6 }] });
+  });
+
+  it('records an atomic bulk Inventory through the bulk endpoint', async () => {
+    const commands = [
+      { ean13: '0123456789012', countedQuantity: 11 },
+      { ean13: '7351353713578', countedQuantity: 2 },
+    ];
+    const result = firstValueFrom(gateway.recordBulkInventory(commands));
+    const request = http.expectOne('/api/inventories/bulk');
+    expect(request.request.method).toBe('POST');
+    expect(request.request.body).toEqual({ lines: commands });
+    request.flush({
+      operation: {
+        id: 'inventory-bulk-1',
+        type: 'INVENTORY',
+        timestampUtc: '2030-01-15T10:00:00+00:00',
+        lines: [{
+          lineNumber: 1,
+          ean13: '0123456789012',
+          countedQuantity: 11,
+          previousPhysicalStock: 5,
+          inventoryDifference: 6,
+          resultingPhysicalStock: 11,
+          position: { ean13: '0123456789012', physicalStock: 11, sellableStock: 11, availability: 'AVAILABLE', reason: null },
+        }, {
+          lineNumber: 2,
+          ean13: '7351353713578',
+          countedQuantity: 2,
+          previousPhysicalStock: 5,
+          inventoryDifference: -3,
+          resultingPhysicalStock: 2,
+          position: { ean13: '7351353713578', physicalStock: 2, sellableStock: 2, availability: 'AVAILABLE', reason: null },
+        }],
+      },
+    });
+
+    await expect(result).resolves.toMatchObject({ id: 'inventory-bulk-1', lines: [{ lineNumber: 1 }, { lineNumber: 2 }] });
+  });
+
+  it('restores an Inventory with server Stock positions', async () => {
+    const result = firstValueFrom(gateway.getInventoryById('inventory-1'));
+    http.expectOne('/api/inventories/inventory-1').flush({
+      id: 'inventory-1',
+      type: 'INVENTORY',
+      ean13: '0123456789012',
+      previousPhysicalStock: 5,
+      countedQuantity: 11,
+      inventoryDifference: 6,
+      resultingPhysicalStock: 11,
+      timestampUtc: '2030-01-15T10:00:00+00:00',
+    });
+    http.expectOne('/api/stock/0123456789012').flush({
+      ean13: '0123456789012',
+      name: 'Article inventorié',
+      type: 'food',
+      isActive: true,
+      status: 'active',
+      physicalQuantity: 11,
+      sellableQuantity: 11,
+      availability: 'AVAILABLE',
+      reason: null,
+      dlc: '2030-01-16',
+      consumptionModes: ['takeaway'],
+    });
+
+    await expect(result).resolves.toMatchObject({ id: 'inventory-1', lines: [{ position: { physicalQuantity: 11 } }] });
+  });
+
   it('records a unit Approvisionnement through its dedicated contract', async () => {
     const result = firstValueFrom(gateway.recordSupply({ ean13: '0123456789012', quantity: 3 }));
     const request = http.expectOne('/api/supplies');

@@ -179,16 +179,7 @@ test('corrects a Sale from its historical snapshot after the Article price and l
 });
 
 test('corrects an inventory after a later movement and keeps the source unchanged', async ({ page }) => {
-  await page.goto('/stock/inventaires');
-  await page.locator('#inventory-ean13').fill(canonicalEan);
-  await page.locator('#inventory-countedQuantity').fill('11');
-  const inventoryResponsePromise = waitForRequest(page, 'POST', '/api/inventories');
-  await page.locator('#inventory-form button[type="submit"]').click();
-  const inventoryResponse = await inventoryResponsePromise;
-  expect(inventoryResponse.status()).toBe(201);
-  const inventoryReceipt = await inventoryResponse.json() as {
-    operation: { id: string; previousPhysicalStock: number; countedQuantity: number; inventoryDifference: number };
-  };
+  const inventoryReceipt = await inventory(page, canonicalEan, 11);
   const inventoryId = inventoryReceipt.operation.id;
   expect(inventoryReceipt.operation).toMatchObject({ previousPhysicalStock: 5, countedQuantity: 11, inventoryDifference: 6 });
 
@@ -199,6 +190,7 @@ test('corrects an inventory after a later movement and keeps the source unchange
   await page.locator('#supply-form button[type="submit"]').click();
   expect((await supplyResponsePromise).status()).toBe(201);
 
+  await page.goto('/stock/corrections');
   await openCounterMovement(page);
   const counterResponse = await correctSource(page, inventoryId, 'Correction après mouvement ultérieur');
   expect(counterResponse.status()).toBe(201);
@@ -258,12 +250,7 @@ test('rejects a bulk counter-movement atomically when one line would go negative
   expect(supplyResponse.status()).toBe(201);
   const supplyReceipt = await supplyResponse.json() as { operation: { id: string } };
 
-  await page.goto('/stock/inventaires');
-  await page.locator('#inventory-ean13').fill(canonicalEan);
-  await page.locator('#inventory-countedQuantity').fill('1');
-  const inventoryResponsePromise = waitForRequest(page, 'POST', '/api/inventories');
-  await page.locator('#inventory-form button[type="submit"]').click();
-  expect((await inventoryResponsePromise).status()).toBe(201);
+  await inventory(page, canonicalEan, 1);
 
   const sourceSelect = await openCounterMovement(page);
   const counterResponse = await correctSource(page, supplyReceipt.operation.id, 'Lot impossible');
@@ -281,14 +268,8 @@ test('rejects a bulk counter-movement atomically when one line would go negative
 });
 
 test('corrects an archived Article while keeping its sellable stock at zero', async ({ page }) => {
-  await page.goto('/stock/inventaires');
-  await page.locator('#inventory-ean13').fill(archivedEan);
-  await page.locator('#inventory-countedQuantity').fill('6');
-  const inventoryResponsePromise = waitForRequest(page, 'POST', '/api/inventories');
-  await page.locator('#inventory-form button[type="submit"]').click();
-  const inventoryResponse = await inventoryResponsePromise;
-  expect(inventoryResponse.status()).toBe(201);
-  const inventoryReceipt = await inventoryResponse.json() as { operation: { id: string } };
+  await page.goto('/stock/corrections');
+  const inventoryReceipt = await inventory(page, archivedEan, 6);
 
   await openCounterMovement(page);
   const counterResponse = await correctSource(page, inventoryReceipt.operation.id, 'Correction du résiduel archivé');

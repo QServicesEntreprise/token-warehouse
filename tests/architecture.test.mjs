@@ -162,7 +162,6 @@ test('Angular routing shell stays free of legacy business state', async () => {
   }
   assert.match(routes, /data:\s*\{\s*section:/);
   assert.match(routes, /const loadLegacy\s*=\s*\(\)\s*=>\s*import\(['"]\.\/legacy-backoffice-page['"]\)/);
-  assert.match(routes, /loadComponent:\s*loadLegacy/);
   assert.match(config, /provideRouter\(routes\)/);
 
   const legacyAllowlist = [
@@ -244,6 +243,33 @@ test('Stock positions are an autonomous lazy context and no longer live in legac
   }
   for (const source of await layerSources('presentation')) {
     assert.doesNotMatch(source, /HttpClient|\b\w+(Dto|Payload|Response)\b/);
+  }
+});
+
+test('Stock Inventories are autonomous, route-scoped and absent from legacy', async () => {
+  const appDirectory = join(root, 'src/web/app');
+  const stockDirectory = join(root, 'src/web/features/stock');
+  const routes = await readFile(join(appDirectory, 'app.routes.ts'), 'utf8');
+  const legacy = await readFile(join(appDirectory, 'legacy-backoffice-page.ts'), 'utf8');
+
+  assert.match(routes, /path: 'inventaires'[\s\S]*providers:[\s\S]*InventoryStore[\s\S]*STOCK_GATEWAY[\s\S]*HttpStockGateway[\s\S]*LAST_INVENTORY_STORAGE[\s\S]*SessionLastInventoryStorage[\s\S]*loadComponent:[\s\S]*features\/stock\/presentation\/inventory-page/);
+  assert.doesNotMatch(legacy, /inventory-form|InventoryApiService|inventoryReceipt|last-inventory-id/);
+  await assert.rejects(readFile(join(appDirectory, 'inventory-api.service.ts'), 'utf8'));
+  await assert.rejects(readFile(join(appDirectory, 'stock-api.service.ts'), 'utf8'));
+
+  const layerSources = async (layer) => Promise.all(
+    (await readdir(join(stockDirectory, layer), { recursive: true }))
+      .filter((entry) => entry.endsWith('.ts') && !entry.endsWith('.spec.ts'))
+      .map((entry) => readFile(join(stockDirectory, layer, entry), 'utf8')),
+  );
+  for (const source of await layerSources('domain')) {
+    assert.doesNotMatch(source, /@angular|rxjs|HttpClient|Router|document\.|sessionStorage/);
+  }
+  for (const source of await layerSources('application')) {
+    assert.doesNotMatch(source, /HttpClient|Router|document\.|sessionStorage|\b\w+(Dto|Payload|Response)\b/);
+  }
+  for (const source of await layerSources('presentation')) {
+    assert.doesNotMatch(source, /HttpClient|\b\w+(Dto|Payload|Response)\b|\.\.\/infrastructure/);
   }
 });
 
