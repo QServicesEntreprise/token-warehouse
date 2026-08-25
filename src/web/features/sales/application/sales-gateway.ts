@@ -1,4 +1,4 @@
-import { Observable } from 'rxjs';
+import type { Observable } from 'rxjs';
 import type { SaleCommand } from '../domain/sale-command';
 import type { SaleResult } from '../domain/sale-result';
 import type { SellableArticle } from '../domain/sellable-article';

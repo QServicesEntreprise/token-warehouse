@@ -1,4 +1,5 @@
-import { Observable, of } from 'rxjs';
+import { of } from 'rxjs';
+import type { Observable } from 'rxjs';
 import type { Article } from '../../domain/article';
 import type { ArticleSummary } from '../../domain/article-summary';
 import type { ArticleAttributesUpdateCommand } from '../article-attributes-update-command';

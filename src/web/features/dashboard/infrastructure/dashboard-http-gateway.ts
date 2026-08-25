@@ -1,6 +1,7 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable, catchError, map, throwError } from 'rxjs';
+import { catchError, map, throwError } from 'rxjs';
+import type { Observable } from 'rxjs';
 import { DashboardGateway } from '../application/dashboard-gateway';
 import type { Dashboard } from '../domain/dashboard';
 import type { DashboardCalendar } from '../domain/dashboard-calendar';

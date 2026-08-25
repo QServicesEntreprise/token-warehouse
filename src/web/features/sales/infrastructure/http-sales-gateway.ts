@@ -1,6 +1,7 @@
 import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { catchError, map, Observable, throwError } from 'rxjs';
+import { catchError, map, throwError } from 'rxjs';
+import type { Observable } from 'rxjs';
 import type { SaleFailure } from '../application/sale-failure';
 import type { SalesGateway } from '../application/sales-gateway';
 import type { SaleCommand } from '../domain/sale-command';

@@ -1,6 +1,7 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable, catchError, forkJoin, map, switchMap, throwError } from 'rxjs';
+import { catchError, forkJoin, map, switchMap, throwError } from 'rxjs';
+import type { Observable } from 'rxjs';
 import type { HistoryQuery } from '../application/history-query';
 import type { StockGateway } from '../application/stock-gateway';
 import type { CorrectableSource } from '../domain/correctable-source';

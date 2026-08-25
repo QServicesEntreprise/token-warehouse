@@ -1,4 +1,4 @@
-import { Observable } from 'rxjs';
+import type { Observable } from 'rxjs';
 import type { Dashboard } from '../domain/dashboard';
 import type { DashboardCalendar } from '../domain/dashboard-calendar';
 import type { DashboardFilter } from '../domain/dashboard-filter';

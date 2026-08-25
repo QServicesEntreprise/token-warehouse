@@ -1,4 +1,4 @@
-import { Observable } from 'rxjs';
+import type { Observable } from 'rxjs';
 import type { CorrectableSource } from '../domain/correctable-source';
 import type { CounterMovementResult } from '../domain/counter-movement-result';
 import type { HistoryEntry } from '../domain/history-entry';
