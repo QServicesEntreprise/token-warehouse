@@ -61,3 +61,12 @@ test('keeps an unsubmitted Catalogue filter while visiting another section', asy
   await page.getByRole('link', { name: 'Catalogue', exact: true }).click();
   await expect(page.locator('#catalog-search')).toHaveValue('brouillon conservé');
 });
+
+test('keeps an unsubmitted History filter while visiting another section', async ({ page }) => {
+  await page.goto('/stock/historique');
+  await page.locator('#history-ean13').fill('0123456789012');
+
+  await page.getByRole('link', { name: 'Dashboard', exact: true }).click();
+  await page.getByRole('link', { name: 'Historique', exact: true }).click();
+  await expect(page.locator('#history-ean13')).toHaveValue('0123456789012');
+});

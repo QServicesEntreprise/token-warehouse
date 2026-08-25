@@ -78,6 +78,10 @@ class FakeStockGateway implements StockGateway {
   recordCounterMovement(_command: RecordCounterMovementCommand): Observable<CounterMovementResult> {
     return this.recordResponse;
   }
+
+  history(): Observable<never> {
+    return throwError(() => new Error('Historique inattendu'));
+  }
 }
 
 describe('CounterMovementStore', () => {

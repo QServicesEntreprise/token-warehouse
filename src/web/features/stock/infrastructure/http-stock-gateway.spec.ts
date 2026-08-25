@@ -267,4 +267,29 @@ describe('HttpStockGateway', () => {
       positions: [{ physicalQuantity: 5, sellableQuantity: 5 }],
     });
   });
+
+  it('returns Stock History models from an explicit Article query', async () => {
+    const result = firstValueFrom(gateway.history({ scope: 'article', ean13: '0123456789012' }));
+    http.expectOne('/api/history?ean13=0123456789012').flush([{
+      id: 'archive-1',
+      type: 'CATALOG_ARCHIVE',
+      timestampUtc: '2030-01-15T10:00:00Z',
+      ean13: '0123456789012',
+      articles: [{ ean13: '0123456789012' }],
+      lines: [],
+      previousStatus: 'active',
+      nextStatus: 'archived',
+    }]);
+
+    await expect(result).resolves.toEqual([{
+      id: 'archive-1',
+      type: 'catalogArchive',
+      timestampUtc: '2030-01-15T10:00:00Z',
+      ean13: '0123456789012',
+      articles: ['0123456789012'],
+      lines: [],
+      previousStatus: 'active',
+      nextStatus: 'archived',
+    }]);
+  });
 });
