@@ -464,9 +464,12 @@ test('recalls the Article name and its known physical stock while counting', asy
   await page.locator('#inventory-ean13').fill(canonicalEan);
   const hint = page.locator('#inventory-form .inventory-line-hint');
   await expect(hint).toHaveText(/Alimentaire aux deux modes — Stock physique connu : 5 unités/);
+  await expect(hint).toHaveAttribute('id', 'inventory-ean13-hint');
+  await expect(page.locator('#inventory-ean13')).toHaveAttribute('aria-describedby', 'inventory-ean13-hint');
 
   await page.locator('#inventory-ean13').fill(unknownEan);
   await expect(hint).toHaveCount(0);
+  await expect(page.locator('#inventory-ean13')).not.toHaveAttribute('aria-describedby', /.+/);
   await expect(page.locator('#inventory-error')).toHaveCount(0);
 
   await submitInventory(page, canonicalEan, 11);

@@ -123,6 +123,20 @@ export class InventoryPage implements AfterViewInit, OnInit {
     return this.positionsByEan().get(ean13)?.name ?? '';
   }
 
+  hintId(index: number): string {
+    return `${this.fieldId('ean13', index)}-hint`;
+  }
+
+  // The counted line is described by whichever of its error and its Stock
+  // reminder is on screen, so a screen reader hears both.
+  ean13DescribedBy(index: number): string | null {
+    const ids = [
+      this.fieldError(index, 'ean13') ? `${this.fieldId('ean13', index)}-error` : '',
+      this.positionsByEan().has(this.model().lines[index]?.ean13 ?? '') ? this.hintId(index) : '',
+    ].filter(Boolean);
+    return ids.length > 0 ? ids.join(' ') : null;
+  }
+
   formatDifference(difference: number): string {
     return difference > 0 ? `+${difference}` : String(difference);
   }

@@ -19,7 +19,7 @@
               list="inventory-articles"
               [formField]="line.ean13"
               (input)="clearFieldError(index, 'ean13')"
-              [attr.aria-describedby]="fieldError(index, 'ean13') ? fieldId('ean13', index) + '-error' : null" />
+              [attr.aria-describedby]="ean13DescribedBy(index)" />
             @if (fieldError(index, 'ean13'); as error) {
               <span [id]="fieldId('ean13', index) + '-error'" class="field-error">{{ error }}</span>
             }
@@ -41,7 +41,7 @@
           </label>
 
           @if (positionsByEan().get(line.ean13().value()); as position) {
-            <p class="inventory-line-hint">
+            <p [id]="hintId(index)" class="inventory-line-hint">
               {{ position.name }} — Stock physique connu : {{ position.physicalQuantity }} unités
             </p>
           }
