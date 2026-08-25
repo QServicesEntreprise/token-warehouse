@@ -34,6 +34,7 @@ export const STOCK_ROUTES: Routes = [
     path: 'inventaires',
     providers: [
       InventoryStore,
+      StockPositionStore,
       { provide: STOCK_GATEWAY, useClass: HttpStockGateway },
       { provide: LAST_INVENTORY_STORAGE, useClass: SessionLastInventoryStorage },
     ],

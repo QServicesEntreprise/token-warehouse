@@ -344,7 +344,7 @@ test('keeps the Supply fact after inventorying the same Article', async ({ page 
   const supplyReceipt = await supply(page, canonicalEan, 3);
   const inventoryId = await submitInventory(page, canonicalEan, 6);
 
-  await page.getByRole('link', { name: 'Historique' }).click();
+  await page.getByRole('link', { name: 'Historique', exact: true }).click();
   const historyResponsePromise = waitForRequest(page, 'GET', '/api/history', (url) =>
     url.searchParams.get('ean13') === canonicalEan);
   await page.locator('#history-ean13').fill(canonicalEan);
@@ -456,5 +456,52 @@ test('disables Inventory submission and sends one request while the mutation is 
     await twoClicks.catch(() => {});
     page.off('request', requestListener);
     await page.unroute('**/api/inventories', delayedResponse);
+  }
+});
+
+test('recalls the Article name and its known physical stock while counting', async ({ page }) => {
+  await openInventory(page);
+  await page.locator('#inventory-ean13').fill(canonicalEan);
+  const hint = page.locator('#inventory-form .inventory-line-hint');
+  await expect(hint).toHaveText(/Alimentaire aux deux modes — Stock physique connu : 5 unités/);
+
+  await page.locator('#inventory-ean13').fill(unknownEan);
+  await expect(hint).toHaveCount(0);
+  await expect(page.locator('#inventory-error')).toHaveCount(0);
+
+  await submitInventory(page, canonicalEan, 11);
+  await expect(result(page).locator('h3')).toContainText('Alimentaire aux deux modes');
+  await expect(result(page).locator('h3')).toContainText(canonicalEan);
+  await expect(hint).toHaveText(/Stock physique connu : 11 unités/);
+});
+
+test('records an Inventory when the Stock positions cannot be loaded', async ({ page }) => {
+  const failStock = async (route: Route) => {
+    const url = new URL(route.request().url());
+    return url.pathname === '/api/stock'
+      ? route.fulfill({
+        status: 500,
+        contentType: 'application/problem+json',
+        body: JSON.stringify({ status: 500, code: 'PERSISTENCE_FAILURE' }),
+      })
+      : route.continue();
+  };
+  await page.route('**/api/stock', failStock);
+  try {
+    await page.goto('/stock/inventaires');
+    await expect(page.locator('#inventory-form .inventory-line-hint')).toHaveCount(0);
+    await submitInventory(page, canonicalEan, 11);
+    await expectReceipt(page, {
+      ean13: canonicalEan,
+      previous: 5,
+      counted: 11,
+      difference: '+6',
+      resulting: 11,
+      sellable: 11,
+      availability: 'Disponible',
+      reason: '—',
+    });
+  } finally {
+    await page.unroute('**/api/stock', failStock);
   }
 });

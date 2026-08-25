@@ -16,6 +16,7 @@
               [id]="fieldId('ean13', index)"
               autocomplete="off"
               inputmode="numeric"
+              list="inventory-articles"
               [formField]="line.ean13"
               (input)="clearFieldError(index, 'ean13')"
               [attr.aria-describedby]="fieldError(index, 'ean13') ? fieldId('ean13', index) + '-error' : null" />
@@ -39,6 +40,12 @@
             }
           </label>
 
+          @if (positionsByEan().get(line.ean13().value()); as position) {
+            <p class="inventory-line-hint">
+              {{ position.name }} — Stock physique connu : {{ position.physicalQuantity }} unités
+            </p>
+          }
+
           @if (inventoryForm.lines.length > 1) {
             <button type="button" class="secondary-button" [attr.aria-label]="'Retirer la ligne ' + (index + 1)" (click)="removeLine(index)">
               Retirer
@@ -52,6 +59,12 @@
         {{ inventoryForm().submitting() ? 'Enregistrement…' : 'Enregistrer l’Inventaire' }}
       </button>
     </form>
+
+    <datalist id="inventory-articles">
+      @for (position of positions.state().positions; track position.ean13) {
+        <option [value]="position.ean13">{{ position.name }}</option>
+      }
+    </datalist>
 
     @if (store.restoreState() === 'loading') {
       <p id="inventory-restore-state" role="status" aria-live="polite">Relecture du dernier Inventaire…</p>
@@ -69,7 +82,9 @@
         <p>Identifiant serveur : <code>{{ receipt.id }}</code></p>
         @for (line of receipt.lines; track line.lineNumber) {
           <section class="inventory-result-line" [attr.aria-labelledby]="'inventory-result-line-title-' + line.lineNumber">
-            <h3 [id]="'inventory-result-line-title-' + line.lineNumber">Ligne {{ line.lineNumber }} — {{ line.ean13 }}</h3>
+            <h3 [id]="'inventory-result-line-title-' + line.lineNumber">
+              Ligne {{ line.lineNumber }} — @if (nameFor(line.ean13); as name) { {{ name }} ({{ line.ean13 }}) } @else { {{ line.ean13 }} }
+            </h3>
             <dl>
               <div><dt>EAN-13</dt><dd>{{ line.ean13 }}</dd></div>
               <div><dt>Stock physique précédent</dt><dd>{{ line.previousPhysicalStock }} unités</dd></div>
@@ -85,5 +100,8 @@
         }
       </article>
     }
+    <p class="inventory-history-link">
+      <a routerLink="/stock/historique">Voir tous les Inventaires dans l’Historique</a>
+    </p>
   </section>
 </main>
