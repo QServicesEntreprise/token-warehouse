@@ -71,6 +71,9 @@ public static class WarehouseHost
 
         builder.Services.AddSingleton<RuntimeReadiness>();
 
+        // Après la migration : peuple l'Entrepôt quand le Catalogue est vide.
+        builder.Services.AddHostedService<DemoDataSeeder>();
+
         configure?.Invoke(builder);
 
         var app = builder.Build();
