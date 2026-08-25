@@ -41,8 +41,8 @@ huit loops :
 | Delivery | `merge` | Merge après review et QA vertes. |
 
 Chaque tranche fonctionnelle a donc traversé un refine besoin → refine technique
-→ refine qualité → développement → review → QA → merge, avec une PR numérotée
-par tranche (45 commits, une PR par tranche verticale).
+→ refine qualité → développement → review → QA → merge : 56 commits sur `main`,
+dont 45 merges de PR, une PR par tranche verticale.
 
 Ce qui est resté à la main, et qui explique les choix visibles dans le code :
 la **modélisation du domaine** (agrégats, value objects, politiques), les
@@ -161,7 +161,10 @@ existe ou que l'environnement est `Testing`. Les données suivent
 [le brief créatif](docs/token-warehouse-creative-product-brief.md) : les
 Articles alimentaires sont des modèles de langage — à emporter pour les poids
 ouverts, sur place pour les modèles consommés via API — et les non alimentaires
-une gamme de compute du Gaming PC au Space Datacenter. Parcours de test manuel :
+une gamme de compute du Gaming PC au Space Datacenter. Le jeu contient
+volontairement quatre Articles bloqués — un archivé, une DLC dépassée, deux
+Packagings invendables — pour que les trois raisons de non-vendabilité soient
+visibles dès l'ouverture. Parcours de test manuel :
 [`docs/GUIDE_TEST_MANUEL.md`](docs/GUIDE_TEST_MANUEL.md).
 
 ### Vérification complète
@@ -181,18 +184,18 @@ dotnet test TokenWarehouse.slnx --no-build
 npm run test:e2e           # Playwright, API réelle
 ```
 
-**Dernière exécution complète mesurée — 25 août 2026, commit `7c0c6f2`, sur
-checkout propre après `npm ci --legacy-peer-deps` :**
+**Dernière exécution complète mesurée — 25 août 2026, commit `62dcfe9` (HEAD de
+`main`) :**
 
 | Suite | Résultat |
 | --- | --- |
 | `dotnet build` | 8 projets, 0 erreur, 0 warning (`TreatWarningsAsErrors`) |
 | `dotnet test` | 315 tests — Domain 65, Application 79, Api 171 |
 | `test:architecture` | 18 tests |
-| `build:web` | 276,06 kB initial / 78,39 kB transféré, 30 lazy chunks |
-| `test:web` | 39 fichiers, 117 tests |
-| `test:e2e` | 101 tests (5 min 00) |
-| **Total** | **551 tests, 0 échec** |
+| `build:web` | 267,08 kB initial / 75,17 kB transféré, 32 lazy chunks |
+| `test:web` | 40 fichiers, 122 tests |
+| `test:e2e` | 105 tests (5 min 42) |
+| **Total** | **560 tests, 0 échec** |
 
 ### Repartir d'un état propre
 
@@ -325,9 +328,7 @@ production, par ordre d'importance :
    automatiquement. C'est le premier manque à combler.
 2. **Périmètre trop large pour l'exercice.** Ventes, Dashboard et
    Contre-mouvements sont hors demande. Le rendu aurait été plus lisible sans
-   eux. L'écran Inventaire, lui, est désormais terminé : sélecteur d'Articles,
-   rappel du nom et du Stock physique connu à la saisie, reçu nommé, et entrée
-   directe depuis la table Stock.
+   eux.
 3. **Stratégie de réutilisation de route encore portée par le routeur.**
    `app/route-reuse-strategy.ts` conserve des composants détachés via des
    variables mutables au niveau module. Ce besoin — préserver une saisie en
