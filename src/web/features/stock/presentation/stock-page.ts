@@ -1,4 +1,4 @@
-import { AfterViewInit, ChangeDetectionStrategy, Component, OnInit, effect, inject, signal } from '@angular/core';
+import { type AfterViewInit, ChangeDetectionStrategy, Component, type OnInit, effect, inject, signal } from '@angular/core';
 import { StockPositionStore } from '../application/stock-position-store';
 import { stockAvailabilityLabel } from './stock-availability-label';
 import { stockNonSellableReasonLabel } from './stock-non-sellable-reason-label';

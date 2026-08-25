@@ -7,7 +7,7 @@
   </header>
 
   <section class="panel" aria-labelledby="catalog-title">
-    <form class="catalog-filters" (submit)="onSubmit($event)">
+    <form class="filters-grid" (submit)="onSubmit($event)">
       <label>Recherche
         <input id="catalog-search" autocomplete="off" placeholder="Nom ou EAN-13" [value]="search()" (input)="setSearch($event)" />
       </label>
@@ -38,7 +38,7 @@
       <button type="submit">Rechercher</button>
     </form>
 
-    <div id="catalog-state" class="catalog-state" aria-live="polite" role="status">
+    <div id="catalog-state" class="request-state" aria-live="polite" role="status">
       @switch (store.state()) {
         @case ('loading') { <p>Chargement du Catalogue…</p> }
         @case ('ready') { <p>{{ store.articles().length }} Article{{ store.articles().length > 1 ? 's' : '' }} trouvé{{ store.articles().length > 1 ? 's' : '' }}.</p> }

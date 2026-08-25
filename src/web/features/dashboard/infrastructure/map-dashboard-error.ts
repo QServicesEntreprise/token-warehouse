@@ -1,6 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { DashboardFailure } from '../application/dashboard-failure';
-import { DashboardFilter } from '../domain/dashboard-filter';
+import type { DashboardFilter } from '../domain/dashboard-filter';
 
 export function mapDashboardError(error: unknown): DashboardFailure {
   if (!(error instanceof HttpErrorResponse) || typeof error.error !== 'object' || error.error === null) {

@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { LastSaleStorage } from '../application/last-sale-storage';
+import type { LastSaleStorage } from '../application/last-sale-storage';
 
 const storageKey = 'token-warehouse.last-sale-id';
 

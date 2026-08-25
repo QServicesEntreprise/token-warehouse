@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { StockFailure } from '../application/stock-failure';
+import type { StockFailure } from '../application/stock-failure';
 
 export const mapStockFailure = (error: unknown, fallback: string): StockFailure => {
   const dto = error instanceof HttpErrorResponse && typeof error.error === 'object' && error.error !== null

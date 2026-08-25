@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { Subject, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { SupplyResult } from '../domain/supply-result';
+import type { SupplyResult } from '../domain/supply-result';
 import { STOCK_GATEWAY } from './stock-gateway-token';
 import { SupplyStore } from './supply-store';
 
@@ -64,7 +64,7 @@ describe('SupplyStore', () => {
           { lineNumber: 2, ean13: '5901234123457', quantity: 2 },
         ],
       },
-      positions: [result.positions[0], { ...result.positions[0], ean13: '5901234123457' }],
+      positions: [result.positions[0]!, { ...result.positions[0]!, ean13: '5901234123457' }],
     };
     recordBulkSupply.mockReturnValue(of(bulkResult));
     const store = TestBed.inject(SupplyStore);

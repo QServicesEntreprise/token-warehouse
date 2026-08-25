@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { InventoryStore } from '../application/inventory-store';
 import { LAST_INVENTORY_STORAGE } from '../application/last-inventory-storage-token';
 import { STOCK_GATEWAY } from '../application/stock-gateway-token';
-import { InventoryReceipt } from '../domain/inventory-receipt';
+import type { InventoryReceipt } from '../domain/inventory-receipt';
 import { InventoryPage } from './inventory-page';
 
 const receipt: InventoryReceipt = {
@@ -90,7 +90,7 @@ describe('InventoryPage', () => {
     await fixture.componentInstance.onSubmit(new Event('submit'));
     fixture.detectChanges();
 
-    expect(fixture.componentInstance.model().lines[0].countedQuantity).toBe('5');
+    expect(fixture.componentInstance.model().lines[0]!.countedQuantity).toBe('5');
     expect(fixture.nativeElement.querySelector('#inventory-countedQuantity')).toBe(document.activeElement);
     expect(fixture.nativeElement.querySelector('#inventory-error').textContent).toContain('introuvable');
     expect(fixture.nativeElement.querySelector('#inventory-result')).toBeNull();

@@ -64,7 +64,7 @@
     }
 
     @if (store.receipt(); as receipt) {
-      <article id="inventory-result" class="stock-detail" role="region" aria-live="polite" aria-labelledby="inventory-result-title" tabindex="-1">
+      <article id="inventory-result" class="detail-block" role="region" aria-live="polite" aria-labelledby="inventory-result-title" tabindex="-1">
         <h2 id="inventory-result-title">Inventaire enregistré</h2>
         <p>Identifiant serveur : <code>{{ receipt.id }}</code></p>
         @for (line of receipt.lines; track line.lineNumber) {

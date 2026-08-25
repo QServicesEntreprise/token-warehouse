@@ -6,7 +6,7 @@
     </div>
     <p>Recherchez un Article actif, vérifiez le Stock vendable, puis validez une quantité entière.</p>
 
-    <form id="sale-search-form" class="catalog-filters" (submit)="onSearchSubmit($event)">
+    <form id="sale-search-form" class="filters-grid" (submit)="onSearchSubmit($event)">
       <label for="sale-search">Rechercher par nom ou EAN-13</label>
       <input
         id="sale-search"
@@ -20,7 +20,7 @@
       </button>
     </form>
 
-    <div id="sale-search-state" class="catalog-state" aria-live="polite" role="status">
+    <div id="sale-search-state" class="request-state" aria-live="polite" role="status">
       @switch (store.searchState()) {
         @case ('idle') { <p>Saisissez un nom ou un EAN-13 pour sélectionner un Article.</p> }
         @case ('loading') { <p>Chargement des Articles vendables…</p> }
@@ -79,7 +79,7 @@
     }
 
     @if (store.selectedArticle(); as article) {
-      <article id="sale-selection" class="stock-detail" role="region" aria-labelledby="sale-selection-title" tabindex="-1">
+      <article id="sale-selection" class="detail-block" role="region" aria-labelledby="sale-selection-title" tabindex="-1">
         <h2 id="sale-selection-title">Article sélectionné — {{ article.name }}</h2>
         <dl>
           <div><dt>EAN-13</dt><dd>{{ article.ean13 }}</dd></div>
@@ -134,7 +134,7 @@
     <p id="sale-status" role="status" aria-live="assertive" tabindex="-1">{{ clientStatus() || store.statusMessage() }}</p>
 
     @if (store.receipt(); as receipt) {
-      <article id="sale-result" class="stock-detail" role="region" aria-labelledby="sale-result-title" tabindex="-1">
+      <article id="sale-result" class="detail-block" role="region" aria-labelledby="sale-result-title" tabindex="-1">
         <h2 id="sale-result-title">Vente engagée</h2>
         <dl>
           <div><dt>Identifiant d’opération</dt><dd><code>{{ receipt.operation.id }}</code></dd></div>

@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { Subject, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { Article } from '../domain/article';
+import type { Article } from '../domain/article';
 import { ArticleDetailsStore } from './article-details-store';
 import { CATALOGUE_GATEWAY } from './catalogue-gateway-token';
 import { CatalogueListStore } from './catalogue-list-store';

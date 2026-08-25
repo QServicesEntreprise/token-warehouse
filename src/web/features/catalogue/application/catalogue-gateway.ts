@@ -1,9 +1,9 @@
 import { Observable } from 'rxjs';
-import { Article } from '../domain/article';
-import { ArticleSummary } from '../domain/article-summary';
-import { ArticleAttributesUpdateCommand } from './article-attributes-update-command';
-import { ArticleCreateCommand } from './article-create-command';
-import { CatalogueQuery } from './catalogue-query';
+import type { Article } from '../domain/article';
+import type { ArticleSummary } from '../domain/article-summary';
+import type { ArticleAttributesUpdateCommand } from './article-attributes-update-command';
+import type { ArticleCreateCommand } from './article-create-command';
+import type { CatalogueQuery } from './catalogue-query';
 
 export interface CatalogueGateway {
   search(query: CatalogueQuery): Observable<readonly ArticleSummary[]>;

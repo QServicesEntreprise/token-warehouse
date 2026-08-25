@@ -1,5 +1,5 @@
-import { SaleContext } from './sale-context';
-import { SaleTaxRate } from './sale-tax-rate';
+import type { SaleContext } from './sale-context';
+import type { SaleTaxRate } from './sale-tax-rate';
 
 export interface SaleFinancial {
   context: SaleContext | null;

@@ -1,11 +1,11 @@
 import { DestroyRef, Injectable, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { catchError, firstValueFrom, map, of, Subject, switchMap, takeUntil, tap } from 'rxjs';
-import { SaleCommand } from '../domain/sale-command';
-import { SaleResult } from '../domain/sale-result';
-import { SellableArticle } from '../domain/sellable-article';
+import type { SaleCommand } from '../domain/sale-command';
+import type { SaleResult } from '../domain/sale-result';
+import type { SellableArticle } from '../domain/sellable-article';
 import { LAST_SALE_STORAGE } from './last-sale-storage.token';
-import { SaleFailure } from './sale-failure';
+import type { SaleFailure } from './sale-failure';
 import { SALES_GATEWAY } from './sales-gateway.token';
 
 const failureFrom = (error: unknown): SaleFailure => (

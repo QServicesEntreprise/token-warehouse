@@ -1,8 +1,8 @@
-import { AfterViewInit, ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import { type AfterViewInit, ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { FormField, FormRoot, applyEach, form, required, submit } from '@angular/forms/signals';
 import { SupplyStore } from '../application/supply-store';
-import { RecordSupplyCommand } from '../domain/record-supply-command';
-import { StockPosition } from '../domain/stock-position';
+import type { RecordSupplyCommand } from '../domain/record-supply-command';
+import type { StockPosition } from '../domain/stock-position';
 
 interface SupplyLineFormModel {
   ean13: string;
@@ -79,7 +79,7 @@ export class SupplyPage implements AfterViewInit {
           quantity: this.quantity(line.quantity),
         }));
         succeeded = lines.length === 1
-          ? await this.store.recordSupply(lines[0])
+          ? await this.store.recordSupply(lines[0]!)
           : await this.store.recordBulkSupply({ lines });
         this.serverFieldErrorsState.set(this.store.fieldErrors());
         return undefined;

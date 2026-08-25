@@ -6,7 +6,7 @@ import { CATALOGUE_GATEWAY } from '../application/catalogue-gateway-token';
 import { ArticleDetailsStore } from '../application/article-details-store';
 import { CatalogueListStore } from '../application/catalogue-list-store';
 import { FakeCatalogueGateway } from '../application/testing/fake-catalogue-gateway';
-import { Article } from '../domain/article';
+import type { Article } from '../domain/article';
 import { ArticleDetailsPage } from './article-details-page';
 
 describe('ArticleDetailsPage', () => {
@@ -190,7 +190,7 @@ describe('ArticleDetailsPage', () => {
     fake.getHandler = (ean13) => of(ean13 === committed.ean13 ? committed : fakeArticle(ean13, 'Thé test'));
     const pendingArchive = new Subject<Article>();
     fake.archiveHandler = () => pendingArchive;
-    const mutation = fixture.componentInstance.toggleLifecycle();
+    fixture.componentInstance.toggleLifecycle();
     await Promise.resolve();
 
     startLookup(fixture, '2222222222222');

@@ -46,7 +46,7 @@
         </label>
 
         @if (selectedSource(); as source) {
-          <article class="stock-detail" aria-labelledby="counter-movement-source-title">
+          <article class="detail-block" aria-labelledby="counter-movement-source-title">
             <h2 id="counter-movement-source-title">Source {{ source.id }}</h2>
             <dl>
               <div><dt>Type</dt><dd>{{ sourceTypeLabel(source.type) }}</dd></div>
@@ -93,7 +93,7 @@
     }
 
     @if (store.receipt(); as receipt) {
-      <article id="counter-movement-result" class="stock-detail" role="region" aria-live="polite" aria-labelledby="counter-movement-result-title" tabindex="-1">
+      <article id="counter-movement-result" class="detail-block" role="region" aria-live="polite" aria-labelledby="counter-movement-result-title" tabindex="-1">
         <h2 id="counter-movement-result-title">Contre-mouvement enregistré</h2>
         <dl>
           <div><dt>Correction</dt><dd><code>{{ receipt.counterMovement.id }}</code></dd></div>

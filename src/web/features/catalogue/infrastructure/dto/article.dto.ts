@@ -1,9 +1,9 @@
-import { ConsumptionMode } from '../../../../shared-kernel/consumption-mode';
-import { ArticleStatus } from '../../domain/article-status';
-import { ArticleType } from '../../domain/article-type';
-import { Packaging } from '../../domain/packaging';
-import { ArticleStockDto } from './article-stock.dto';
-import { PriceQuoteDto } from './price-quote.dto';
+import type { ConsumptionMode } from '../../../../shared-kernel/consumption-mode';
+import type { ArticleStatus } from '../../domain/article-status';
+import type { ArticleType } from '../../domain/article-type';
+import type { Packaging } from '../../domain/packaging';
+import type { ArticleStockDto } from './article-stock.dto';
+import type { PriceQuoteDto } from './price-quote.dto';
 
 export interface ArticleDto {
   ean13: string;

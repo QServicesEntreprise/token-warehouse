@@ -36,8 +36,8 @@ npx playwright install chromium
 ```
 
 Le checkout de référence utilise .NET `10.0.400` et Node `>=24.15.0`.
-`--legacy-peer-deps` est requis par le lockfile Angular 22, qui utilise le
-pré-release TypeScript 6 demandé par Angular 22.
+`--legacy-peer-deps` est requis par le lockfile Angular 22, qui utilise
+TypeScript `6.0.3`, version stable compatible avec Angular 22.
 
 ## Vérification déterministe
 

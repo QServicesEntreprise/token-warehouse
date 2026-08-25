@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ArticleDto } from './dto/article.dto';
+import type { ArticleDto } from './dto/article.dto';
 import { mapArticleDto } from './map-article-dto';
 
 describe('mapArticleDto', () => {

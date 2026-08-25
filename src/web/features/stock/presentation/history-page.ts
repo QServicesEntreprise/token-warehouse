@@ -1,8 +1,8 @@
-import { AfterViewInit, ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
+import { type AfterViewInit, ChangeDetectionStrategy, Component, type OnInit, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink } from '@angular/router';
 import { filter } from 'rxjs';
-import { HistoryLoadState } from '../application/history-load-state';
+import type { HistoryLoadState } from '../application/history-load-state';
 import { HistoryStore } from '../application/history-store';
 
 const historyTypeLabels: Record<string, string> = {
@@ -71,7 +71,7 @@ export class HistoryPage implements AfterViewInit, OnInit {
   }
 
   typeLabel(type: string): string {
-    return historyTypeLabels[type] ?? historyTypeLabels['unknown'];
+    return historyTypeLabels[type] ?? 'Fait historique inconnu';
   }
 
   effectLabel(effect: number | null | undefined): string {

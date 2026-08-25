@@ -1,11 +1,11 @@
 import { TestBed } from '@angular/core/testing';
 import { Subject, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { ArticleSummary } from '../domain/article-summary';
-import { Article } from '../domain/article';
+import type { ArticleSummary } from '../domain/article-summary';
+import type { Article } from '../domain/article';
 import { CATALOGUE_GATEWAY } from './catalogue-gateway-token';
 import { CatalogueListStore } from './catalogue-list-store';
-import { CatalogueQuery } from './catalogue-query';
+import type { CatalogueQuery } from './catalogue-query';
 import { FakeCatalogueGateway } from './testing/fake-catalogue-gateway';
 
 describe('CatalogueListStore', () => {
@@ -69,7 +69,7 @@ describe('CatalogueListStore', () => {
       priceQuotes: [],
     });
 
-    await store.toggleLifecycle(store.articles()[0]);
+    await store.toggleLifecycle(store.articles()[0]!);
     postMutationSearch.next([]);
     preMutationSearch.next([article('1111111111116', 'Périmé')]);
 
@@ -92,9 +92,18 @@ describe('CatalogueListStore', () => {
     };
     store.search({ status: 'active' });
 
-    const first = store.toggleLifecycle(store.articles()[0]);
-    const second = store.toggleLifecycle(store.articles()[1]);
-    pending.next({ ...store.articles()[0], status: 'archived', priceQuotes: [] });
+    const first = store.toggleLifecycle(store.articles()[0]!);
+    const second = store.toggleLifecycle(store.articles()[1]!);
+    pending.next({
+      ean13: '1111111111116',
+      name: 'Premier',
+      priceHtCents: 100,
+      type: 'food',
+      dlc: '2030-01-15',
+      consumptionModes: ['takeaway'],
+      status: 'archived',
+      priceQuotes: [],
+    });
     pending.complete();
 
     await expect(first).resolves.toBe(true);

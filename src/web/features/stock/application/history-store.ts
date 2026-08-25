@@ -2,8 +2,8 @@ import { Injectable, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Subject, catchError, map, of, switchMap, tap } from 'rxjs';
 import { STOCK_GATEWAY } from './stock-gateway-token';
-import { HistoryLoadState } from './history-load-state';
-import { HistoryQuery } from './history-query';
+import type { HistoryLoadState } from './history-load-state';
+import type { HistoryQuery } from './history-query';
 import { stockFailureMessage } from './stock-failure-message';
 
 @Injectable()

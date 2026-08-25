@@ -81,7 +81,7 @@ describe('DashboardPage', () => {
       fixture.nativeElement.querySelectorAll('h1, h2, h3, h4'),
       (heading: Element) => Number(heading.tagName[1]),
     );
-    expect(headingLevels.every((level, index) => index === 0 || level <= headingLevels[index - 1] + 1))
+    expect(headingLevels.every((level, index) => index === 0 || level <= headingLevels[index - 1]! + 1))
       .toBe(true);
     expect(fixture.nativeElement.querySelector('#dashboard-state').textContent).toContain('Article suivi');
     expect(fixture.nativeElement.querySelector('#dashboard-kpi-physical').textContent).toContain('9 unités');

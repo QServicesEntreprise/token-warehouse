@@ -1,5 +1,5 @@
-import { ConsumptionMode } from '../../../shared-kernel/consumption-mode';
-import { Packaging } from '../domain/packaging';
+import type { ConsumptionMode } from '../../../shared-kernel/consumption-mode';
+import type { Packaging } from '../domain/packaging';
 
 export interface ArticleAttributesUpdateCommand {
   name?: string;

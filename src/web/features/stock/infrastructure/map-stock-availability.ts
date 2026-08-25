@@ -1,5 +1,5 @@
-import { StockAvailability } from '../domain/stock-availability';
-import { StockPositionDto } from './dto/stock-position.dto';
+import type { StockAvailability } from '../domain/stock-availability';
+import type { StockPositionDto } from './dto/stock-position.dto';
 
 export const mapStockAvailability = (availability: StockPositionDto['availability']): StockAvailability => {
   switch (availability) {

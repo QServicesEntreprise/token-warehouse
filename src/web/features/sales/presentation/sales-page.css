@@ -1,0 +1,10 @@
+:host {
+  display: block;
+}
+
+.price-quote {
+  border: 1px solid #d8e0ec;
+  border-radius: 0.75rem;
+  margin: 0;
+  padding: 1rem;
+}

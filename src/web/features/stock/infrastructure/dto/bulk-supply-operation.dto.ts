@@ -1,4 +1,4 @@
-import { BulkSupplyOperationLineDto } from './bulk-supply-operation-line.dto';
+import type { BulkSupplyOperationLineDto } from './bulk-supply-operation-line.dto';
 
 export interface BulkSupplyOperationDto {
   id: string;

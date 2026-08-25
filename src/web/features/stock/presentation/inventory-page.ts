@@ -1,4 +1,4 @@
-import { AfterViewInit, ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
+import { type AfterViewInit, ChangeDetectionStrategy, Component, type OnInit, inject, signal } from '@angular/core';
 import { FormField, FormRoot, applyEach, form, pattern, required, submit } from '@angular/forms/signals';
 import { InventoryStore } from '../application/inventory-store';
 import { stockAvailabilityLabel } from './stock-availability-label';

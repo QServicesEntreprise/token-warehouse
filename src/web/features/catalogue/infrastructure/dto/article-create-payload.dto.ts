@@ -1,6 +1,6 @@
-import { ConsumptionMode } from '../../../../shared-kernel/consumption-mode';
-import { ArticleType } from '../../domain/article-type';
-import { Packaging } from '../../domain/packaging';
+import type { ConsumptionMode } from '../../../../shared-kernel/consumption-mode';
+import type { ArticleType } from '../../domain/article-type';
+import type { Packaging } from '../../domain/packaging';
 
 export interface ArticleCreatePayloadDto {
   ean13: string;

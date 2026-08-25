@@ -4,7 +4,7 @@ import { of, Subject, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { STOCK_GATEWAY } from '../application/stock-gateway-token';
 import { SupplyStore } from '../application/supply-store';
-import { SupplyResult } from '../domain/supply-result';
+import type { SupplyResult } from '../domain/supply-result';
 import { SupplyPage } from './supply-page';
 
 const unitResult: SupplyResult = {
@@ -89,8 +89,8 @@ describe('SupplyPage', () => {
           { lineNumber: 2, ean13: '5901234123457', quantity: 2 },
         ],
       },
-      positions: [unitResult.positions[0], {
-        ...unitResult.positions[0], ean13: '5901234123457', physicalQuantity: 7, sellableQuantity: 7,
+      positions: [unitResult.positions[0]!, {
+        ...unitResult.positions[0]!, ean13: '5901234123457', physicalQuantity: 7, sellableQuantity: 7,
       }],
     };
     recordBulkSupply

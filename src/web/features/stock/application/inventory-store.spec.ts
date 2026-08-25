@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { Subject, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { InventoryReceipt } from '../domain/inventory-receipt';
+import type { InventoryReceipt } from '../domain/inventory-receipt';
 import { LAST_INVENTORY_STORAGE } from './last-inventory-storage-token';
 import { STOCK_GATEWAY } from './stock-gateway-token';
 import { InventoryStore } from './inventory-store';

@@ -1,15 +1,15 @@
 import { TestBed } from '@angular/core/testing';
 import { Observable, Subject, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { CorrectableSource } from '../domain/correctable-source';
-import { CounterMovementResult } from '../domain/counter-movement-result';
-import { InventoryCommand } from '../domain/inventory-command';
-import { InventoryReceipt } from '../domain/inventory-receipt';
-import { RecordCounterMovementCommand } from '../domain/record-counter-movement-command';
-import { StockPosition } from '../domain/stock-position';
+import type { CorrectableSource } from '../domain/correctable-source';
+import type { CounterMovementResult } from '../domain/counter-movement-result';
+import type { InventoryCommand } from '../domain/inventory-command';
+import type { InventoryReceipt } from '../domain/inventory-receipt';
+import type { RecordCounterMovementCommand } from '../domain/record-counter-movement-command';
+import type { StockPosition } from '../domain/stock-position';
 import { CounterMovementStore } from './counter-movement-store';
 import { STOCK_GATEWAY } from './stock-gateway-token';
-import { StockGateway } from './stock-gateway';
+import type { StockGateway } from './stock-gateway';
 
 const source = (id: string): CorrectableSource => ({
   id,

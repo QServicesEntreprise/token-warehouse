@@ -1,5 +1,5 @@
-import { StockPositionDto } from './stock-position.dto';
-import { SupplyOperationDto } from './supply-operation.dto';
+import type { StockPositionDto } from './stock-position.dto';
+import type { SupplyOperationDto } from './supply-operation.dto';
 
 export interface RecordSupplyResponseDto {
   operation: SupplyOperationDto;

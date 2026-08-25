@@ -1,5 +1,5 @@
-import { StockNonSellableReason } from '../domain/stock-non-sellable-reason';
-import { StockPositionDto } from './dto/stock-position.dto';
+import type { StockNonSellableReason } from '../domain/stock-non-sellable-reason';
+import type { StockPositionDto } from './dto/stock-position.dto';
 
 export const mapStockNonSellableReason = (
   reason: StockPositionDto['reason'],

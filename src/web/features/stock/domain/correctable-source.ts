@@ -1,4 +1,4 @@
-import { CounterMovementFinancial } from './counter-movement-financial';
+import type { CounterMovementFinancial } from './counter-movement-financial';
 
 export interface CorrectableSource {
   readonly id: string;
@@ -10,5 +10,5 @@ export interface CorrectableSource {
     readonly ean13: string;
     readonly stockEffect: number;
   }[];
-  readonly financial?: CounterMovementFinancial;
+  readonly financial?: CounterMovementFinancial | undefined;
 }

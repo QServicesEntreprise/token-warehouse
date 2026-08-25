@@ -1,5 +1,5 @@
 export interface HistoryChange {
   field: string;
-  before?: string;
-  after?: string;
+  before?: string | undefined;
+  after?: string | undefined;
 }

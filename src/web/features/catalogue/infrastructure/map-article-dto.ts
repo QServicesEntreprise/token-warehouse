@@ -1,5 +1,5 @@
-import { Article } from '../domain/article';
-import { ArticleDto } from './dto/article.dto';
+import type { Article } from '../domain/article';
+import type { ArticleDto } from './dto/article.dto';
 
 export const mapArticleDto = (dto: ArticleDto): Article => {
   const base = {

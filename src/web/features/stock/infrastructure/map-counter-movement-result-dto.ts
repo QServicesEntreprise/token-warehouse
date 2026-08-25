@@ -1,5 +1,5 @@
-import { CounterMovementResult } from '../domain/counter-movement-result';
-import { CounterMovementResultDto } from './dto/counter-movement-result.dto';
+import type { CounterMovementResult } from '../domain/counter-movement-result';
+import type { CounterMovementResultDto } from './dto/counter-movement-result.dto';
 import { mapCorrectableSourceDto } from './map-correctable-source-dto';
 import { mapCounterMovementFinancialDto } from './map-counter-movement-financial-dto';
 import { mapStockAvailability } from './map-stock-availability';

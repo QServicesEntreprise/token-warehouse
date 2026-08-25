@@ -1,9 +1,9 @@
 import { DestroyRef, Injectable, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { EMPTY, Observable, Subject, catchError, switchMap, tap, throwError } from 'rxjs';
-import { Dashboard } from '../domain/dashboard';
-import { DashboardCalendar } from '../domain/dashboard-calendar';
-import { DashboardFilter } from '../domain/dashboard-filter';
+import type { Dashboard } from '../domain/dashboard';
+import type { DashboardCalendar } from '../domain/dashboard-calendar';
+import type { DashboardFilter } from '../domain/dashboard-filter';
 import { DashboardFailure } from './dashboard-failure';
 import { DashboardGateway } from './dashboard-gateway';
 

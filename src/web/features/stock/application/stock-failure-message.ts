@@ -1,4 +1,4 @@
-import { StockFailure } from './stock-failure';
+import type { StockFailure } from './stock-failure';
 
 export const stockFailureMessage = (error: unknown, fallback: string): string => (
   isStockFailure(error) ? error.title : fallback

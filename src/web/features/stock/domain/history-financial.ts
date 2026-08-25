@@ -1,4 +1,4 @@
-import { HistoryTaxRate } from './history-tax-rate';
+import type { HistoryTaxRate } from './history-tax-rate';
 
 export interface HistoryFinancial {
   context: 'takeaway' | 'onsite' | null;

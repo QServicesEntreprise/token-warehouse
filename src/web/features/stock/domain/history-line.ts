@@ -1,11 +1,11 @@
 export interface HistoryLine {
   lineNumber: number;
   ean13: string;
-  quantity?: number;
-  previousPhysicalStock?: number;
-  countedQuantity?: number;
-  difference?: number;
-  stockEffect?: number;
-  inverseEffect?: number;
-  resultingPhysicalStock?: number;
+  quantity?: number | undefined;
+  previousPhysicalStock?: number | undefined;
+  countedQuantity?: number | undefined;
+  difference?: number | undefined;
+  stockEffect?: number | undefined;
+  inverseEffect?: number | undefined;
+  resultingPhysicalStock?: number | undefined;
 }

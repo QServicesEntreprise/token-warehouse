@@ -20,7 +20,7 @@
     </form>
 
     @let state = store.state();
-    <div id="history-state" class="catalog-state" role="status" aria-live="polite">
+    <div id="history-state" class="request-state" role="status" aria-live="polite">
       @switch (state.status) {
         @case ('idle') { <p>Consultez l’Historique global ou filtrez par Article.</p> }
         @case ('loading') { <p>Chargement de l’Historique…</p> }

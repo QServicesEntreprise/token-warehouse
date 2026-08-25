@@ -1,9 +1,9 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Subject, catchError, firstValueFrom, map, of, switchMap, tap } from 'rxjs';
-import { ArticleSummary } from '../domain/article-summary';
+import type { ArticleSummary } from '../domain/article-summary';
 import { CATALOGUE_GATEWAY } from './catalogue-gateway-token';
-import { CatalogueQuery } from './catalogue-query';
+import type { CatalogueQuery } from './catalogue-query';
 import { CatalogueInvalidation } from './catalogue-invalidation';
 import { toCatalogueProblem } from './to-catalogue-problem';
 
