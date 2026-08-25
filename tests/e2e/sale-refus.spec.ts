@@ -168,15 +168,15 @@ test.describe('Sale refusal invariants', () => {
     await salePanel.locator('#sale-search').fill(ean13);
     await salePanel.locator('#sale-search-form').getByRole('button', { name: 'Rechercher un Article', exact: true }).click();
     const row = salePanel.getByRole('row', { name: new RegExp(ean13) });
-    await expect(row).toContainText('101 centimes');
+    await expect(row).toContainText(/1,01\s€/);
     await expect(row).toContainText('4 unités');
     await expect(row).toContainText('Disponible');
-    await expect(row).toContainText('121 centimes');
+    await expect(row).toContainText(/1,21\s€/);
     await row.getByRole('button', { name: 'Sélectionner Article non alimentaire vendu sans contexte' }).click();
     await expect(salePanel.locator('#sale-context input')).toHaveCount(0);
     await expect(salePanel.locator('#sale-context-none')).toHaveText('Aucun Contexte de Vente — TVA non alimentaire.');
     await expect(salePanel.locator('#sale-pricing-preview')).toContainText('1/5');
-    await expect(salePanel.locator('#sale-pricing-preview')).toContainText('121 centimes');
+    await expect(salePanel.locator('#sale-pricing-preview')).toContainText(/1,21\s€/);
 
     await expectRejectedWithoutMutation(
       page,

@@ -1,6 +1,7 @@
 import { type AfterViewInit, ChangeDetectionStrategy, Component, type OnInit, computed, inject, signal } from '@angular/core';
 import { FormField, FormRoot, form, required, submit, validate } from '@angular/forms/signals';
 import { SaleStore } from '../application/sale-store';
+import { EurosPipe } from '../../../shared-kernel/euros-pipe';
 import type { SaleCommand } from '../domain/sale-command';
 import type { SaleContext } from '../domain/sale-context';
 import type { SellableArticle } from '../domain/sellable-article';
@@ -13,7 +14,7 @@ interface SaleFormModel {
 @Component({
   selector: 'app-sales-page',
   standalone: true,
-  imports: [FormField, FormRoot],
+  imports: [EurosPipe, FormField, FormRoot],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './sales-page.html',
   styleUrl: './sales-page.css',

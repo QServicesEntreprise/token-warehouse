@@ -167,8 +167,7 @@ test('filters the Dashboard by explicit period and Article dimensions', async ({
 test.describe('Dashboard daily flows', () => {
   test.use({ e2eSeed: 'flows', timezoneId: 'America/Los_Angeles' });
 
-  test('renders accepted flows as an accessible filtered daily table', async ({ page }) => {
-    const dashboard = page.locator('#dashboard-panel');
+  test('keeps accepted daily flows in the API without rendering them on the Dashboard', async ({ page }) => {
     const dashboardResponse = waitForRequest(page, 'GET', '/api/dashboard');
 
     await page.goto('/dashboard');
@@ -185,15 +184,8 @@ test.describe('Dashboard daily flows', () => {
     await expect(page.locator('#dashboard-from')).toHaveValue('2030-01-01');
     await expect(page.locator('#dashboard-to')).toHaveValue('2030-01-31');
 
-    const flowTable = dashboard.locator('#dashboard-flows-table');
-    await expect(flowTable).toBeVisible();
-    await expect(flowTable.getByRole('columnheader', { name: 'Date' })).toBeVisible();
-    await expect(flowTable.getByRole('columnheader', { name: 'Approvisionnements' })).toBeVisible();
-    await expect(flowTable.getByRole('columnheader', { name: 'Ventes' })).toBeVisible();
-    await expect(flowTable.locator('tbody tr')).toHaveCount(31);
-    await expect(flowTable.getByRole('row', { name: /2030-01-10/ })).toContainText('0 unité');
-    await expect(flowTable.getByRole('row', { name: /2030-01-11/ })).toContainText('19 unités');
-    await expect(flowTable.getByRole('row', { name: /2030-01-13/ })).toContainText('0 unité');
+    await expect(page.locator('#dashboard-flows-table')).toHaveCount(0);
+    await expect(page.locator('#dashboard-panel')).not.toContainText('Flux quotidiens');
 
     const filteredResponse = waitForRequest(page, 'GET', '/api/dashboard', (url) => (
     url.searchParams.get('type') === 'food'
@@ -209,9 +201,6 @@ test.describe('Dashboard daily flows', () => {
       { date: '2030-01-12', supplies: 2, sales: 4 },
       { date: '2030-01-13', supplies: 0, sales: 0 },
     ]);
-    await expect(flowTable.getByRole('row', { name: /2030-01-10/ })).toContainText('0 unité');
-    await expect(flowTable.getByRole('row', { name: /2030-01-11/ })).toContainText('5 unités');
-    await expect(flowTable.getByRole('row', { name: /2030-01-12/ })).toContainText('4 unités');
 
     const takeawayResponse = waitForRequest(page, 'GET', '/api/dashboard', (url) => (
     url.searchParams.get('type') === 'food'
@@ -230,7 +219,6 @@ test.describe('Dashboard daily flows', () => {
     const assertNonFoodFlows = async (
       packaging: 'all' | 'new' | 'refurbished' | 'unsellable',
       expected: Array<{ date: string; supplies: number; sales: number }>,
-      renderedSupplies: string,
     ) => {
       const responsePromise = waitForRequest(page, 'GET', '/api/dashboard', (url) => (
     url.searchParams.get('type') === 'nonFood'
@@ -245,8 +233,6 @@ test.describe('Dashboard daily flows', () => {
       expect(response.status()).toBe(200);
       const view = await response.json();
       expect(view.flowsByDay.slice(9, 13)).toEqual(expected);
-      await expect(flowTable.getByRole('row', { name: /2030-01-11/ }))
-        .toContainText(renderedSupplies);
     };
 
     await assertNonFoodFlows('all', [
@@ -254,25 +240,25 @@ test.describe('Dashboard daily flows', () => {
       { date: '2030-01-11', supplies: 11, sales: 0 },
       { date: '2030-01-12', supplies: 0, sales: 0 },
       { date: '2030-01-13', supplies: 0, sales: 0 },
-    ], '11 unités');
+    ]);
     await assertNonFoodFlows('new', [
       { date: '2030-01-10', supplies: 0, sales: 0 },
       { date: '2030-01-11', supplies: 0, sales: 0 },
       { date: '2030-01-12', supplies: 0, sales: 0 },
       { date: '2030-01-13', supplies: 0, sales: 0 },
-    ], '0 unité');
+    ]);
     await assertNonFoodFlows('refurbished', [
       { date: '2030-01-10', supplies: 0, sales: 0 },
       { date: '2030-01-11', supplies: 7, sales: 0 },
       { date: '2030-01-12', supplies: 0, sales: 0 },
       { date: '2030-01-13', supplies: 0, sales: 0 },
-    ], '7 unités');
+    ]);
     await assertNonFoodFlows('unsellable', [
       { date: '2030-01-10', supplies: 0, sales: 0 },
       { date: '2030-01-11', supplies: 4, sales: 0 },
       { date: '2030-01-12', supplies: 0, sales: 0 },
       { date: '2030-01-13', supplies: 0, sales: 0 },
-    ], '4 unités');
+    ]);
 
     const readIncompatibleFlows = async (filters: string) => page.evaluate(async (path) => {
       const response = await fetch(path);
@@ -561,8 +547,6 @@ test.describe('Dashboard Stock semantics', () => {
     ));
     await page.getByRole('button', { name: 'Lire le Dashboard' }).click();
     const currentView = await (await currentResponsePromise).json();
-    await expect(page.locator('#dashboard-flows-table').getByRole('row', { name: /2030-01-15/ }))
-      .toContainText('1 unité');
     await expect(page.locator('#dashboard-financial-revenue-ht')).toContainText('1,00');
 
     await page.locator('#dashboard-from').fill('2030-01-10');
@@ -587,8 +571,6 @@ test.describe('Dashboard Stock semantics', () => {
       revenueTtcCents: 3355,
       vatCollectedCents: 355,
     });
-    await expect(page.locator('#dashboard-flows-table').getByRole('row', { name: /2030-01-10/ }))
-      .toContainText('3 unités');
     await expect(page.locator('#dashboard-financial-revenue-ht')).toContainText('30,00');
     await expect(page.locator('#dashboard-kpi-physical')).toContainText(`${currentView.kpis.physicalStock} unités`);
     await expect(page.locator('#dashboard-kpi-sellable')).toContainText(`${currentView.kpis.sellableStock} unités`);
@@ -705,11 +687,6 @@ test.describe('Dashboard flow continuity', () => {
       { date: '2030-01-13', supplies: 0, sales: 0 },
       { date: '2030-01-14', supplies: 1, sales: 0 },
     ]);
-
-    const flowTable = page.locator('#dashboard-flows-table');
-    await expect(flowTable.getByRole('row', { name: /2030-01-12/ })).toContainText('2 unités');
-    await expect(flowTable.getByRole('row', { name: /2030-01-13/ })).toContainText('0 unité');
-    await expect(flowTable.getByRole('row', { name: /2030-01-14/ })).toContainText('1 unité');
   });
 });
 

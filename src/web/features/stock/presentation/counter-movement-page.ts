@@ -1,13 +1,14 @@
 import { type AfterViewInit, ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { FormField, FormRoot, form, pattern, required, submit } from '@angular/forms/signals';
 import { CounterMovementStore } from '../application/counter-movement-store';
+import { EurosPipe } from '../../../shared-kernel/euros-pipe';
 import { stockAvailabilityLabel } from './stock-availability-label';
 import { stockNonSellableReasonLabel } from './stock-non-sellable-reason-label';
 
 @Component({
   selector: 'app-counter-movement-page',
   standalone: true,
-  imports: [FormField, FormRoot],
+  imports: [EurosPipe, FormField, FormRoot],
   templateUrl: './counter-movement-page.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })

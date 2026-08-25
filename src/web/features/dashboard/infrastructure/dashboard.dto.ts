@@ -21,7 +21,6 @@ export interface DashboardDto {
     notSellable: DashboardStockLineDto[];
   };
   stockByArticle: DashboardStockLineDto[];
-  flowsByDay: Array<{ date: string; supplies: number; sales: number }>;
   financial?: {
     revenueHtCents: number;
     revenueTtcCents: number;

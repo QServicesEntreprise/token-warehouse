@@ -479,13 +479,13 @@ test('keeps a committed Sale and its financial correction separately in History'
       amountTtcCents: -211,
     },
   });
-  await expect(page.locator(`[aria-labelledby="history-entry-${sale.operation.id}"]`)).toContainText('200 centimes');
-  await expect(page.locator('#history-list')).toContainText('-211 centimes');
+  await expect(page.locator(`[aria-labelledby="history-entry-${sale.operation.id}"]`)).toContainText(/2,00\s€/);
+  await expect(page.locator('#history-list')).toContainText(/-2,11\s€/);
   await expect(page.locator(`[aria-labelledby="history-entry-${sale.operation.id}"]`)).toContainText('11/200');
   await expect(page.locator('#history-list')).toContainText('À emporter');
   const correctionCard = page.locator(`[aria-labelledby="history-entry-${correctionEntry!.id}"]`);
   await expect(correctionCard).toContainText('Prix HT unitaire historique');
-  await expect(correctionCard).toContainText('100 centimes');
+  await expect(correctionCard).toContainText(/1,00\s€/);
 
   const articleHistoryPromise = waitForRequest(page, 'GET', '/api/history', (url) => (
     url.searchParams.get('ean13') === ean13
@@ -497,7 +497,7 @@ test('keeps a committed Sale and its financial correction separately in History'
   const articleCorrectionCard = page.locator(`[aria-labelledby="history-entry-${correctionEntry!.id}"]`);
   await expect(articleSaleCard).toContainText('À emporter');
   await expect(articleCorrectionCard).toContainText('Prix HT unitaire historique');
-  await expect(articleCorrectionCard).toContainText('100 centimes');
+  await expect(articleCorrectionCard).toContainText(/1,00\s€/);
   await expect(page.locator('#history-list')).toContainText('À emporter');
   await expect(page.locator('#history-list')).toContainText('11/200');
 });
@@ -638,9 +638,9 @@ test.describe('complete History behavior', () => {
     await expect(saleCard).toContainText('Effet Stock');
     await expect(saleCard).toContainText('-2');
     await expect(saleCard).toContainText('Prix HT unitaire historique');
-    await expect(saleCard).toContainText('250 centimes');
+    await expect(saleCard).toContainText(/2,50\s€/);
     await expect(saleCard).toContainText('Montant TTC historique');
-    await expect(saleCard).toContainText('528 centimes');
+    await expect(saleCard).toContainText(/5,28\s€/);
 
     const inventoryCard = page.locator(`[aria-labelledby="history-entry-${inventoryResult.operation.id}"]`);
     await expect(inventoryCard).toContainText('Quantité comptée');

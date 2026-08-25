@@ -38,6 +38,54 @@ const expectCreationRefused = async (
   expect(await listResponse.json()).toEqual([]);
 };
 
+test('crée le même Prix HT en centimes que la saisie use la virgule ou le point', async ({ page }, testInfo) => {
+  const attempt = testInfo.repeatEachIndex * (testInfo.project.retries + 1) + testInfo.retry;
+  const commaEan = ean13ForAttempt('660000000', attempt);
+  const pointEan = ean13ForAttempt('660000001', attempt);
+
+  const createWith = async (ean13: string, typed: string): Promise<number> => {
+    await page.goto('/catalogue/nouveau');
+    await page.locator('#ean13').fill(ean13);
+    await page.locator('#name').fill(`Article saisi ${typed}`);
+    await page.locator('#priceHt').fill(typed);
+    await page.locator('#dlc').fill('2030-12-31');
+    await page.locator('#consumptionModes').getByLabel('À emporter').check();
+    const creation = waitForRequest(page, 'POST', '/api/articles');
+    await page.getByRole('button', { name: 'Créer l’Article' }).click();
+    const request = (await creation).request();
+    expect(request.postDataJSON().priceHtCents).toBe(1250);
+    const stored = await page.request.get(`${apiBaseUrl}/api/articles/${ean13}`);
+    expect(stored.status()).toBe(200);
+    return (await stored.json()).priceHtCents;
+  };
+
+  expect(await createWith(commaEan, '12,50')).toBe(1250);
+  expect(await createWith(pointEan, '12.50')).toBe(1250);
+});
+
+test('refuse un Prix HT qui n’est pas un montant en euros sans appeler l’API', async ({ page }, testInfo) => {
+  const attempt = testInfo.repeatEachIndex * (testInfo.project.retries + 1) + testInfo.retry;
+  const ean13 = ean13ForAttempt('660000002', attempt);
+
+  await page.goto('/catalogue/nouveau');
+  await page.locator('#ean13').fill(ean13);
+  await page.locator('#name').fill('Prix HT illisible');
+  await page.locator('#priceHt').fill('12,505');
+  await page.locator('#dlc').fill('2030-12-31');
+  await page.locator('#consumptionModes').getByLabel('À emporter').check();
+
+  let creationAttempted = false;
+  await page.route('**/api/articles', async (route: Route) => {
+    creationAttempted = true;
+    await route.abort();
+  });
+  await page.getByRole('button', { name: 'Créer l’Article' }).click();
+
+  await expect(page.locator('#price-error')).toContainText('montant en euros');
+  await expect(page.locator('#priceHt')).toBeFocused();
+  expect(creationAttempted).toBe(false);
+});
+
 test('recherche le Catalogue et conserve une intersection vide de trois filtres', async ({ page }, testInfo) => {
   const attempt = testInfo.repeatEachIndex * (testInfo.project.retries + 1) + testInfo.retry;
   const foodEan = ean13ForAttempt('012345678', attempt);
@@ -70,7 +118,7 @@ test('recherche le Catalogue et conserve une intersection vide de trois filtres'
   await expect(catalogPanel.getByRole('row', { name: /Article archivé/ })).toBeVisible();
   await page.getByRole('button', { name: 'Consulter Article archivé' }).click();
   await expect(page.getByRole('heading', { name: 'Article archivé' })).toBeVisible();
-  await expect(page.locator('section[aria-labelledby="lookup-title"]').getByText('Archivé', { exact: true })).toBeVisible();
+  await expect(page.locator('section[aria-labelledby="article-details-title"]').getByText('Archivé', { exact: true })).toBeVisible();
   await page.goBack();
 
   await page.locator('#catalog-status').selectOption('all');
@@ -177,7 +225,7 @@ test('crée les trois formes d’Article et initialise leurs Stocks à zéro', a
   const foodEan = ean13ForAttempt('012345678', attempt);
   const singleFoodEan = ean13ForAttempt('012345670', attempt);
   const nonFoodEan = ean13ForAttempt('400638133', attempt);
-  const articleDetailText = (text: string) => page.locator('.article-detail').getByText(text);
+  const articleDetailText = (text: string | RegExp) => page.locator('.article-detail').getByText(text);
 
   await page.goto('/catalogue');
   await expect(page.getByRole('row', { name: new RegExp(foodEan) })).toHaveCount(0);
@@ -186,9 +234,13 @@ test('crée les trois formes d’Article et initialise leurs Stocks à zéro', a
   await page.keyboard.press('Tab');
   await expect(page.locator('#type')).toBeFocused();
 
+  await page.locator('#ean13').pressSequentially(`${foodEan}9`);
+  await expect(page.locator('#ean13')).toHaveValue(foodEan);
+  await page.locator('#ean13').clear();
+
   await page.locator('#ean13').fill(foodEan);
   await page.locator('#name').fill('Chocolat noir');
-  await page.locator('#priceHtCents').fill('1000');
+  await page.locator('#priceHt').fill('10,00');
   await page.locator('#dlc').fill('2026-12-31');
   await page.locator('#consumptionModes').getByLabel('À emporter').check();
   await page.locator('#consumptionModes').getByLabel('Sur place').check();
@@ -196,10 +248,10 @@ test('crée les trois formes d’Article et initialise leurs Stocks à zéro', a
 
   await expect(page.getByRole('heading', { name: 'Chocolat noir' })).toBeVisible();
   await expect(page.locator('.article-detail').getByText(foodEan)).toBeVisible();
-  await expect(articleDetailText('1000 centimes')).toBeVisible();
+  await expect(articleDetailText(/^10,00\s€$/)).toBeVisible();
   await expect(page.getByText('takeaway, onsite')).toBeVisible();
-  await expect(articleDetailText('1055 centimes')).toBeVisible();
-  await expect(articleDetailText('1100 centimes')).toBeVisible();
+  await expect(articleDetailText(/^10,55\s€$/)).toBeVisible();
+  await expect(articleDetailText(/^11,00\s€$/)).toBeVisible();
   await expect(page.locator('.price-quote')).toHaveCount(2);
   await expect(page.locator('.price-quotes')).toContainText('11/200');
   await expect(page.locator('.price-quotes')).toContainText('1/10');
@@ -215,7 +267,7 @@ test('crée les trois formes d’Article et initialise leurs Stocks à zéro', a
   await page.goto('/catalogue/nouveau');
   await page.locator('#ean13').fill(singleFoodEan);
   await page.locator('#name').fill('Café à emporter');
-  await page.locator('#priceHtCents').fill('1000');
+  await page.locator('#priceHt').fill('10,00');
   await page.locator('#dlc').fill('2026-12-31');
   await page.locator('#consumptionModes').getByLabel('À emporter').check();
   await page.getByRole('button', { name: 'Créer l’Article' }).click();
@@ -224,7 +276,7 @@ test('crée les trois formes d’Article et initialise leurs Stocks à zéro', a
   const singleFoodQuote = page.locator('.price-quote');
   await expect(singleFoodQuote).toContainText('À emporter');
   await expect(singleFoodQuote).toContainText('11/200');
-  await expect(singleFoodQuote).toContainText('1055 centimes');
+  await expect(singleFoodQuote).toContainText(/10,55\s€/);
   await expect(singleFoodQuote).not.toContainText('Sur place');
 
   await page.reload();
@@ -232,39 +284,39 @@ test('crée les trois formes d’Article et initialise leurs Stocks à zéro', a
   await expect(page.locator('.price-quote')).toHaveCount(1);
   await expect(page.locator('.price-quote')).toContainText('À emporter');
   await expect(page.locator('.price-quote')).toContainText('11/200');
-  await expect(page.locator('.price-quote')).toContainText('1055 centimes');
+  await expect(page.locator('.price-quote')).toContainText(/10,55\s€/);
 
   await page.goto('/catalogue/nouveau');
   await page.locator('#type').selectOption('nonFood');
   await expect(page.locator('#dlc')).toHaveCount(0);
   await expect(page.locator('#consumptionModes')).toHaveCount(0);
-  await page.locator('#priceHtCents').focus();
+  await page.locator('#priceHt').focus();
   await page.keyboard.press('Tab');
   await expect(page.locator('#packaging')).toBeFocused();
   await page.locator('#ean13').fill(nonFoodEan);
   await page.locator('#name').fill('Batterie reconditionnée');
-  await page.locator('#priceHtCents').fill('2500');
+  await page.locator('#priceHt').fill('25.00');
   await page.locator('#packaging').selectOption('refurbished');
   await page.getByRole('button', { name: 'Créer l’Article' }).click();
   await expect(page.getByRole('heading', { name: 'Batterie reconditionnée' })).toBeVisible();
-  await expect(articleDetailText('3000 centimes')).toBeVisible();
+  await expect(articleDetailText(/^30,00\s€$/)).toBeVisible();
 
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Batterie reconditionnée' })).toBeVisible();
   await expect(page.locator('.article-detail').getByText(nonFoodEan)).toBeVisible();
   await expect(page.locator('.article-detail').getByText('Non alimentaire', { exact: true })).toBeVisible();
-  await expect(articleDetailText('2500 centimes')).toBeVisible();
+  await expect(articleDetailText(/^25,00\s€$/)).toBeVisible();
   await expect(page.getByText('refurbished')).toBeVisible();
-  await expect(articleDetailText('3000 centimes')).toBeVisible();
+  await expect(articleDetailText(/^30,00\s€$/)).toBeVisible();
   await expect(page.locator('.price-quote')).toHaveCount(1);
   await expect(page.locator('.price-quote')).toContainText('1/5');
-  await expect(page.locator('.price-quote')).toContainText('500 centimes');
+  await expect(page.locator('.price-quote')).toContainText(/5,00\s€/);
 
   await page.goto('/catalogue/nouveau');
   await page.locator('#type').selectOption('food');
   await page.locator('#ean13').fill(invalidChecksumEan13);
   await page.locator('#name').fill('EAN invalide');
-  await page.locator('#priceHtCents').fill('100');
+  await page.locator('#priceHt').fill('1,00');
   await page.locator('#dlc').fill('2026-12-31');
   await page.locator('#consumptionModes').getByLabel('À emporter').check();
   await page.getByRole('button', { name: 'Créer l’Article' }).click();
@@ -274,7 +326,7 @@ test('crée les trois formes d’Article et initialise leurs Stocks à zéro', a
   await page.locator('#type').selectOption('nonFood');
   await page.locator('#ean13').fill(nonFoodEan);
   await page.locator('#name').fill('Doublon');
-  await page.locator('#priceHtCents').fill('2500');
+  await page.locator('#priceHt').fill('25.00');
   await page.locator('#packaging').selectOption('refurbished');
   await page.getByRole('button', { name: 'Créer l’Article' }).click();
   await expect(page.locator('#ean13-error')).toContainText('déjà');
@@ -300,15 +352,15 @@ test('modifie le Prix HT et retrouve les changements de DLC et Packaging dans l�
     packaging: 'refurbished',
     priceHtCents: 2500,
   });
-  const articleDetailText = (text: string) => page.locator('.article-detail').getByText(text);
+  const articleDetailText = (text: string | RegExp) => page.locator('.article-detail').getByText(text);
 
   await page.goto(`/catalogue/${foodEan}`);
-  await page.locator('#detailPriceHtCents').fill('199');
+  await page.locator('#detailPriceHt').fill('1,99');
   await page.getByRole('button', { name: 'Enregistrer le Prix HT' }).click();
-  await expect(articleDetailText('210 centimes')).toBeVisible();
-  await expect(articleDetailText('219 centimes')).toBeVisible();
+  await expect(articleDetailText(/^2,10\s€$/)).toBeVisible();
+  await expect(articleDetailText(/^2,19\s€$/)).toBeVisible();
 
-  await page.locator('#detailPriceHtCents').fill('-1');
+  await page.locator('#detailPriceHt').fill('-0,01');
   const negativePatchPromise = waitForRequest(page, 'PATCH', `/api/articles/${foodEan}`);
   await page.getByRole('button', { name: 'Enregistrer le Prix HT' }).click();
   await expectProblemDetails(await negativePatchPromise, {
@@ -316,7 +368,7 @@ test('modifie le Prix HT et retrouve les changements de DLC et Packaging dans l�
     code: 'article.validation',
     fields: ['priceHtCents'],
   });
-  await expect(articleDetailText('199 centimes')).toBeVisible();
+  await expect(articleDetailText(/^1,99\s€$/)).toBeVisible();
 
   await page.locator('#detailDlc').fill('2027-01-31');
   await page.getByRole('button', { name: 'Enregistrer les attributs' }).click();
@@ -331,8 +383,8 @@ test('modifie le Prix HT et retrouve les changements de DLC et Packaging dans l�
   await expect(page.getByRole('heading', { name: 'Chocolat noir' })).toBeVisible();
   await expect(articleDetailText('2027-01-31')).toBeVisible();
   await expect(articleDetailText('takeaway, onsite')).toBeVisible();
-  await expect(articleDetailText('210 centimes')).toBeVisible();
-  await expect(articleDetailText('219 centimes')).toBeVisible();
+  await expect(articleDetailText(/^2,10\s€$/)).toBeVisible();
+  await expect(articleDetailText(/^2,19\s€$/)).toBeVisible();
 
   await page.reload();
   await expect(articleDetailText('2027-01-31')).toBeVisible();
@@ -342,17 +394,17 @@ test('modifie le Prix HT et retrouve les changements de DLC et Packaging dans l�
   await page.locator('#detailPackaging').selectOption('unsellable');
   await page.getByRole('button', { name: 'Enregistrer les attributs' }).click();
   await expect(page.getByText('unsellable')).toBeVisible();
-  await page.locator('#detailPriceHtCents').fill('1999');
+  await page.locator('#detailPriceHt').fill('19,99');
   await page.getByRole('button', { name: 'Enregistrer le Prix HT' }).click();
-  await expect(articleDetailText('1999 centimes')).toBeVisible();
-  await expect(articleDetailText('2399 centimes')).toBeVisible();
+  await expect(articleDetailText(/^19,99\s€$/)).toBeVisible();
+  await expect(articleDetailText(/^23,99\s€$/)).toBeVisible();
   await expect(page.getByText('unsellable')).toBeVisible();
 
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Batterie reconditionnée' })).toBeVisible();
-  await expect(articleDetailText('1999 centimes')).toBeVisible();
-  await expect(articleDetailText('2399 centimes')).toBeVisible();
-  await expect(articleDetailText('400 centimes')).toBeVisible();
+  await expect(articleDetailText(/^19,99\s€$/)).toBeVisible();
+  await expect(articleDetailText(/^23,99\s€$/)).toBeVisible();
+  await expect(articleDetailText(/^4,00\s€$/)).toBeVisible();
   await expect(page.getByText('unsellable')).toBeVisible();
   await expect(page.locator('.price-quote')).toHaveCount(1);
   await page.goto('/stock/historique');
@@ -375,7 +427,7 @@ test('refuse les opérations et le Prix HT sur un Article archivé puis autorise
   await supply(page, foodEan, 4);
   const catalogPanel = page.locator('section[aria-labelledby="catalog-title"]');
   const articleRow = (ean13: string) => catalogPanel.getByRole('row', { name: new RegExp(ean13) });
-  const articleDetailText = (text: string) => page.locator('.article-detail').getByText(text);
+  const articleDetailText = (text: string | RegExp) => page.locator('.article-detail').getByText(text);
 
   await page.goto('/catalogue');
   await page.locator('#catalog-search').fill(foodEan);
@@ -394,9 +446,9 @@ test('refuse les opérations et le Prix HT sur un Article archivé puis autorise
   await page.getByRole('button', { name: 'Consulter Chocolat noir' }).click();
   await expect(page.getByRole('heading', { name: 'Chocolat noir' })).toBeVisible();
   await expect(page.locator('.article-detail').getByText(foodEan)).toBeVisible();
-  await expect(page.locator('section[aria-labelledby="lookup-title"]').getByText('Archivé', { exact: true })).toBeVisible();
+  await expect(page.locator('section[aria-labelledby="article-details-title"]').getByText('Archivé', { exact: true })).toBeVisible();
   await expect(articleDetailText('Alimentaire')).toBeVisible();
-  await expect(articleDetailText('199 centimes')).toBeVisible();
+  await expect(articleDetailText(/^1,99\s€$/)).toBeVisible();
   await expect(articleDetailText('2030-12-31')).toBeVisible();
   await expect(articleDetailText('takeaway')).toBeVisible();
   await expect(page.locator('.article-detail').getByText('4 unités', { exact: true })).toHaveCount(1);
@@ -423,16 +475,16 @@ test('refuse les opérations et le Prix HT sur un Article archivé puis autorise
   await page.goto(`/catalogue/${foodEan}`);
   await expect(page.getByRole('heading', { name: 'Chocolat noir' })).toBeVisible();
   await expect(page.locator('.article-detail').getByText(foodEan)).toBeVisible();
-  await expect(page.locator('section[aria-labelledby="lookup-title"]').getByText('Archivé', { exact: true })).toBeVisible();
+  await expect(page.locator('section[aria-labelledby="article-details-title"]').getByText('Archivé', { exact: true })).toBeVisible();
   await expect(articleDetailText('Alimentaire')).toBeVisible();
-  await expect(articleDetailText('199 centimes')).toBeVisible();
+  await expect(articleDetailText(/^1,99\s€$/)).toBeVisible();
   await expect(articleDetailText('2030-12-31')).toBeVisible();
   await expect(articleDetailText('takeaway')).toBeVisible();
 
   await page.goto('/catalogue/nouveau');
   await page.locator('#ean13').fill(foodEan);
   await page.locator('#name').fill('Doublon archivé');
-  await page.locator('#priceHtCents').fill('1000');
+  await page.locator('#priceHt').fill('10,00');
   await page.locator('#dlc').fill('2026-12-31');
   await page.locator('#consumptionModes').getByLabel('À emporter').check();
   const reuseResponsePromise = waitForRequest(page, 'POST', '/api/articles');
@@ -477,13 +529,13 @@ test('refuse les opérations et le Prix HT sur un Article archivé puis autorise
   await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
   await expect(articleRow(foodEan)).toBeVisible();
   await page.getByRole('button', { name: 'Consulter Chocolat noir' }).click();
-  await expect(page.locator('section[aria-labelledby="lookup-title"]').getByText('Actif', { exact: true })).toBeVisible();
+  await expect(page.locator('section[aria-labelledby="article-details-title"]').getByText('Actif', { exact: true })).toBeVisible();
   await page.locator('#detailDlc').fill('2027-02-28');
   await page.getByRole('button', { name: 'Enregistrer les attributs' }).click();
   await expect(articleDetailText('2027-02-28')).toBeVisible();
-  await page.locator('#detailPriceHtCents').fill('299');
+  await page.locator('#detailPriceHt').fill('2,99');
   await page.getByRole('button', { name: 'Enregistrer le Prix HT' }).click();
-  await expect(articleDetailText('299 centimes')).toBeVisible();
+  await expect(articleDetailText(/^2,99\s€$/)).toBeVisible();
 
   await page.reload();
   await expect(articleDetailText('2027-02-28')).toBeVisible();

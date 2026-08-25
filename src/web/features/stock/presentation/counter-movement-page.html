@@ -52,12 +52,12 @@
               <div><dt>Type</dt><dd>{{ sourceTypeLabel(source.type) }}</dd></div>
               <div><dt>Timestamp UTC</dt><dd>{{ source.timestampUtc }}</dd></div>
               @if (source.financial; as financial) {
-                <div><dt>Prix HT unitaire historique</dt><dd>{{ financial.unitPriceHtCents }} centimes</dd></div>
+                <div><dt>Prix HT unitaire historique</dt><dd>{{ financial.unitPriceHtCents | euros }}</dd></div>
                 <div><dt>Contexte historique</dt><dd>{{ financialContextLabel(financial.context) }}</dd></div>
                 <div><dt>Taux de TVA historique</dt><dd>{{ financial.taxRate.ratio }}</dd></div>
-                <div><dt>Montant HT historique</dt><dd>{{ financial.amountHtCents }} centimes</dd></div>
-                <div><dt>TVA historique</dt><dd>{{ financial.vatCents }} centimes</dd></div>
-                <div><dt>Montant TTC historique</dt><dd>{{ financial.amountTtcCents }} centimes</dd></div>
+                <div><dt>Montant HT historique</dt><dd>{{ financial.amountHtCents | euros }}</dd></div>
+                <div><dt>TVA historique</dt><dd>{{ financial.vatCents | euros }}</dd></div>
+                <div><dt>Montant TTC historique</dt><dd>{{ financial.amountTtcCents | euros }}</dd></div>
               }
               @for (line of source.lines; track line.lineNumber) {
                 <div><dt>Ligne {{ line.lineNumber }} — {{ line.ean13 }}</dt><dd>{{ signed(line.stockEffect) }}</dd></div>
@@ -108,9 +108,9 @@
               <div><dt>Vente source</dt><dd><code>{{ reversal.sourceOperationId }}</code></dd></div>
               <div><dt>Contexte historique</dt><dd>{{ financialContextLabel(reversal.context) }}</dd></div>
               <div><dt>Taux de TVA historique</dt><dd>{{ reversal.taxRate.ratio }}</dd></div>
-              <div><dt>Montant HT</dt><dd>{{ signed(reversal.amountHtCents) }} centimes</dd></div>
-              <div><dt>TVA</dt><dd>{{ signed(reversal.vatCents) }} centimes</dd></div>
-              <div><dt>Montant TTC</dt><dd>{{ signed(reversal.amountTtcCents) }} centimes</dd></div>
+              <div><dt>Montant HT</dt><dd>{{ reversal.amountHtCents | euros:true }}</dd></div>
+              <div><dt>TVA</dt><dd>{{ reversal.vatCents | euros:true }}</dd></div>
+              <div><dt>Montant TTC</dt><dd>{{ reversal.amountTtcCents | euros:true }}</dd></div>
             </dl>
           </section>
         }

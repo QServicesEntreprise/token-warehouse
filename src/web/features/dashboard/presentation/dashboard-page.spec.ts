@@ -59,7 +59,6 @@ describe('DashboardPage', () => {
         availability: 'AVAILABLE',
         reason: null,
       }],
-      flowsByDay: [{ date: '2030-01-15', supplies: 3, sales: 1 }],
       financial: {
         revenueHtCents: 1000,
         revenueTtcCents: 1055,
@@ -75,7 +74,7 @@ describe('DashboardPage', () => {
     await fixture.whenStable();
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.querySelector('main[aria-labelledby="dashboard-title"] > div h1#dashboard-title')?.textContent)
+    expect(fixture.nativeElement.querySelector('main > section.panel[aria-labelledby="dashboard-title"] > div h1#dashboard-title')?.textContent)
       .toContain('Dashboard');
     const headingLevels = Array.from(
       fixture.nativeElement.querySelectorAll('h1, h2, h3, h4'),
@@ -87,7 +86,7 @@ describe('DashboardPage', () => {
     expect(fixture.nativeElement.querySelector('#dashboard-kpi-physical').textContent).toContain('9 unités');
     expect(fixture.nativeElement.querySelector('#dashboard-alert-not-sellable').textContent)
       .toContain('Article archivé');
-    expect(fixture.nativeElement.querySelector('#dashboard-flows-table').textContent).toContain('3 unités');
+    expect(fixture.nativeElement.querySelector('#dashboard-flows-table')).toBe(null);
     expect(fixture.nativeElement.querySelector('#dashboard-financial-revenue-ttc').textContent)
       .toContain('10,55');
   });
@@ -104,7 +103,6 @@ describe('DashboardPage', () => {
       kpis: { physicalStock: 0, sellableStock: 0, nonSellableStock: 0 },
       alerts: { outOfStock: [], notSellable: [] },
       stockByArticle: [],
-      flowsByDay: [],
       financial: null,
     });
     await fixture.whenStable();
@@ -163,7 +161,6 @@ describe('DashboardPage', () => {
       kpis: { physicalStock: 0, sellableStock: 0, nonSellableStock: 0 },
       alerts: { outOfStock: [], notSellable: [] },
       stockByArticle: [],
-      flowsByDay: [],
       financial: null,
     });
     await fixture.whenStable();
@@ -196,7 +193,6 @@ describe('DashboardPage', () => {
         availability: 'AVAILABLE',
         reason: null,
       }],
-      flowsByDay: [],
       financial: null,
     });
     await fixture.whenStable();
@@ -231,7 +227,6 @@ describe('DashboardPage', () => {
       kpis: { physicalStock: 0, sellableStock: 0, nonSellableStock: 0 },
       alerts: { outOfStock: [], notSellable: [] },
       stockByArticle: [],
-      flowsByDay: [],
       financial: null,
     });
     await fixture.whenStable();

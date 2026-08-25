@@ -1,12 +1,12 @@
 <main>
-  <header class="page-header">
-    <p class="eyebrow">Vue opérationnelle</p>
-    <h1 id="catalog-title" tabindex="-1">Catalogue</h1>
+  <section class="panel" aria-labelledby="catalog-title">
+    <div>
+      <p class="eyebrow">Vue opérationnelle</p>
+      <h1 id="catalog-title" tabindex="-1">Catalogue</h1>
+    </div>
     <p>Retrouvez les références actives, archivées ou l’ensemble du catalogue par nom, EAN-13 et classification.</p>
     <a class="primary-link" routerLink="/catalogue/nouveau">Créer un Article</a>
-  </header>
 
-  <section class="panel" aria-labelledby="catalog-title">
     <form class="filters-grid" (submit)="onSubmit($event)">
       <label>Recherche
         <input id="catalog-search" autocomplete="off" placeholder="Nom ou EAN-13" [value]="search()" (input)="setSearch($event)" />
@@ -59,10 +59,10 @@
           @for (article of store.articles(); track article.ean13) {
             <tr>
               <th scope="row">{{ article.name }}</th><td>{{ article.ean13 }}</td><td>{{ article.type === 'food' ? 'Alimentaire' : 'Non alimentaire' }}</td><td>{{ isActive(article) ? 'Actif' : 'Archivé' }}</td>
-              <td>{{ article.type === 'food' ? formatModes(article.consumptionModes) : formatPackaging(article.packaging) }}</td><td>{{ article.priceHtCents / 100 | currency:'EUR':'symbol':'1.2-2' }}</td>
+              <td>{{ article.type === 'food' ? formatModes(article.consumptionModes) : formatPackaging(article.packaging) }}</td><td>{{ article.priceHtCents | euros }}</td>
               <td>
                 @for (quote of article.priceQuotes; track quote.saleContext ?? quote.taxRate.code) {
-                  <div>@if (article.priceQuotes.length > 1) { {{ quote.saleContext === 'takeaway' ? 'À emporter' : 'Sur place' }} }{{ quote.priceTtcCents / 100 | currency:'EUR':'symbol':'1.2-2' }}</div>
+                  <div>@if (article.priceQuotes.length > 1) { {{ quote.saleContext === 'takeaway' ? 'À emporter' : 'Sur place' }} }{{ quote.priceTtcCents | euros }}</div>
                 }
               </td>
               <td>

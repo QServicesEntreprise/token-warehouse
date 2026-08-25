@@ -23,7 +23,6 @@ describe('mapDashboard', () => {
         }],
       },
       stockByArticle: [],
-      flowsByDay: [{ date: '2030-01-15', supplies: 3, sales: 1 }],
       financial: {
         revenueHtCents: 1000,
         revenueTtcCents: 1055,
@@ -54,7 +53,6 @@ describe('mapDashboard', () => {
         }],
       },
       stockByArticle: [],
-      flowsByDay: [{ date: '2030-01-15', supplies: 3, sales: 1 }],
       financial: {
         revenueHtCents: 1000,
         revenueTtcCents: 1055,

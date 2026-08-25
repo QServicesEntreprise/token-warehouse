@@ -4,6 +4,7 @@ import { NavigationEnd, Router, RouterLink } from '@angular/router';
 import { filter } from 'rxjs';
 import type { HistoryLoadState } from '../application/history-load-state';
 import { HistoryStore } from '../application/history-store';
+import { EurosPipe } from '../../../shared-kernel/euros-pipe';
 
 const historyTypeLabels: Record<string, string> = {
   supply: 'Approvisionnement',
@@ -21,7 +22,7 @@ const historyTypeLabels: Record<string, string> = {
 @Component({
   selector: 'app-history-page',
   standalone: true,
-  imports: [RouterLink],
+  imports: [EurosPipe, RouterLink],
   templateUrl: './history-page.html',
   styleUrl: './history-page.css',
   changeDetection: ChangeDetectionStrategy.OnPush,

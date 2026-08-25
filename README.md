@@ -87,7 +87,9 @@ place pour que le travail sorte relu, testé et traçable sans lui.
   qui reste immuable ensuite.
 - **Les montants sont en centimes entiers, les taux de TVA en rationnels.**
   `TaxRate("takeaway", 11, 200)` plutôt que `0.055m`. Aucun flottant sur un
-  chemin financier, arrondi au centime explicite et testé aux bornes.
+  chemin financier, arrondi au centime explicite et testé aux bornes. Le
+  Gestionnaire, lui, ne voit et ne saisit que des euros : la conversion vit à
+  la frontière de présentation, et la saisie accepte la virgule comme le point.
 - **Un seul Entrepôt, un seul Gestionnaire, pas d'authentification.** Hors
   périmètre de l'exercice.
 

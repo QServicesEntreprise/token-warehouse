@@ -194,7 +194,7 @@ Ressources principales :
 | `POST` | `/api/stock/counter-movements` | corriger une opération |
 | `GET` | `/api/stock` | lire les positions courantes |
 | `GET` | `/api/history` | lire l’Historique global ou par Article |
-| `GET` | `/api/dashboard` | lire les KPI, graphiques et filtres |
+| `GET` | `/api/dashboard` | lire les KPI, les flux quotidiens et les filtres |
 
 Les noms et verbes de cette table fixent la stratégie REST. Les payloads détaillés seront produits par la boucle Product Owner puis raffinés techniquement.
 
@@ -228,7 +228,10 @@ Le frontend est un adapter de présentation :
 - Signal Forms pour les formulaires de création/modification et de saisie d’opérations ;
 - un client HTTP typé par ressource, sans miroir du domaine C# ;
 - mapping des erreurs Problem Details vers les champs et les messages de parcours ;
-- états explicites `loading`, `ready`, `empty` et `error`.
+- états explicites `loading`, `ready`, `empty` et `error` ;
+- montants présentés et saisis en euros, la virgule et le point valant le même séparateur décimal.
+
+Les montants restent des centimes entiers dans la persistance et dans les payloads HTTP, conformément au §13. La conversion euros ↔ centimes vit à la seule frontière de présentation : le Gestionnaire ne lit ni ne saisit jamais de centimes.
 
 Les règles métier critiques sont répétées en validation d’ergonomie côté Angular uniquement pour guider l’utilisateur. La source d’autorité reste le Domain backend ; une requête valide côté frontend peut toujours être refusée par l’API.
 
@@ -283,7 +286,7 @@ Les scénarios minimums couvrent :
 1. créer un Article, l’approvisionner et constater son stock vendable ;
 2. saisir une Vente, constater la diminution du stock et les montants HT/TTC/TVA ;
 3. réaliser un Inventaire ou une correction, consulter l’Historique ;
-4. ouvrir le Dashboard et vérifier KPI, graphiques, filtres et états vides.
+4. ouvrir le Dashboard et vérifier KPI, alertes, indicateurs financiers, filtres et états vides.
 
 Les fixtures de démonstration rendent visibles les cas alimentaires, les deux modes, la DLC proche, l’Article Invendable et les infrastructures reconditionnées.
 
