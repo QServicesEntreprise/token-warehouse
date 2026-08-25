@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { AfterViewInit, ApplicationRef, ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
 import {
   FieldTree,
   FormField,
@@ -20,11 +20,6 @@ import {
   InventoryResponse,
   InventoryOperationLineResponse,
 } from './inventory-api.service';
-import {
-  HistoryApiService,
-  HistoryEntryResponse,
-  HistoryEntryType,
-} from './history-api.service';
 
 interface ProblemDetails {
   code?: string;
@@ -56,7 +51,6 @@ interface InventoryDisplayLine {
 }
 
 type InventoryRestoreState = 'loading' | 'ready' | 'empty' | 'error';
-type HistoryState = 'idle' | 'loading' | 'ready' | 'empty' | 'error';
 
 const initialInventoryModel: InventoryFormModel = {
   ean13: '',
@@ -66,7 +60,6 @@ const initialInventoryModel: InventoryFormModel = {
 const lastInventoryIdStorageKey = 'token-warehouse.last-inventory-id';
 const routeSectionTargetIds: Record<string, string> = {
   inventaires: 'inventory-title',
-  historique: 'history-title',
 };
 
 @Component({
@@ -82,108 +75,6 @@ const routeSectionTargetIds: Record<string, string> = {
         <p>Une référence EAN-13, un Prix HT en centimes et les attributs de sa classification.</p>
       </header>
 
-
-      <section id="history-panel" class="panel" aria-labelledby="history-title">
-        <div>
-          <p class="eyebrow">Lecture immuable</p>
-          <h2 id="history-title">Historique</h2>
-        </div>
-        <p>Les faits engagés sont présentés du plus récent au plus ancien, sans recalculer le Stock courant.</p>
-
-        <form id="history-filter-form" class="lookup" (submit)="onHistorySubmit($event)">
-          <label for="history-ean13">Filtrer par EAN-13</label>
-          <input
-            id="history-ean13"
-            autocomplete="off"
-            inputmode="numeric"
-            pattern="[0-9]{13}"
-            [value]="historyFilterEan()"
-            (input)="setHistoryFilter($event)" />
-          <button type="submit" [disabled]="historyState() === 'loading'">Filtrer l’Historique</button>
-          <button type="button" class="secondary-button" (click)="loadHistory('')">Historique global</button>
-        </form>
-
-        <div id="history-state" class="catalog-state" role="status" aria-live="polite">
-          @switch (historyState()) {
-            @case ('idle') { <p>Consultez l’Historique global ou filtrez par Article.</p> }
-            @case ('loading') { <p>Chargement de l’Historique…</p> }
-            @case ('ready') { <p>{{ historyEntries().length }} fait{{ historyEntries().length > 1 ? 's' : '' }} trouvé{{ historyEntries().length > 1 ? 's' : '' }}.</p> }
-            @case ('empty') { <p>Aucun fait historique ne correspond à cette requête.</p> }
-            @case ('error') {
-              <p class="form-error" role="alert">{{ historyError() }}</p>
-              <button type="button" class="secondary-button" (click)="retryHistory()">Réessayer</button>
-            }
-          }
-        </div>
-
-        @if (historyEntries().length > 0) {
-          <div id="history-list" class="history-list">
-            @for (entry of historyEntries(); track entry.id) {
-              <article class="history-entry" [attr.aria-labelledby]="'history-entry-' + entry.id">
-                <h3 [id]="'history-entry-' + entry.id">
-                  {{ formatHistoryType(entry.type) }} — {{ entry.timestampUtc }}
-                </h3>
-                <dl>
-                  <div><dt>Identifiant</dt><dd><code>{{ entry.id }}</code></dd></div>
-                  <div><dt>Article(s)</dt><dd>{{ formatHistoryArticles(entry) }}</dd></div>
-                  @if (entry.quantity !== undefined) { <div><dt>Quantité utile</dt><dd>{{ entry.quantity }} unités</dd></div> }
-                  @if (entry.stockEffect !== undefined) { <div><dt>Effet Stock</dt><dd>{{ formatHistoryEffect(entry.stockEffect) }}</dd></div> }
-                  @if (entry.type !== 'COUNTER_MOVEMENT' && entry.previousPhysicalStock !== undefined) { <div><dt>Stock physique précédent</dt><dd>{{ entry.previousPhysicalStock }} unités</dd></div> }
-                  @if (entry.countedQuantity !== undefined) { <div><dt>Quantité comptée</dt><dd>{{ entry.countedQuantity }} unités</dd></div> }
-                  @if (entry.difference !== undefined) { <div><dt>Écart</dt><dd>{{ formatHistoryEffect(entry.difference) }}</dd></div> }
-                  @if (entry.resultingPhysicalStock !== undefined) { <div><dt>Stock physique résultant</dt><dd>{{ entry.resultingPhysicalStock }} unités</dd></div> }
-                  @if (entry.sourceOperationId) { <div><dt>Source</dt><dd><code>{{ entry.sourceOperationId }}</code> — {{ entry.sourceOperationType }}</dd></div> }
-                  @if (entry.correctionOperationId) { <div><dt>Correction</dt><dd><code>{{ entry.correctionOperationId }}</code></dd></div> }
-                  @if (entry.correctedByOperationId) { <div><dt>Corrigé par</dt><dd><code>{{ entry.correctedByOperationId }}</code></dd></div> }
-                  @if (entry.justification) { <div><dt>Justification</dt><dd>{{ entry.justification }}</dd></div> }
-                  @if (entry.financial; as financial) {
-                    <div><dt>Prix HT unitaire historique</dt><dd>{{ financial.unitPriceHtCents }} centimes</dd></div>
-                    <div><dt>Contexte historique</dt><dd>{{ financial.context === 'takeaway' ? 'À emporter' : financial.context === 'onsite' ? 'Sur place' : 'Non alimentaire' }}</dd></div>
-                    <div><dt>Taux de TVA historique</dt><dd>{{ financial.taxRate.ratio }}</dd></div>
-                    <div><dt>Montant HT historique</dt><dd>{{ financial.amountHtCents }} centimes</dd></div>
-                    <div><dt>TVA historique</dt><dd>{{ financial.vatCents }} centimes</dd></div>
-                    <div><dt>Montant TTC historique</dt><dd>{{ financial.amountTtcCents }} centimes</dd></div>
-                  }
-                  @if (entry.financialReversal; as reversal) {
-                    <div><dt>Prix HT unitaire historique</dt><dd>{{ reversal.unitPriceHtCents }} centimes</dd></div>
-                    <div><dt>Contexte historique</dt><dd>{{ formatFinancialContext(reversal.context) }}</dd></div>
-                    <div><dt>Taux de TVA historique</dt><dd>{{ reversal.taxRate.ratio }}</dd></div>
-                    <div><dt>Inversion financière HT</dt><dd>{{ formatSignedEffect(reversal.amountHtCents) }} centimes</dd></div>
-                    <div><dt>Inversion financière TVA</dt><dd>{{ formatSignedEffect(reversal.vatCents) }} centimes</dd></div>
-                    <div><dt>Inversion financière TTC</dt><dd>{{ formatSignedEffect(reversal.amountTtcCents) }} centimes</dd></div>
-                  }
-                  @if (entry.previousStatus || entry.nextStatus) { <div><dt>Cycle de vie</dt><dd>{{ entry.previousStatus }} → {{ entry.nextStatus }}</dd></div> }
-                </dl>
-
-                @if (entry.changes?.length) {
-                  <ul aria-label="Valeurs modifiées">
-                    @for (change of entry.changes; track change.field) {
-                      <li>{{ change.field }} : {{ change.before ?? change.previousValue ?? '—' }} → {{ change.after ?? change.nextValue ?? '—' }}</li>
-                    }
-                  </ul>
-                }
-
-                @if (entry.lines.length > 0) {
-                  <h4>Lignes</h4>
-                  <ul aria-label="Lignes de l’opération">
-                    @for (line of entry.lines; track line.lineNumber) {
-                      <li>
-                        Ligne {{ line.lineNumber }} — {{ line.ean13 }}
-                        @if (line.quantity !== undefined) { · {{ line.quantity }} unités }
-                        @if (line.stockEffect !== undefined) { · effet {{ formatHistoryEffect(line.stockEffect) }} }
-                        @if (line.inverseEffect !== undefined) { · effet inverse {{ formatHistoryEffect(line.inverseEffect) }} }
-                        @if (line.countedQuantity !== undefined) { · comptée {{ line.countedQuantity }} }
-                        @if (line.difference !== undefined) { · écart {{ formatHistoryEffect(line.difference) }} }
-                        @if (line.resultingPhysicalStock !== undefined) { · résultat {{ line.resultingPhysicalStock }} }
-                      </li>
-                    }
-                  </ul>
-                }
-              </article>
-            }
-          </div>
-        }
-      </section>
 
       <section class="panel" aria-labelledby="inventory-title">
         <div>
@@ -288,10 +179,8 @@ const routeSectionTargetIds: Record<string, string> = {
 })
 export class LegacyBackofficePage implements AfterViewInit, OnInit {
   private readonly router = inject(Router, { optional: true });
-  private readonly applicationRef = inject(ApplicationRef);
 
   private readonly inventoryApi = inject(InventoryApiService);
-  private readonly historyApi = inject(HistoryApiService);
 
   constructor() {
     this.router?.events.pipe(takeUntilDestroyed()).subscribe((event) => {
@@ -327,14 +216,7 @@ export class LegacyBackofficePage implements AfterViewInit, OnInit {
   readonly inventoryRestoreState = signal<InventoryRestoreState>('empty');
   readonly inventoryLines = signal<InventoryFormModel[]>([{ ...initialInventoryModel }]);
   readonly inventoryLineErrors = signal<Record<string, string>>({});
-  readonly historyEntries = signal<HistoryEntryResponse[]>([]);
-  readonly historyState = signal<HistoryState>('idle');
-  readonly historyError = signal('');
-  readonly historyFilterEan = signal('');
-  readonly historyLoaded = signal(false);
   private inventoryRestoreRequestId = 0;
-  private historyRequestId = 0;
-  private openedRouteSection = '';
 
   ngOnInit(): void {
     void this.loadLastInventory();
@@ -346,18 +228,12 @@ export class LegacyBackofficePage implements AfterViewInit, OnInit {
 
   private openCurrentRouteSection(): void {
     const section = this.currentRouteSection() ?? '';
-    this.openedRouteSection = section;
-    if (section === 'historique' && this.historyLoaded()) {
-      void this.loadHistory();
-    }
-    void this.applicationRef.whenStable().then(() => {
-      if (this.openedRouteSection !== section) return;
-      const target = document.getElementById(routeSectionTargetIds[section]);
-      if (!target) return;
+    const target = document.getElementById(routeSectionTargetIds[section]);
+    if (target) {
       target.tabIndex = -1;
       target.focus({ preventScroll: true });
       target.scrollIntoView();
-    });
+    }
   }
 
   private currentRouteSection(): string | undefined {
@@ -367,82 +243,6 @@ export class LegacyBackofficePage implements AfterViewInit, OnInit {
     }
     return route?.snapshot.data['section'] as string | undefined;
   }
-  setHistoryFilter(event: Event): void {
-    this.historyFilterEan.set((event.target as HTMLInputElement).value);
-  }
-
-  async onHistorySubmit(event: Event): Promise<void> {
-    event.preventDefault();
-    await this.loadHistory();
-  }
-
-  retryHistory(): void {
-    void this.loadHistory();
-  }
-
-  async loadHistory(ean13?: string): Promise<void> {
-    const requestId = ++this.historyRequestId;
-    const filter = (ean13 ?? this.historyFilterEan()).trim();
-    if (ean13 !== undefined) {
-      this.historyFilterEan.set(ean13);
-    }
-    this.historyLoaded.set(true);
-    this.historyState.set('loading');
-    this.historyError.set('');
-    this.historyEntries.set([]);
-    try {
-      const entries = await firstValueFrom(this.historyApi.list(filter || undefined));
-      if (requestId !== this.historyRequestId) {
-        return;
-      }
-      this.historyEntries.set(entries);
-      this.historyState.set(entries.length > 0 ? 'ready' : 'empty');
-    } catch (error) {
-      if (requestId !== this.historyRequestId) {
-        return;
-      }
-      this.historyState.set('error');
-      this.historyError.set(this.problemMessage(error, 'L’Historique ne peut pas être chargé. Réessayez.'));
-    }
-  }
-
-  formatHistoryType(type: HistoryEntryType): string {
-    return type === 'SUPPLY'
-      ? 'Approvisionnement'
-      : type === 'INVENTORY'
-        ? 'Inventaire'
-        : type === 'SALE_STOCK'
-          ? 'Vente Stock'
-          : type === 'COUNTER_MOVEMENT'
-            ? 'Contre-mouvement'
-            : type === 'CATALOG_ARCHIVE'
-              ? 'Archivage Catalogue'
-              : type === 'CATALOG_REACTIVATE'
-                ? 'Réactivation Catalogue'
-                : type === 'CATALOG_DLC_CHANGE'
-                  ? 'Changement de DLC'
-                  : type === 'CATALOG_PACKAGING_CHANGE'
-                    ? 'Changement de Packaging'
-                    : 'Changement Catalogue';
-  }
-
-  formatHistoryEffect(effect: number | null | undefined): string {
-    if (effect === undefined || effect === null) {
-      return '—';
-    }
-    return effect > 0 ? `+${effect}` : String(effect);
-  }
-
-  formatHistoryArticles(entry: HistoryEntryResponse): string {
-    return entry.articles.map((article) => article.ean13).join(', ');
-  }
-
-  private refreshHistoryAfterChange(): void {
-    if (this.historyLoaded()) {
-      void this.loadHistory();
-    }
-  }
-
   async onInventorySubmit(event: Event): Promise<void> {
     event.preventDefault();
     this.inventoryError.set('');
@@ -467,13 +267,7 @@ export class LegacyBackofficePage implements AfterViewInit, OnInit {
     }
   }
 
-  formatFinancialContext(context: 'takeaway' | 'onsite' | null): string {
-    return context === 'takeaway' ? 'À emporter' : context === 'onsite' ? 'Sur place' : 'Non alimentaire';
-  }
 
-  formatSignedEffect(effect: number): string {
-    return effect > 0 ? `+${effect}` : String(effect);
-  }
 
   setInventoryEan(index: number, event: Event): void {
     this.updateInventoryLine(index, 'ean13', (event.target as HTMLInputElement).value);
@@ -598,7 +392,6 @@ export class LegacyBackofficePage implements AfterViewInit, OnInit {
       this.inventoryRestoreState.set('ready');
       sessionStorage.setItem(lastInventoryIdStorageKey, receipt.operation.id);
       setTimeout(() => document.getElementById('inventory-result')?.focus());
-      this.refreshHistoryAfterChange();
       return true;
     } catch (error) {
       const problem = this.problemDetails(error, 'L’Inventaire n’a pas pu être enregistré.');

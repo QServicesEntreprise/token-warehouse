@@ -1,9 +1,11 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable, catchError, map, throwError } from 'rxjs';
+import { HistoryQuery } from '../application/history-query';
 import { StockGateway } from '../application/stock-gateway';
 import { CorrectableSource } from '../domain/correctable-source';
 import { CounterMovementResult } from '../domain/counter-movement-result';
+import { HistoryEntry } from '../domain/history-entry';
 import { RecordBulkSupplyCommand } from '../domain/record-bulk-supply-command';
 import { RecordCounterMovementCommand } from '../domain/record-counter-movement-command';
 import { RecordSupplyCommand } from '../domain/record-supply-command';
@@ -11,6 +13,7 @@ import { StockPosition } from '../domain/stock-position';
 import { SupplyResult } from '../domain/supply-result';
 import { CorrectableSourceDto } from './dto/correctable-source.dto';
 import { CounterMovementResultDto } from './dto/counter-movement-result.dto';
+import { HistoryEntryDto } from './dto/history-entry.dto';
 import { RecordBulkSupplyResponseDto } from './dto/record-bulk-supply-response.dto';
 import { RecordSupplyResponseDto } from './dto/record-supply-response.dto';
 import { StockPositionDto } from './dto/stock-position.dto';
@@ -22,6 +25,7 @@ import { mapRecordCounterMovementCommand } from './map-record-counter-movement-c
 import { mapRecordSupplyCommand } from './map-record-supply-command';
 import { mapRecordSupplyResponse } from './map-record-supply-response';
 import { mapStockFailure } from './map-stock-failure';
+import { mapHistoryEntryDto } from './map-history-entry-dto';
 import { mapStockPositionDto } from './map-stock-position-dto';
 
 @Injectable()
@@ -78,6 +82,19 @@ export class HttpStockGateway implements StockGateway {
       catchError((error: unknown) => throwError(() => mapStockFailure(
         error,
         'Le Contre-mouvement n’a pas pu être enregistré.',
+      ))),
+    );
+  }
+
+  history(query: HistoryQuery): Observable<readonly HistoryEntry[]> {
+    const params = query.scope === 'article'
+      ? new HttpParams().set('ean13', query.ean13)
+      : undefined;
+    return this.http.get<HistoryEntryDto[]>('/api/history', { params }).pipe(
+      map((entries) => entries.map(mapHistoryEntryDto)),
+      catchError((error: unknown) => throwError(() => mapStockFailure(
+        error,
+        'L’Historique ne peut pas être chargé. Réessayez.',
       ))),
     );
   }

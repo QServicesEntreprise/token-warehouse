@@ -8,6 +8,8 @@ import { CorrectableSource } from '../domain/correctable-source';
 import { CounterMovementResult } from '../domain/counter-movement-result';
 import { RecordCounterMovementCommand } from '../domain/record-counter-movement-command';
 import { StockPosition } from '../domain/stock-position';
+import { HistoryEntry } from '../domain/history-entry';
+import { HistoryQuery } from '../application/history-query';
 import { StockPage } from './stock-page';
 
 const blockedPosition: StockPosition = {
@@ -43,6 +45,9 @@ class FakeStockGateway implements StockGateway {
 
   recordCounterMovement(_command: RecordCounterMovementCommand): Observable<CounterMovementResult> {
     return throwError(() => new Error('Correction absente'));
+  }
+  history(_query: HistoryQuery): Observable<readonly HistoryEntry[]> {
+    return of([]);
   }
 }
 

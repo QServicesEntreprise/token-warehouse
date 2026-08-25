@@ -301,6 +301,26 @@ test('Stock corrections are autonomous, route-scoped and free of Sales imports',
   }
 });
 
+test('Stock History is autonomous, route-scoped and no longer lives in legacy', async () => {
+  const appDirectory = join(root, 'src/web/app');
+  const stockDirectory = join(root, 'src/web/features/stock');
+  const routes = await readFile(join(appDirectory, 'app.routes.ts'), 'utf8');
+  const legacy = await readFile(join(appDirectory, 'legacy-backoffice-page.ts'), 'utf8');
+  const gateway = await readFile(join(stockDirectory, 'application/stock-gateway.ts'), 'utf8');
+  const store = await readFile(join(stockDirectory, 'application/history-store.ts'), 'utf8');
+  const page = await readFile(join(stockDirectory, 'presentation/history-page.ts'), 'utf8');
+
+  assert.match(routes, /path: 'historique'[\s\S]*providers:[\s\S]*HistoryStore[\s\S]*STOCK_GATEWAY[\s\S]*HttpStockGateway[\s\S]*loadComponent:[\s\S]*features\/stock\/presentation\/history-page/);
+  assert.match(gateway, /history\(query: HistoryQuery\)/);
+  assert.match(store, /inject\(STOCK_GATEWAY\)/);
+  assert.match(store, /switchMap/);
+  assert.doesNotMatch(store, /HttpClient|\b\w+(Dto|Payload|Response)\b/);
+  assert.match(page, /HistoryStore/);
+  assert.doesNotMatch(page, /HttpClient|\b\w+(Dto|Payload|Response)\b|\.\.\/domain|\.\.\/infrastructure/);
+  assert.doesNotMatch(legacy, /HistoryApiService|history-panel|historyEntries|historyState|loadHistory/);
+  await assert.rejects(readFile(join(appDirectory, 'history-api.service.ts'), 'utf8'));
+});
+
 test('the Sales context is autonomous and route-scoped', async () => {
   const appDirectory = join(root, 'src/web/app');
   const salesDirectory = join(appDirectory, 'features/sales');
