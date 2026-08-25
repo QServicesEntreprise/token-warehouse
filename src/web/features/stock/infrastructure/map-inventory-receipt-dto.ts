@@ -1,14 +1,14 @@
 import { InventoryReceipt } from '../domain/inventory-receipt';
 import { InventoryReceiptDto } from './dto/inventory-receipt.dto';
-import { mapStockAvailabilityDto } from './map-stock-availability-dto';
-import { mapStockNonSellableReasonDto } from './map-stock-non-sellable-reason-dto';
+import { mapStockAvailability } from './map-stock-availability';
+import { mapStockNonSellableReason } from './map-stock-non-sellable-reason';
 
 const mapPosition = (position: NonNullable<InventoryReceiptDto['position']>) => ({
   ean13: position.ean13,
   physicalQuantity: position.physicalStock,
   sellableQuantity: position.sellableStock,
-  availability: mapStockAvailabilityDto(position.availability),
-  nonSellableReason: mapStockNonSellableReasonDto(position.reason),
+  availability: mapStockAvailability(position.availability),
+  nonSellableReason: mapStockNonSellableReason(position.reason),
 });
 
 export const mapInventoryReceiptDto = (dto: InventoryReceiptDto): InventoryReceipt => {

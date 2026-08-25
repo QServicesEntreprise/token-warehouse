@@ -1,6 +1,7 @@
 import { AfterViewInit, ChangeDetectionStrategy, Component, OnInit, effect, inject, signal } from '@angular/core';
 import { StockPositionStore } from '../application/stock-position-store';
-import { stockLabels } from './stock-labels';
+import { stockAvailabilityLabel } from './stock-availability-label';
+import { stockNonSellableReasonLabel } from './stock-non-sellable-reason-label';
 
 @Component({
   selector: 'app-stock-page',
@@ -12,6 +13,8 @@ import { stockLabels } from './stock-labels';
 export class StockPage implements AfterViewInit, OnInit {
   readonly store = inject(StockPositionStore);
   private readonly filterValue = signal('');
+  readonly availabilityLabel = stockAvailabilityLabel;
+  readonly reasonLabel = stockNonSellableReasonLabel;
 
   constructor() {
     effect(() => {
@@ -36,13 +39,5 @@ export class StockPage implements AfterViewInit, OnInit {
 
   retry(): void {
     this.store.load(this.filterValue());
-  }
-
-  availabilityLabel(availability: keyof typeof stockLabels.availability): string {
-    return stockLabels.availability[availability];
-  }
-
-  reasonLabel(reason: keyof typeof stockLabels.reason | null): string {
-    return reason ? stockLabels.reason[reason] : '—';
   }
 }

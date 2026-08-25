@@ -1,17 +1,14 @@
 import { StockNonSellableReason } from '../domain/stock-non-sellable-reason';
+import { StockPositionDto } from './dto/stock-position.dto';
 
-export const mapStockNonSellableReasonDto = (
-  reason: 'ARCHIVED' | 'DLC_EXPIRED' | 'UNSELLABLE_PACKAGING' | null,
+export const mapStockNonSellableReason = (
+  reason: StockPositionDto['reason'],
 ): StockNonSellableReason | null => {
   switch (reason) {
     case null: return null;
     case 'ARCHIVED': return 'archived';
     case 'DLC_EXPIRED': return 'dlcExpired';
     case 'UNSELLABLE_PACKAGING': return 'unsellablePackaging';
-    default: return unknownReason(reason);
+    default: throw new Error(`Raison de non-vendabilité inconnue : ${String(reason satisfies never)}`);
   }
-};
-
-const unknownReason = (reason: never): never => {
-  throw new Error(`Raison de non-vendabilité inconnue : ${String(reason)}`);
 };

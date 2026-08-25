@@ -1,5 +1,6 @@
 import { ActivatedRouteSnapshot, DetachedRouteHandle, RouteReuseStrategy, Routes } from '@angular/router';
 import { STOCK_GATEWAY } from '../features/stock/application/stock-gateway-token';
+import { CounterMovementStore } from '../features/stock/application/counter-movement-store';
 import { InventoryStore } from '../features/stock/application/inventory-store';
 import { LAST_INVENTORY_STORAGE } from '../features/stock/application/last-inventory-storage-token';
 import { StockPositionStore } from '../features/stock/application/stock-position-store';
@@ -90,8 +91,12 @@ export const routes: Routes = [
       },
       {
         path: 'corrections',
-        data: { section: 'corrections' },
-        loadComponent: loadLegacy,
+        providers: [
+          HttpStockGateway,
+          CounterMovementStore,
+          { provide: STOCK_GATEWAY, useExisting: HttpStockGateway },
+        ],
+        loadComponent: () => import('../features/stock/presentation/counter-movement-page').then((module) => module.CounterMovementPage),
       },
       {
         path: 'historique',

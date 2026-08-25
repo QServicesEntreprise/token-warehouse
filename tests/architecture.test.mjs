@@ -294,6 +294,40 @@ test('Stock Approvisionnements are route-scoped and no longer live in legacy', a
   assert.doesNotMatch(legacy, /supply-panel|StockApiService|supplyModel|supplyLines|onSupplySubmit|recordBulkSupply/);
 });
 
+test('Stock corrections are autonomous, route-scoped and free of Sales imports', async () => {
+  const appDirectory = join(root, 'src/web/app');
+  const stockDirectory = join(root, 'src/web/features/stock');
+  const routes = await readFile(join(appDirectory, 'app.routes.ts'), 'utf8');
+  const legacy = await readFile(join(appDirectory, 'legacy-backoffice-page.ts'), 'utf8');
+  const files = (await readdir(stockDirectory, { recursive: true }))
+    .filter((file) => file.endsWith('.ts'))
+    .sort();
+  const sources = await Promise.all(files.map((file) => readFile(join(stockDirectory, file), 'utf8')));
+
+  assert.match(routes, /path: 'corrections'[\s\S]*providers:[\s\S]*CounterMovementStore[\s\S]*STOCK_GATEWAY[\s\S]*HttpStockGateway[\s\S]*loadComponent:[\s\S]*counter-movement-page/);
+  assert.doesNotMatch(legacy, /CounterMovement|counter-movement/);
+  await assert.rejects(readFile(join(appDirectory, 'counter-movement-api.service.ts'), 'utf8'));
+  for (const source of sources) {
+    assert.doesNotMatch(source, /(?:from\s+['"][^'"]*|import\s*\(['"][^'"]*)(?:sales|ventes)/i);
+  }
+
+  for (const [file, source] of files.map((file, index) => [file, sources[index]])) {
+    if (file.endsWith('.spec.ts')) continue;
+    if (file.startsWith('domain/')) {
+      assert.doesNotMatch(source, /@angular|rxjs|HttpClient|Router|document|sessionStorage/);
+    }
+    if (file.startsWith('application/')) {
+      assert.doesNotMatch(source, /HttpClient|Router|document|sessionStorage|\b\w+(Dto|Payload|Response)\b/);
+    }
+    if (file.startsWith('presentation/')) {
+      assert.doesNotMatch(source, /HttpClient|\b\w+(Dto|Payload|Response)\b/);
+    }
+    if (file.startsWith('presentation/counter-movement')) {
+      assert.doesNotMatch(source, /\.\.\/domain/);
+    }
+  }
+});
+
 test('the Sales context is autonomous and route-scoped', async () => {
   const appDirectory = join(root, 'src/web/app');
   const salesDirectory = join(appDirectory, 'features/sales');

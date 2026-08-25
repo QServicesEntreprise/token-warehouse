@@ -1,0 +1,135 @@
+<main>
+  <section id="counter-movement-panel" class="panel" aria-labelledby="counter-movement-title">
+    <div>
+      <p class="eyebrow">Correction traçable</p>
+      <h1 id="counter-movement-title" tabindex="-1">Corriger une Opération</h1>
+    </div>
+    <p>La source reste inchangée ; le serveur applique son effet inverse à la position courante.</p>
+
+    <button
+      id="counter-movement-load"
+      type="button"
+      class="secondary-button"
+      [disabled]="store.sourcesState() === 'loading' || store.submitting()"
+      (click)="loadSources()">
+      {{ store.sourcesState() === 'loading' ? 'Chargement…' : 'Charger les Opérations corrigeables' }}
+    </button>
+
+    <div id="counter-movement-sources-state" role="status" aria-live="polite">
+      @switch (store.sourcesState()) {
+        @case ('loading') { <p>Chargement des Opérations corrigeables…</p> }
+        @case ('empty') { <p>Aucune Opération corrigeable n’est disponible.</p> }
+        @case ('error') { <p class="form-error" role="alert">{{ store.message() }}</p> }
+      }
+    </div>
+
+    @if (store.sources().length > 0) {
+      <form id="counter-movement-form" class="form-grid" novalidate [formRoot]="correctionForm" (submit)="onSubmit($event)">
+        <label for="counter-movement-source">
+          Opération source
+          <select
+            id="counter-movement-source"
+            [formField]="correctionForm.sourceOperationId"
+            [attr.aria-invalid]="fieldError('sourceOperationId') ? 'true' : null"
+            [attr.aria-describedby]="fieldError('sourceOperationId') ? 'counter-movement-sourceOperationId-error' : null"
+            (input)="clearField('sourceOperationId')">
+            <option value="">Choisir une Opération</option>
+            @for (source of store.sources(); track source.id) {
+              <option [value]="source.id">
+                {{ sourceTypeLabel(source.type) }} — {{ source.id }} — {{ source.timestampUtc }}
+              </option>
+            }
+          </select>
+          @if (fieldError('sourceOperationId'); as error) {
+            <span id="counter-movement-sourceOperationId-error" class="field-error">{{ error }}</span>
+          }
+        </label>
+
+        @if (selectedSource(); as source) {
+          <article class="stock-detail" aria-labelledby="counter-movement-source-title">
+            <h2 id="counter-movement-source-title">Source {{ source.id }}</h2>
+            <dl>
+              <div><dt>Type</dt><dd>{{ sourceTypeLabel(source.type) }}</dd></div>
+              <div><dt>Timestamp UTC</dt><dd>{{ source.timestampUtc }}</dd></div>
+              @if (source.financial; as financial) {
+                <div><dt>Prix HT unitaire historique</dt><dd>{{ financial.unitPriceHtCents }} centimes</dd></div>
+                <div><dt>Contexte historique</dt><dd>{{ financialContextLabel(financial.context) }}</dd></div>
+                <div><dt>Taux de TVA historique</dt><dd>{{ financial.taxRate.ratio }}</dd></div>
+                <div><dt>Montant HT historique</dt><dd>{{ financial.amountHtCents }} centimes</dd></div>
+                <div><dt>TVA historique</dt><dd>{{ financial.vatCents }} centimes</dd></div>
+                <div><dt>Montant TTC historique</dt><dd>{{ financial.amountTtcCents }} centimes</dd></div>
+              }
+              @for (line of source.lines; track line.lineNumber) {
+                <div><dt>Ligne {{ line.lineNumber }} — {{ line.ean13 }}</dt><dd>{{ signed(line.stockEffect) }}</dd></div>
+              }
+            </dl>
+          </article>
+        }
+
+        <label for="counter-movement-justification">
+          Justification
+          <textarea
+            id="counter-movement-justification"
+            rows="3"
+            [formField]="correctionForm.justification"
+            [attr.aria-invalid]="fieldError('justification') ? 'true' : null"
+            [attr.aria-describedby]="fieldError('justification') ? 'counter-movement-justification-error' : null"
+            (input)="clearField('justification')"></textarea>
+          @if (fieldError('justification'); as error) {
+            <span id="counter-movement-justification-error" class="field-error">{{ error }}</span>
+          }
+        </label>
+
+        <button id="counter-movement-submit" type="submit" [disabled]="store.submitting()">
+          {{ store.submitting() ? 'Correction…' : 'Enregistrer le Contre-mouvement' }}
+        </button>
+      </form>
+    }
+
+    @if ((clientMessage() || store.message()) && store.sourcesState() !== 'error') {
+      <p id="counter-movement-error" class="form-error" role="alert" aria-live="assertive" tabindex="-1">
+        {{ clientMessage() || store.message() }}
+      </p>
+    }
+
+    @if (store.receipt(); as receipt) {
+      <article id="counter-movement-result" class="stock-detail" role="region" aria-live="polite" aria-labelledby="counter-movement-result-title" tabindex="-1">
+        <h2 id="counter-movement-result-title">Contre-mouvement enregistré</h2>
+        <dl>
+          <div><dt>Correction</dt><dd><code>{{ receipt.counterMovement.id }}</code></dd></div>
+          <div><dt>Source</dt><dd><code>{{ receipt.counterMovement.sourceOperationId }}</code> — {{ receipt.counterMovement.sourceOperationType }}</dd></div>
+          <div><dt>Justification</dt><dd>{{ receipt.counterMovement.justification }}</dd></div>
+          <div><dt>Timestamp UTC</dt><dd>{{ receipt.counterMovement.timestampUtc }}</dd></div>
+        </dl>
+        @if (receipt.financialReversal; as reversal) {
+          <section class="inventory-result-line" aria-labelledby="counter-movement-financial-title">
+            <h3 id="counter-movement-financial-title">Effet financier inverse</h3>
+            <dl>
+              <div><dt>Vente source</dt><dd><code>{{ reversal.sourceOperationId }}</code></dd></div>
+              <div><dt>Contexte historique</dt><dd>{{ financialContextLabel(reversal.context) }}</dd></div>
+              <div><dt>Taux de TVA historique</dt><dd>{{ reversal.taxRate.ratio }}</dd></div>
+              <div><dt>Montant HT</dt><dd>{{ signed(reversal.amountHtCents) }} centimes</dd></div>
+              <div><dt>TVA</dt><dd>{{ signed(reversal.vatCents) }} centimes</dd></div>
+              <div><dt>Montant TTC</dt><dd>{{ signed(reversal.amountTtcCents) }} centimes</dd></div>
+            </dl>
+          </section>
+        }
+        @for (line of receipt.counterMovement.lines; track line.lineNumber) {
+          <section class="inventory-result-line" [attr.aria-labelledby]="'counter-movement-result-line-' + line.lineNumber">
+            <h3 [id]="'counter-movement-result-line-' + line.lineNumber">Ligne {{ line.lineNumber }} — {{ line.ean13 }}</h3>
+            <dl>
+              <div><dt>Effet source</dt><dd>{{ signed(line.sourceEffect) }}</dd></div>
+              <div><dt>Effet inverse</dt><dd>{{ signed(line.inverseEffect) }}</dd></div>
+              @if (store.positionsByEan13()[line.ean13]; as currentPosition) {
+                <div><dt>Stock physique</dt><dd>{{ currentPosition.physicalQuantity }} unités</dd></div>
+                <div><dt>Stock vendable</dt><dd>{{ currentPosition.sellableQuantity }} unités</dd></div>
+                <div><dt>Disponibilité</dt><dd>{{ availabilityLabel(currentPosition.availability) }}</dd></div>
+                <div><dt>Raison</dt><dd>{{ reasonLabel(currentPosition.nonSellableReason) }}</dd></div>
+              }
+            </dl>
+          </section>
+        }
+      </article>
+    }
+  </section>
+</main>

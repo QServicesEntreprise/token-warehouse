@@ -1,7 +1,8 @@
 import { AfterViewInit, ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
 import { FormField, FormRoot, applyEach, form, pattern, required, submit } from '@angular/forms/signals';
 import { InventoryStore } from '../application/inventory-store';
-import { stockLabels } from './stock-labels';
+import { stockAvailabilityLabel } from './stock-availability-label';
+import { stockNonSellableReasonLabel } from './stock-non-sellable-reason-label';
 
 type InventoryReceipt = NonNullable<ReturnType<InventoryStore['receipt']>>;
 type InventoryPosition = InventoryReceipt['lines'][number]['position'];
@@ -110,11 +111,11 @@ export class InventoryPage implements AfterViewInit, OnInit {
   }
 
   formatAvailability(availability: InventoryPosition['availability']): string {
-    return stockLabels.availability[availability];
+    return stockAvailabilityLabel(availability);
   }
 
   formatReason(reason: InventoryPosition['nonSellableReason']): string {
-    return reason ? stockLabels.reason[reason] : '—';
+    return stockNonSellableReasonLabel(reason);
   }
 
   private focusError(): void {

@@ -204,4 +204,67 @@ describe('HttpStockGateway', () => {
       positions: [{ physicalQuantity: 3 }, { physicalQuantity: 2 }],
     });
   });
+
+  it('provides correctable sources through the Stock gateway', async () => {
+    const result = firstValueFrom(gateway.listCorrectableSources());
+    http.expectOne('/api/stock/counter-movements/sources').flush([{
+      id: 'supply-01',
+      type: 'SUPPLY',
+      timestampUtc: '2030-01-15T09:00:00Z',
+      ean13: '0123456789012',
+      lines: [{ lineNumber: 1, ean13: '0123456789012', stockEffect: 2 }],
+    }]);
+
+    await expect(result).resolves.toEqual([{
+      id: 'supply-01',
+      type: 'SUPPLY',
+      timestampUtc: '2030-01-15T09:00:00Z',
+      ean13: '0123456789012',
+      lines: [{ lineNumber: 1, ean13: '0123456789012', stockEffect: 2 }],
+      financial: undefined,
+    }]);
+  });
+
+  it('records a Counter-movement command and returns the committed server result', async () => {
+    const result = firstValueFrom(gateway.recordCounterMovement({
+      sourceOperationId: 'supply-01',
+      justification: 'Erreur de saisie',
+    }));
+    const request = http.expectOne('/api/stock/counter-movements');
+    expect(request.request.method).toBe('POST');
+    expect(request.request.body).toEqual({
+      sourceOperationId: 'supply-01',
+      justification: 'Erreur de saisie',
+    });
+    request.flush({
+      counterMovement: {
+        id: 'counter-01',
+        type: 'COUNTER_MOVEMENT',
+        timestampUtc: '2030-01-15T10:00:00Z',
+        sourceOperationId: 'supply-01',
+        sourceOperationType: 'SUPPLY',
+        justification: 'Erreur de saisie',
+        lines: [{ lineNumber: 1, ean13: '0123456789012', sourceEffect: 2, inverseEffect: -2 }],
+      },
+      source: {
+        id: 'supply-01',
+        type: 'SUPPLY',
+        timestampUtc: '2030-01-15T09:00:00Z',
+        ean13: '0123456789012',
+        lines: [{ lineNumber: 1, ean13: '0123456789012', stockEffect: 2 }],
+      },
+      positions: [{
+        ean13: '0123456789012',
+        physicalStock: 5,
+        sellableStock: 5,
+        availability: 'AVAILABLE',
+        reason: null,
+      }],
+    });
+
+    await expect(result).resolves.toMatchObject({
+      counterMovement: { id: 'counter-01', sourceOperationId: 'supply-01' },
+      positions: [{ physicalQuantity: 5, sellableQuantity: 5 }],
+    });
+  });
 });

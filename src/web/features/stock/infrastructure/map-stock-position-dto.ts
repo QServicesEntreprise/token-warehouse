@@ -1,7 +1,7 @@
 import { StockPosition } from '../domain/stock-position';
 import { StockPositionDto } from './dto/stock-position.dto';
-import { mapStockAvailabilityDto } from './map-stock-availability-dto';
-import { mapStockNonSellableReasonDto } from './map-stock-non-sellable-reason-dto';
+import { mapStockAvailability } from './map-stock-availability';
+import { mapStockNonSellableReason } from './map-stock-non-sellable-reason';
 
 export const mapStockPositionDto = (dto: StockPositionDto): StockPosition => ({
   ean13: dto.ean13,
@@ -9,6 +9,6 @@ export const mapStockPositionDto = (dto: StockPositionDto): StockPosition => ({
   physicalQuantity: dto.physicalQuantity,
   sellableQuantity: dto.sellableQuantity,
   nonSellableQuantity: dto.physicalQuantity - dto.sellableQuantity,
-  availability: mapStockAvailabilityDto(dto.availability),
-  nonSellableReason: mapStockNonSellableReasonDto(dto.reason),
+  availability: mapStockAvailability(dto.availability),
+  nonSellableReason: mapStockNonSellableReason(dto.reason),
 });

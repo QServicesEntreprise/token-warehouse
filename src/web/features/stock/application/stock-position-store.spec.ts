@@ -1,6 +1,9 @@
 import { TestBed } from '@angular/core/testing';
 import { Observable, Subject, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { CorrectableSource } from '../domain/correctable-source';
+import { CounterMovementResult } from '../domain/counter-movement-result';
+import { RecordCounterMovementCommand } from '../domain/record-counter-movement-command';
 import { StockPosition } from '../domain/stock-position';
 import { InventoryReceipt } from '../domain/inventory-receipt';
 import { STOCK_GATEWAY } from './stock-gateway-token';
@@ -47,6 +50,14 @@ class FakeStockGateway implements StockGateway {
 
   recordBulkSupply(): Observable<never> {
     return throwError(() => new Error('Approvisionnement inattendu'));
+  }
+
+  listCorrectableSources(): Observable<readonly CorrectableSource[]> {
+    return of([]);
+  }
+
+  recordCounterMovement(_command: RecordCounterMovementCommand): Observable<CounterMovementResult> {
+    return throwError(() => new Error('Correction absente'));
   }
 }
 
