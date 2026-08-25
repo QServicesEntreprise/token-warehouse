@@ -7,6 +7,9 @@ import { ArticleDetailsStore } from '../application/article-details-store';
 import type { ArticleType } from '../domain/article-type';
 import type { Packaging } from '../domain/packaging';
 import type { ConsumptionMode } from '../../../shared-kernel/consumption-mode';
+import { EurosPipe } from '../../../shared-kernel/euros-pipe';
+import { eurosInputValue } from '../../../shared-kernel/euros-input-value';
+import { parseEuros } from '../../../shared-kernel/parse-euros';
 
 interface AttributeFormModel {
   type: ArticleType;
@@ -17,13 +20,13 @@ interface AttributeFormModel {
 }
 
 interface PriceFormModel {
-  priceHtCents: string;
+  priceHt: string;
 }
 
 @Component({
   selector: 'app-article-details-page',
   standalone: true,
-  imports: [FormField, RouterLink],
+  imports: [EurosPipe, FormField, RouterLink],
   templateUrl: './article-details-page.html',
   styleUrl: './article-details-page.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -46,7 +49,7 @@ export class ArticleDetailsPage implements AfterViewInit {
   });
   private readonly priceModelSignal = linkedSignal<PriceFormModel>(() => {
     const article = this.store.article();
-    return { priceHtCents: article ? String(article.priceHtCents) : '' };
+    return { priceHt: article ? eurosInputValue(article.priceHtCents) : '' };
   });
   readonly attributeModel = this.attributeModelSignal.asReadonly();
   readonly lookupEan13 = this.lookupEan13Signal.asReadonly();
@@ -61,8 +64,8 @@ export class ArticleDetailsPage implements AfterViewInit {
     hidden(path.packaging, { when: ({ valueOf }) => valueOf(path.type) !== 'nonFood' });
   });
   readonly priceForm = form(this.priceModelSignal, (path) => {
-    required(path.priceHtCents, { message: 'Le Prix HT en centimes est requis.' });
-    pattern(path.priceHtCents, /^-?\d+$/, { message: 'Le Prix HT doit être un entier de centimes.' });
+    required(path.priceHt, { message: 'Le Prix HT est requis.' });
+    pattern(path.priceHt, /^-?\d+(?:[.,]\d{1,2})?$/, { message: 'Le Prix HT doit être un montant en euros, par exemple 12,50.' });
   });
 
   constructor() {
@@ -74,7 +77,7 @@ export class ArticleDetailsPage implements AfterViewInit {
       this.detailLoadId += 1;
       this.lookupEan13Signal.set(ean13);
       this.attributeForm().reset({ type: 'food', name: '', dlc: '', consumptionModes: [], packaging: '' });
-      this.priceForm().reset({ priceHtCents: '' });
+      this.priceForm().reset({ priceHt: '' });
       this.store.load(ean13);
     });
   }
@@ -129,14 +132,14 @@ export class ArticleDetailsPage implements AfterViewInit {
     let restoreFocus = false;
     await submit(this.priceForm, {
       action: async () => {
-        const updated = await this.store.updatePrice(Number(this.priceModelSignal().priceHtCents));
+        const updated = await this.store.updatePrice(parseEuros(this.priceModelSignal().priceHt) ?? 0);
         if (updated || this.detailLoadId !== detailLoadId) return undefined;
         restoreFocus = true;
         return this.serverErrors('price');
       },
       onInvalid: () => { restoreFocus = true; },
     });
-    if (restoreFocus) setTimeout(() => document.getElementById('detailPriceHtCents')?.focus());
+    if (restoreFocus) setTimeout(() => document.getElementById('detailPriceHt')?.focus());
   }
 
   async toggleLifecycle(): Promise<void> {
@@ -156,7 +159,7 @@ export class ArticleDetailsPage implements AfterViewInit {
   }
 
   private priceField(field: string): FieldTree<unknown> | undefined {
-    return field === 'priceHtCents' ? this.priceForm.priceHtCents : undefined;
+    return field === 'priceHtCents' || field === 'priceHt' ? this.priceForm.priceHt : undefined;
   }
 
   private attributeField(field: string): FieldTree<unknown> | undefined {

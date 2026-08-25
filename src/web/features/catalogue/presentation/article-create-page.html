@@ -1,17 +1,21 @@
 <main>
-  <header class="page-header"><p class="eyebrow">Catalogue d’Articles</p><h1 id="create-title" tabindex="-1">Nouvel Article</h1><a routerLink="/catalogue">Retour au Catalogue</a></header>
   <section class="panel" aria-labelledby="create-title">
+    <div>
+      <p class="eyebrow">Catalogue d’Articles</p>
+      <h1 id="create-title" tabindex="-1">Nouvel Article</h1>
+    </div>
+    <a class="primary-link" routerLink="/catalogue">Retour au Catalogue</a>
     <p id="form-error" class="form-error" aria-live="assertive" tabindex="-1">{{ store.error() }}</p>
     <form novalidate (submit)="onSubmit($event)"><div class="form-grid">
-      <label>EAN-13<input id="ean13" autocomplete="off" inputmode="numeric" [formField]="articleForm.ean13" aria-describedby="ean13-error" />
+      <label>EAN-13<input id="ean13" autocomplete="off" inputmode="numeric" size="13" [formField]="articleForm.ean13" aria-describedby="ean13-error" />
         @if (articleForm.ean13().errors().length) { <span id="ean13-error" class="field-error">{{ articleForm.ean13().errors()[0]?.message }}</span> }
       </label>
       <label>Type<select id="type" [formField]="articleForm.type"><option value="food">Alimentaire</option><option value="nonFood">Non alimentaire</option></select></label>
       <label>Nom<input id="name" autocomplete="off" [formField]="articleForm.name" aria-describedby="name-error" />
         @if (articleForm.name().errors().length) { <span id="name-error" class="field-error">{{ articleForm.name().errors()[0]?.message }}</span> }
       </label>
-      <label>Prix HT (centimes)<input id="priceHtCents" type="number" step="1" inputmode="numeric" [formField]="articleForm.priceHtCents" aria-describedby="price-error" />
-        @if (articleForm.priceHtCents().errors().length) { <span id="price-error" class="field-error">{{ articleForm.priceHtCents().errors()[0]?.message }}</span> }
+      <label>Prix HT (€)<input id="priceHt" type="text" inputmode="decimal" autocomplete="off" placeholder="12,50" [formField]="articleForm.priceHt" aria-describedby="price-error" />
+        @if (articleForm.priceHt().errors().length) { <span id="price-error" class="field-error">{{ articleForm.priceHt().errors()[0]?.message }}</span> }
       </label>
       @if (model().type === 'food') {
         <label>DLC<input id="dlc" type="date" [formField]="articleForm.dlc" aria-describedby="dlc-error" />

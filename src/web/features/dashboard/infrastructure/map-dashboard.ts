@@ -12,7 +12,6 @@ export function mapDashboard(dto: DashboardDto): Dashboard {
       notSellable: dto.alerts.notSellable.map(mapStockLine),
     },
     stockByArticle: dto.stockByArticle.map(mapStockLine),
-    flowsByDay: dto.flowsByDay.map(day => ({ ...day })),
     financial: dto.financial == null ? null : {
       revenueHtCents: dto.financial.revenueHtCents,
       revenueTtcCents: dto.financial.revenueTtcCents,

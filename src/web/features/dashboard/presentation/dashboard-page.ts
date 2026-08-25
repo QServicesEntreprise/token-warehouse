@@ -1,5 +1,6 @@
 import { type AfterViewInit, ChangeDetectionStrategy, Component, type OnInit, computed, effect, inject } from '@angular/core';
 import { DashboardStore } from '../application/dashboard-store';
+import { EurosPipe } from '../../../shared-kernel/euros-pipe';
 import type { DashboardFilter } from '../domain/dashboard-filter';
 import type { DashboardStockLine } from '../domain/dashboard-stock-line';
 import type { DashboardTaxSummary } from '../domain/dashboard-tax-summary';
@@ -7,6 +8,7 @@ import type { DashboardTaxSummary } from '../domain/dashboard-tax-summary';
 @Component({
   selector: 'app-dashboard-page',
   standalone: true,
+  imports: [EurosPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './dashboard-page.html',
   styleUrl: './dashboard-page.css',
@@ -32,7 +34,6 @@ export class DashboardPage implements OnInit, AfterViewInit {
   ngAfterViewInit(): void {
     const title = document.getElementById('dashboard-title');
     if (title) {
-      title.tabIndex = -1;
       title.focus({ preventScroll: true });
       title.scrollIntoView?.();
     }
@@ -101,10 +102,6 @@ export class DashboardPage implements OnInit, AfterViewInit {
 
   protected formatLifecycle(status: DashboardStockLine['lifecycleStatus']): string {
     return status === 'ACTIVE' ? 'Actif' : 'Archivé';
-  }
-
-  protected formatFinancialCents(cents: number): string {
-    return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(cents / 100);
   }
 
   protected formatTaxRate(line: DashboardTaxSummary): string {

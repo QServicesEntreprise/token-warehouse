@@ -25,7 +25,7 @@ test('searches, rejects an excessive quantity, commits a sale and refreshes Stoc
   await salePanel.locator('#sale-search-form').getByRole('button', { name: 'Rechercher un Article', exact: true }).click();
   const row = salePanel.getByRole('row', { name: /4567890123456/ });
   await expect(row).toBeVisible();
-  await expect(row).toContainText('100 centimes');
+  await expect(row).toContainText(/1,00\s€/);
   await expect(row).toContainText('8 unités');
 
   await row.getByRole('button', { name: 'Sélectionner Article actif vendable' }).click();
@@ -54,7 +54,7 @@ test('searches, rejects an excessive quantity, commits a sale and refreshes Stoc
   expect(receipt.financial.amountTtcCents).toBe(360);
   expect(receipt.position.physicalQuantity).toBe(5);
   expect(receipt.position.sellableQuantity).toBe(5);
-  await expect(salePanel.locator('#sale-result')).toContainText('360');
+  await expect(salePanel.locator('#sale-result')).toContainText(/3,60\s€/);
 
   const refreshedStock = waitForRequest(page, 'GET', '/api/stock');
   await page.getByRole('link', { name: 'Stock', exact: true }).click();
@@ -65,7 +65,7 @@ test('searches, rejects an excessive quantity, commits a sale and refreshes Stoc
   await page.getByRole('link', { name: 'Vente', exact: true }).click();
   await page.reload();
   await expect(page.locator('#sale-result')).toContainText(receipt.operation.id);
-  await expect(page.locator('#sale-result')).toContainText('360');
+  await expect(page.locator('#sale-result')).toContainText(/3,60\s€/);
   await expect(page.locator('#sale-result')).toContainText('5 unités');
 });
 
@@ -77,8 +77,8 @@ test('requires a food context, previews both rates and commits the selected mode
   await salePanel.locator('#sale-search-form').getByRole('button', { name: 'Rechercher un Article', exact: true }).click();
   const row = salePanel.getByRole('row', { name: new RegExp(leadingZeroEan13) });
   await expect(row).toBeVisible();
-  await expect(row).toContainText('À emporter : 106 centimes');
-  await expect(row).toContainText('Sur place : 110 centimes');
+  await expect(row).toContainText(/À emporter : 1,06\s€/);
+  await expect(row).toContainText(/Sur place : 1,10\s€/);
   await row.getByRole('button', { name: 'Sélectionner Alimentaire aux deux modes' }).click();
 
   await expect(salePanel.locator('#sale-context input')).toHaveCount(2);
@@ -106,7 +106,7 @@ test('requires a food context, previews both rates and commits the selected mode
   expect(receipt.position.physicalQuantity).toBe(2);
   expect(receipt.position.sellableQuantity).toBe(2);
   await expect(salePanel.locator('#sale-result')).toContainText('1/10');
-  await expect(salePanel.locator('#sale-result')).toContainText('330');
+  await expect(salePanel.locator('#sale-result')).toContainText(/3,30\s€/);
 
   await page.reload();
   await expect(salePanel.locator('#sale-context input')).toHaveCount(2);
@@ -161,11 +161,11 @@ test.describe('Sale context, receipt and financial snapshot', () => {
     await expect(field('Horodatage UTC')).toHaveText('2030-01-15T10:00:00+00:00');
     await expect(field('EAN-13')).toHaveText(ean13);
     await expect(field('Quantité')).toHaveText('3 unités');
-    await expect(field('Prix HT unitaire')).toHaveText('101 centimes');
+    await expect(field('Prix HT unitaire')).toHaveText(/^1,01\s€$/);
     await expect(field('Taux de TVA')).toHaveText('1/10');
-    await expect(field('Montant HT')).toHaveText('303 centimes');
-    await expect(field('TVA')).toHaveText('30 centimes');
-    await expect(field('Montant TTC')).toHaveText('333 centimes');
+    await expect(field('Montant HT')).toHaveText(/^3,03\s€$/);
+    await expect(field('TVA')).toHaveText(/^0,30\s€$/);
+    await expect(field('Montant TTC')).toHaveText(/^3,33\s€$/);
     await expect(field('Stock physique résultant')).toHaveText('1 unités');
   });
 

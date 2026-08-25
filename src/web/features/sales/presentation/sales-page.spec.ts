@@ -102,7 +102,7 @@ describe('SalesPage', () => {
     fixture.detectChanges();
 
     expect(record).toHaveBeenCalledWith({ ean13: article.ean13, quantity: 3, context: 'onsite' });
-    expect(fixture.nativeElement.querySelector('#sale-result').textContent).toContain('333 centimes');
+    expect(fixture.nativeElement.querySelector('#sale-result').textContent).toContain('3,33');
   });
 
   it('keeps the draft and focuses the rejected server field', async () => {

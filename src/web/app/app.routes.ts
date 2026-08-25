@@ -1,7 +1,7 @@
 import type { Routes } from '@angular/router';
 
 export const routes: Routes = [
-  { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
+  { path: '', pathMatch: 'full', redirectTo: 'catalogue' },
   {
     path: 'dashboard',
     loadChildren: () => import('./dashboard.routes').then(({ dashboardRoutes }) => dashboardRoutes),
@@ -18,5 +18,5 @@ export const routes: Routes = [
     path: 'ventes',
     loadChildren: () => import('../features/sales/sales.routes').then(({ SALES_ROUTES }) => SALES_ROUTES),
   },
-  { path: '**', redirectTo: 'dashboard' },
+  { path: '**', redirectTo: 'catalogue' },
 ];

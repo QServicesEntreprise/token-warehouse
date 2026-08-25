@@ -22,7 +22,6 @@ const emptyDashboard = (name?: string): Dashboard => ({
     availability: 'AVAILABLE',
     reason: null,
   }] : [],
-  flowsByDay: [],
   financial: null,
 });
 

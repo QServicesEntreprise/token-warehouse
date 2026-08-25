@@ -139,8 +139,8 @@ describe('HistoryPage', () => {
     ]) expect(listText).toContain(label);
     expect(listText).toContain('Ligne 1');
     expect(listText).toContain('Écart+2');
-    expect(listText).toContain('Montant TTC historique211 centimes');
-    expect(listText).toContain('Inversion financière TTC-211 centimes');
+    expect(listText).toContain('Montant TTC historique2,11');
+    expect(listText).toContain('Inversion financière TTC-2,11');
     expect(listText).toContain('active → archived');
     expect(listText).toContain('DLC : 2030-01-15 → 2030-01-16');
     expect(panel.querySelector(`a[href="/catalogue/${ean13}"]`)?.textContent).toBe(ean13);

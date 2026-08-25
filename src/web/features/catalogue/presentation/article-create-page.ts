@@ -1,17 +1,18 @@
 import { type AfterViewInit, ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
-import { type FieldTree, FormField, type TreeValidationResult, form, hidden, pattern, required, submit } from '@angular/forms/signals';
+import { type FieldTree, FormField, type TreeValidationResult, form, hidden, maxLength, pattern, required, submit } from '@angular/forms/signals';
 import { Router, RouterLink } from '@angular/router';
 import type { ArticleCreateCommand } from '../application/article-create-command';
 import { ArticleCreateStore } from '../application/article-create-store';
 import type { ArticleType } from '../domain/article-type';
 import type { Packaging } from '../domain/packaging';
 import type { ConsumptionMode } from '../../../shared-kernel/consumption-mode';
+import { parseEuros } from '../../../shared-kernel/parse-euros';
 
 interface ArticleFormModel {
   ean13: string;
   type: ArticleType;
   name: string;
-  priceHtCents: string;
+  priceHt: string;
   dlc: string;
   consumptionModes: ConsumptionMode[];
   packaging: Packaging | '';
@@ -28,16 +29,18 @@ interface ArticleFormModel {
 export class ArticleCreatePage implements AfterViewInit {
   readonly store = inject(ArticleCreateStore);
   private readonly router = inject(Router);
-  private readonly modelSignal = signal<ArticleFormModel>({ ean13: '', type: 'food', name: '', priceHtCents: '', dlc: '', consumptionModes: [], packaging: '' });
+  private readonly modelSignal = signal<ArticleFormModel>({ ean13: '', type: 'food', name: '', priceHt: '', dlc: '', consumptionModes: [], packaging: '' });
   readonly model = this.modelSignal.asReadonly();
   readonly modes: readonly { value: ConsumptionMode; label: string }[] = [{ value: 'takeaway', label: 'À emporter' }, { value: 'onsite', label: 'Sur place' }];
   readonly articleForm = form(this.modelSignal, (path) => {
     required(path.ean13, { message: 'L’EAN-13 est requis.' });
+    // Renders the native maxlength attribute, so the field itself refuses a 14th character.
+    maxLength(path.ean13, 13, { message: 'L’EAN-13 doit contenir 13 chiffres.' });
     pattern(path.ean13, /^\d{13}$/, { message: 'L’EAN-13 doit contenir 13 chiffres.' });
     required(path.type);
     required(path.name, { message: 'Le nom est requis.' });
-    required(path.priceHtCents, { message: 'Le Prix HT en centimes est requis.' });
-    pattern(path.priceHtCents, /^-?\d+$/, { message: 'Le Prix HT doit être un entier de centimes.' });
+    required(path.priceHt, { message: 'Le Prix HT est requis.' });
+    pattern(path.priceHt, /^-?\d+(?:[.,]\d{1,2})?$/, { message: 'Le Prix HT doit être un montant en euros, par exemple 12,50.' });
     required(path.dlc, { message: 'La DLC est requise.' });
     required(path.consumptionModes, { message: 'Choisissez au moins un mode.' });
     required(path.packaging, { message: 'Le Packaging est requis.' });
@@ -61,7 +64,7 @@ export class ArticleCreatePage implements AfterViewInit {
     await submit(this.articleForm, {
       action: async () => {
         const value = this.modelSignal();
-        const base = { ean13: value.ean13, name: value.name, priceHtCents: Number(value.priceHtCents) };
+        const base = { ean13: value.ean13, name: value.name, priceHtCents: parseEuros(value.priceHt) ?? 0 };
         const command: ArticleCreateCommand = value.type === 'food'
           ? { ...base, type: 'food', dlc: value.dlc, consumptionModes: value.consumptionModes }
           : { ...base, type: 'nonFood', packaging: value.packaging as Packaging };
@@ -90,7 +93,7 @@ export class ArticleCreatePage implements AfterViewInit {
     if (field === 'ean13') return this.articleForm.ean13;
     if (field === 'type') return this.articleForm.type;
     if (field === 'name') return this.articleForm.name;
-    if (field === 'priceHtCents') return this.articleForm.priceHtCents;
+    if (field === 'priceHtCents' || field === 'priceHt') return this.articleForm.priceHt;
     if (field === 'dlc') return this.articleForm.dlc;
     if (field === 'consumptionModes') return this.articleForm.consumptionModes;
     if (field === 'packaging') return this.articleForm.packaging;
@@ -98,7 +101,7 @@ export class ArticleCreatePage implements AfterViewInit {
   }
 
   private focusError(): void {
-    const first = ['ean13', 'type', 'name', 'priceHtCents', 'dlc', 'consumptionModes', 'packaging'].find((field) => this.fieldFor(field)?.().errors().length);
+    const first = ['ean13', 'type', 'name', 'priceHt', 'dlc', 'consumptionModes', 'packaging'].find((field) => this.fieldFor(field)?.().errors().length);
     (first === 'consumptionModes' ? document.querySelector<HTMLElement>('#consumptionModes input') : document.getElementById(first ?? 'form-error'))?.focus();
   }
 }

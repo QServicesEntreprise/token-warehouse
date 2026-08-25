@@ -53,6 +53,22 @@ test('opens every section directly and restores navigation history', async ({ pa
   }
 });
 
+test('opens the Catalogue by default', async ({ page }) => {
+  for (const path of ['/', '/section-inconnue']) {
+    await page.goto(path, { waitUntil: 'networkidle' });
+    await expect(page).toHaveURL(/\/catalogue$/);
+    await expect(page.locator('#catalog-title')).toBeInViewport();
+  }
+});
+
+test('wraps every page heading in the styled section', async ({ page }) => {
+  for (const route of routes) {
+    await page.goto(route.path, { waitUntil: 'networkidle' });
+    await expect(page.locator(`main > section.panel > div > h1${route.target}`)).toHaveCount(1);
+    await expect(page.locator('main > .page-header')).toHaveCount(0);
+  }
+});
+
 test('keeps an unsubmitted Catalogue filter while visiting another section', async ({ page }) => {
   await page.goto('/catalogue');
   await page.locator('#catalog-search').fill('brouillon conservé');

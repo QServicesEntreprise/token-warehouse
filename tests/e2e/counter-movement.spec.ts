@@ -145,8 +145,8 @@ test('corrects a Sale from its historical snapshot after the Article price and l
 
   const sourceSelect = await openCounterMovement(page);
   await sourceSelect.selectOption(sale.operation.id);
-  await expect(page.locator('#counter-movement-source-title').locator('xpath=..')).toContainText('100 centimes');
-  await expect(page.locator('#counter-movement-source-title').locator('xpath=..')).toContainText('106 centimes');
+  await expect(page.locator('#counter-movement-source-title').locator('xpath=..')).toContainText(/1,00\s€/);
+  await expect(page.locator('#counter-movement-source-title').locator('xpath=..')).toContainText(/1,06\s€/);
 
   const counterResponse = await correctSource(page, sale.operation.id, 'Correction financière historique');
   expect(counterResponse.status()).toBe(201);
@@ -159,7 +159,7 @@ test('corrects a Sale from its historical snapshot after the Article price and l
     amountTtcCents: -106,
   });
   expect(receipt.positions[0]).toMatchObject({ physicalStock: 5, sellableStock: 0, reason: 'ARCHIVED' });
-  await expect(page.locator('#counter-movement-result')).toContainText('-106 centimes');
+  await expect(page.locator('#counter-movement-result')).toContainText(/-1,06\s€/);
   await expect(page.locator('#counter-movement-result')).toContainText('Article archivé');
 
   await page.reload();

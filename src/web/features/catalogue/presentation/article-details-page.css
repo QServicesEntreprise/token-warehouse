@@ -1,5 +1,5 @@
 :host { display: block; }
-.page-header a { color: #173b70; font-weight: 700; }
+.primary-link { color: #173b70; font-weight: 700; }
 .article-detail { border-top: 1px solid #d8e0ec; margin-top: 1rem; padding-top: 1rem; }
 .article-detail > form, .article-detail > section { border-top: 1px solid #d8e0ec; margin-top: 1rem; padding-top: 1rem; }
 .price-quotes { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); }

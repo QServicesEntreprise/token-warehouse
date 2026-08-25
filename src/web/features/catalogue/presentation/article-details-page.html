@@ -1,6 +1,10 @@
 <main>
-  <header class="page-header"><p class="eyebrow">Catalogue d’Articles</p><h1 id="article-details-title" tabindex="-1">Détail de l’Article</h1><a routerLink="/catalogue">Retour au Catalogue</a></header>
-  <section class="panel" aria-labelledby="lookup-title">
+  <section class="panel" aria-labelledby="article-details-title">
+    <div>
+      <p class="eyebrow">Catalogue d’Articles</p>
+      <h1 id="article-details-title" tabindex="-1">Détail de l’Article</h1>
+    </div>
+    <a class="primary-link" routerLink="/catalogue">Retour au Catalogue</a>
     <h2 id="lookup-title" class="sr-only">Consulter par EAN-13</h2>
     <form class="lookup" (submit)="onLookupSubmit($event)">
       <label for="lookupEan13">EAN-13</label>
@@ -14,7 +18,7 @@
         <h3 id="detail-title" tabindex="-1">{{ article.name }}</h3>
         <dl>
           <div><dt>EAN-13</dt><dd>{{ article.ean13 }}</dd></div><div><dt>Type</dt><dd>{{ article.type === 'food' ? 'Alimentaire' : 'Non alimentaire' }}</dd></div>
-          <div><dt>Prix HT</dt><dd>{{ article.priceHtCents }} centimes</dd></div><div><dt>Statut</dt><dd>{{ article.status === 'active' ? 'Actif' : 'Archivé' }}</dd></div>
+          <div><dt>Prix HT</dt><dd>{{ article.priceHtCents | euros }}</dd></div><div><dt>Statut</dt><dd>{{ article.status === 'active' ? 'Actif' : 'Archivé' }}</dd></div>
           @if (article.dlc) { <div><dt>DLC</dt><dd>{{ article.dlc }}</dd></div> }
           @if (article.consumptionModes) { <div><dt>Modes</dt><dd>{{ article.consumptionModes.join(', ') }}</dd></div> }
           @if (article.packaging) { <div><dt>Packaging</dt><dd>{{ article.packaging }}</dd></div> }
@@ -48,8 +52,8 @@
           </form>
           <form id="price-update-form" (submit)="onPriceSubmit($event)" aria-labelledby="price-update-title">
             <h4 id="price-update-title">Prix de référence</h4>
-            <label>Prix HT (centimes)<input id="detailPriceHtCents" type="number" step="1" inputmode="numeric" [formField]="priceForm.priceHtCents" [attr.aria-invalid]="fieldError('priceHtCents') ? 'true' : null" aria-describedby="priceHt-update-error" />
-              @if (fieldError('priceHtCents')) { <span id="priceHt-update-error" class="field-error">{{ fieldError('priceHtCents') }}</span> }
+            <label>Prix HT (€)<input id="detailPriceHt" type="text" inputmode="decimal" autocomplete="off" placeholder="12,50" [formField]="priceForm.priceHt" [attr.aria-invalid]="fieldError('priceHt') ? 'true' : null" aria-describedby="priceHt-update-error" />
+              @if (fieldError('priceHt')) { <span id="priceHt-update-error" class="field-error">{{ fieldError('priceHt') }}</span> }
             </label>
             <p id="price-update-error" class="form-error" aria-live="assertive" tabindex="-1">{{ store.error() || store.message() }}</p>
             <button type="submit" [disabled]="store.submitting()">{{ store.submitting() ? 'Enregistrement…' : 'Enregistrer le Prix HT' }}</button>
@@ -57,7 +61,7 @@
         }
         <section aria-labelledby="quotes-title"><h4 id="quotes-title">Prix TTC</h4><div class="price-quotes">
           @for (quote of article.priceQuotes; track quote.saleContext ?? quote.taxRate.code) {
-            <dl class="price-quote">@if (quote.saleContext) { <div><dt>Contexte de Vente</dt><dd>{{ quote.saleContext === 'takeaway' ? 'À emporter' : 'Sur place' }}</dd></div> }<div><dt>Taux de TVA</dt><dd>{{ quote.taxRate.ratio }}</dd></div><div><dt>TVA</dt><dd>{{ quote.vatCents }} centimes</dd></div><div><dt>Prix TTC</dt><dd>{{ quote.priceTtcCents }} centimes</dd></div></dl>
+            <dl class="price-quote">@if (quote.saleContext) { <div><dt>Contexte de Vente</dt><dd>{{ quote.saleContext === 'takeaway' ? 'À emporter' : 'Sur place' }}</dd></div> }<div><dt>Taux de TVA</dt><dd>{{ quote.taxRate.ratio }}</dd></div><div><dt>TVA</dt><dd>{{ quote.vatCents | euros }}</dd></div><div><dt>Prix TTC</dt><dd>{{ quote.priceTtcCents | euros }}</dd></div></dl>
           }
         </div></section>
       </article>

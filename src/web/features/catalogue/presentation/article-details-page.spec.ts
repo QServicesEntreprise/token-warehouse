@@ -102,13 +102,13 @@ describe('ArticleDetailsPage', () => {
 
   it('renders and focuses a local price validation error', async () => {
     const { fixture } = await setup();
-    const price = fixture.nativeElement.querySelector('#detailPriceHtCents') as HTMLInputElement;
-    price.value = '1.5';
+    const price = fixture.nativeElement.querySelector('#detailPriceHt') as HTMLInputElement;
+    price.value = '12,345';
     price.dispatchEvent(new Event('input'));
 
     await submitForm(fixture, '#price-update-form');
 
-    expect(fixture.nativeElement.querySelector('#priceHt-update-error').textContent).toContain('Le Prix HT doit être un entier de centimes.');
+    expect(fixture.nativeElement.querySelector('#priceHt-update-error').textContent).toContain('Le Prix HT doit être un montant en euros, par exemple 12,50.');
     expect(price.getAttribute('aria-invalid')).toBe('true');
     expect(price).toBe(document.activeElement);
   });
@@ -143,7 +143,7 @@ describe('ArticleDetailsPage', () => {
 
     await lookup(fixture, '2222222222222');
 
-    const price = fixture.nativeElement.querySelector('#detailPriceHtCents') as HTMLInputElement;
+    const price = fixture.nativeElement.querySelector('#detailPriceHt') as HTMLInputElement;
     expect(router.navigate).toHaveBeenCalledWith(['/catalogue', '2222222222222']);
     expect(fixture.nativeElement.querySelector('#detail-title').textContent).toContain('Thé test');
     expect(fixture.nativeElement.querySelector('#priceHt-update-error')).toBeNull();
@@ -176,9 +176,9 @@ describe('ArticleDetailsPage', () => {
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     fixture.detectChanges();
 
-    const nextPrice = fixture.nativeElement.querySelector('#detailPriceHtCents') as HTMLInputElement;
+    const nextPrice = fixture.nativeElement.querySelector('#detailPriceHt') as HTMLInputElement;
     expect(fixture.nativeElement.querySelector('#detail-title').textContent).toContain('Café test');
-    expect(fixture.nativeElement.querySelector('.article-detail').textContent).toContain('1200 centimes');
+    expect(fixture.nativeElement.querySelector('.article-detail').textContent).toContain('12,00');
     expect(fixture.nativeElement.querySelector('#price-update-error').textContent).toBe('');
     expect(fixture.componentInstance.priceForm().errors()).toHaveLength(0);
     expect(nextPrice).not.toBe(document.activeElement);
@@ -250,7 +250,7 @@ describe('ArticleDetailsPage', () => {
     reopened.detectChanges();
     await reopened.whenStable();
     reopened.detectChanges();
-    expect(reopened.nativeElement.querySelector('.article-detail').textContent).toContain('1000 centimes');
+    expect(reopened.nativeElement.querySelector('.article-detail').textContent).toContain('10,00');
 
     committed = { ...committed, priceHtCents: 1200 };
     pendingUpdate.next(committed);
@@ -260,7 +260,7 @@ describe('ArticleDetailsPage', () => {
     await reopened.whenStable();
     reopened.detectChanges();
 
-    expect(reopened.nativeElement.querySelector('.article-detail').textContent).toContain('1200 centimes');
+    expect(reopened.nativeElement.querySelector('.article-detail').textContent).toContain('12,00');
   });
 });
 
