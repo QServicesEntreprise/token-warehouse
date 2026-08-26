@@ -14,10 +14,10 @@ d'architecture.
 
 ### IA utilisée
 
-- **Claude Code (Opus)** — agent principal, exécution des loops de spécification
-  et de delivery.
-- **ChatGPT (GPT)** — en second, pour la mise au point du workflow et des
-  arbitrages ponctuels de conception.
+- **ChatGPT** — conception des boucles agentiques et du workflow, arbitrages de
+  conception.
+- **GPT-5.6-Luna** — exécution des boucles agentiques.
+- **Claude Opus 5** — refinement du projet.
 
 ### Usages de l'IA
 
